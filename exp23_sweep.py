@@ -5,10 +5,10 @@ ROOT=Path("silesia")
 OUT=Path("exp23_out"); OUT.mkdir(exist_ok=True)
 FILES=["x-ray","dickens","webster","sao","nci","xml","reymont","mozilla"]
 PROFILES=[
- ("BASE",6.48,9.42,1.88),
- ("A_AGGR",6.60,9.20,1.80),
  ("B_DIST",6.55,9.42,1.70),
- ("C_BAL",6.55,9.25,1.78),
+ ("D_160",6.55,9.42,1.60),
+ ("E_150",6.55,9.42,1.50),
+ ("F_660",6.60,9.42,1.60),
 ]
 rows=[]
 for tag,lit,mc,dpen in PROFILES:
@@ -28,7 +28,7 @@ for tag,lit,mc,dpen in PROFILES:
     print(f"TOTAL {tag} {total_size} {100*total_size/total_raw:.6f}%",flush=True)
 Path("exp23_sweep.json").write_text(json.dumps(rows,indent=2))
 
-base={(r["file"]):r for r in rows if r["profile"]=="BASE"}
+base={(r["file"]):r for r in rows if r["profile"]=="B_DIST"}
 summary=[]
 for tag,lit,mc,dpen in PROFILES:
     rr=[r for r in rows if r["profile"]==tag]
