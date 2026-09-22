@@ -26,7 +26,9 @@ static vector<double> k2_psg_literal_prefix_cost(const vector<uint8_t>& d,double
         double pcost=kp.use_raw(p)?8.0:(K2LOG2(rm.total)-K2LOG2(rm.f[r]));
         double surprise=pcost-ema;
         double w=0.50;
-        if(mode==1){
+        if(mode==4){
+            w=0.50;
+        } else if(mode==1){
             // Asymmetric surprise gate: trust prediction more on expensive residuals.
             w = surprise>1.25 ? 0.72 : (surprise<-1.25 ? 0.35 : 0.50);
         } else if(mode==2){
