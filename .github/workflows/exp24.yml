@@ -17,8 +17,9 @@ jobs:
           sudo apt-get install -y build-essential unzip
       - name: Rebuild EXP-24 source and compile four modes
         run: |
-          cat source_parts/exp24_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP24_ADAPTIVE.cpp
-          test "$(wc -c < KEPHIR_2_EXP24_ADAPTIVE.cpp)" -eq 39916
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          test "$(wc -c < KEPHIR_2_EXP23_BASE.cpp)" -eq 38695
+          python3 make_exp24_source.py
           for M in 0 1 2 3; do
             g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY -DK2_ADAPT_MODE=$M -pthread KEPHIR_2_EXP24_ADAPTIVE.cpp -o kephir24_$M
           done
