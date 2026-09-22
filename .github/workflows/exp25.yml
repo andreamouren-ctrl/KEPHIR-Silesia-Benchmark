@@ -1,0 +1,38 @@
+name: KEPHIR EXP-25 Continuous Sweep
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "make_exp25_source.py"
+      - "exp25_continuous_sweep.py"
+      - ".github/workflows/exp25.yml"
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential unzip
+      - name: Build EXP-25 modes
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          test "$(wc -c < KEPHIR_2_EXP23_BASE.cpp)" -eq 38695
+          python3 make_exp25_source.py
+          for M in 2 4 5 6; do
+            g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY -DK2_ADAPT_MODE=$M -pthread KEPHIR_2_EXP25_CONTINUOUS.cpp -o kephir25_$M
+          done
+      - name: Download Silesia
+        run: |
+          curl -L --fail --retry 4 -o silesia.zip https://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip
+          echo "c240c17d6805fb8a0bde763f1b94cd99  silesia.zip" | md5sum -c -
+          mkdir silesia
+          unzip -q silesia.zip -d silesia
+      - name: Run EXP-25 sweep
+        run: python3 exp25_continuous_sweep.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exp25-continuous-results
+          path: exp25_continuous_results.json
