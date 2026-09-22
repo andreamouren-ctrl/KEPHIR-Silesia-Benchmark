@@ -47,6 +47,21 @@ new='''    int prevTopoDist=0, prevTopoDist2=0;
             if(dist==255 || dist==256 || dist==257) c-=0.92;
             else if((dist&255)==0) c-=0.56;
             else if((dist&15)==0) c-=0.10;
+        }else if(K2_DIST_TOPO_MODE==7){
+            if(dist==15 || dist==16 || dist==17) c-=0.65;
+            if(dist==255 || dist==256 || dist==257) c-=1.10;
+            else if((dist&255)==0) c-=0.75;
+            else if((dist&15)==0) c-=0.38;
+        }else if(K2_DIST_TOPO_MODE==8){
+            if(dist==15 || dist==16 || dist==17) c-=0.80;
+            if(dist==255 || dist==256 || dist==257) c-=1.30;
+            else if((dist&255)==0) c-=0.90;
+            else if((dist&15)==0) c-=0.45;
+        }else if(K2_DIST_TOPO_MODE==9){
+            if(dist==15 || dist==16 || dist==17) c-=0.40;
+            if(dist==255 || dist==256 || dist==257) c-=1.20;
+            else if((dist&255)==0) c-=0.80;
+            else if((dist&15)==0) c-=0.20;
         }else if(K2_DIST_TOPO_MODE==3){
             // Hybrid recurrence + lattice, deliberately conservative.
             if(prevTopoDist>0){
