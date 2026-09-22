@@ -22,10 +22,9 @@ jobs:
           python3 make_exp26_source.py
           python3 make_exp27_source.py
           python3 make_exp31_source.py
-          for M in 1 2 3; do
+          for M in 1 2 3 4; do
             g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=$M -pthread KEPHIR_2_EXP31_PSG.cpp -o kephir31_$M
           done
-          cp kephir31_1 kephir31_4
       - name: Download Silesia
         run: |
           curl -L --fail --retry 4 -o silesia.zip https://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip
