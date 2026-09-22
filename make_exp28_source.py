@@ -101,8 +101,7 @@ old='''}else{uint8_t sh=decsmall(a,ms[msctx]); msctx=sh; int len; if(!sh) len=(i
 }if(x==0||x>o.size()||o.size()+len>n) return {};'''
 new='''}else{
  uint8_t sh=decsmall(a,ms[msctx]); msctx=sh; int len;
- uint8_t tentativeDistClass=prevMatchClass;
- uint8_t lctx=(K2_TOKEN_COUPLE_MODE==2 || K2_TOKEN_COUPLE_MODE==3)?tentativeDistClass:prevMatchClass;
+ uint8_t lctx=(K2_TOKEN_COUPLE_MODE==2 || K2_TOKEN_COUPLE_MODE==3)?prevDistClass:prevMatchClass;
 
  // For distance-conditioned length we cannot know the current distance class before decoding it,
  // so mode 2/3 conditions length on the previous match distance class. This is causal and symmetric.
