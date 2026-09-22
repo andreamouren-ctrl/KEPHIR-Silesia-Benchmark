@@ -1,0 +1,39 @@
+name: KEPHIR EXP-30 Predictive Opportunity Cost
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "make_exp30_source.py"
+      - "exp30_sweep.py"
+      - ".github/workflows/exp30.yml"
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential unzip
+      - name: Build EXP-30 modes
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp30_source.py
+          for M in 0 1 2 3; do
+            g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_POC_MODE=$M -pthread KEPHIR_2_EXP30_POC.cpp -o kephir30_$M
+          done
+      - name: Download Silesia
+        run: |
+          curl -L --fail --retry 4 -o silesia.zip https://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip
+          echo "c240c17d6805fb8a0bde763f1b94cd99  silesia.zip" | md5sum -c -
+          mkdir silesia
+          unzip -q silesia.zip -d silesia
+      - name: Run EXP-30 sweep
+        run: python3 exp30_sweep.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exp30-results
+          path: exp30_results.json
