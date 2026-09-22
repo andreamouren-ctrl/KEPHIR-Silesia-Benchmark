@@ -17,7 +17,7 @@ new='''array<SmallModel<2>,2> ms; SmallModel<4> msl; EncModel mlehi,mlelow; Long
 array<SmallModel<4>,4> msl_c; array<LongModel,4> mlng_c;
 array<array<EncModel,3>,4> md0_c; array<array<EncModel,2>,4> md1_c; array<EncModel,4> md2_c;
 array<SmallModel<9>,4> dm_c; array<SmallModel<3>,4> dnb_c;
-size_t p=0;K2TemporalField tf;uint32_t cache[8]={0}; uint8_t mtctx=0, msctx=0, dmctx=0, dnbctx=0; uint8_t prevMatchClass=0;'''
+size_t p=0;K2TemporalField tf;uint32_t cache[8]={0}; uint8_t mtctx=0, msctx=0, dmctx=0, dnbctx=0; uint8_t prevMatchClass=0, prevDistClass=0;'''
 assert old in s
 s=s.replace(old,new,1)
 
@@ -40,7 +40,7 @@ new='''}else{
  uint8_t lenClass=(uint8_t)(t.len<=7?0:(t.len<=31?1:(t.len<=255?2:3)));
 
  ms[msctx].enc(a,sh); msctx=sh;
- uint8_t lctx=(K2_TOKEN_COUPLE_MODE==2 || K2_TOKEN_COUPLE_MODE==3)?distClass:prevMatchClass;
+ uint8_t lctx=(K2_TOKEN_COUPLE_MODE==2 || K2_TOKEN_COUPLE_MODE==3)?prevDistClass:prevMatchClass;
  if(t.len<=7){
    if(K2_TOKEN_COUPLE_MODE==2 || K2_TOKEN_COUPLE_MODE==3) msl_c[lctx].enc(a,(uint8_t)(t.len-4));
    else msl.enc(a,(uint8_t)(t.len-4));
@@ -73,7 +73,7 @@ new='''}else{
    for(int j=7;j>0;--j) cache[j]=cache[j-1]; cache[0]=x;
  } else if(ci>0){for(int j=ci;j>0;j--)cache[j]=cache[j-1];cache[0]=x;}
 
- prevMatchClass=lenClass;
+ prevMatchClass=lenClass; prevDistClass=distClass;
  for(size_t q=(p+PRED_SAMPLE_MASK)&~(size_t)PRED_SAMPLE_MASK, e=p+(size_t)t.len; q<e; q+=(PRED_SAMPLE_MASK+1u)) kp.observe_sampled(d,q); p+=t.len;
 }}return a.finish();}'''
 assert old in s
@@ -85,7 +85,7 @@ new='''array<SmallModel<2>,2> ms; SmallModel<4> msl; DecModel mlehi,mlelow; Long
 array<SmallModel<4>,4> msl_c; array<LongModel,4> mlng_c;
 array<array<DecModel,3>,4> md0_c; array<array<DecModel,2>,4> md1_c; array<DecModel,4> md2_c;
 array<SmallModel<9>,4> dm_c; array<SmallModel<3>,4> dnb_c;
-K2TemporalField tf;uint32_t cache[8]={0}; uint8_t mtctx=0, msctx=0, dmctx=0, dnbctx=0; uint8_t prevMatchClass=0;'''
+K2TemporalField tf;uint32_t cache[8]={0}; uint8_t mtctx=0, msctx=0, dmctx=0, dnbctx=0; uint8_t prevMatchClass=0, prevDistClass=0;'''
 assert old in s
 s=s.replace(old,new,1)
 
@@ -133,7 +133,7 @@ new='''}else{
    if(x==0 || x>(1u<<22)) return {};
    for(int j=7;j>0;--j) cache[j]=cache[j-1]; cache[0]=x;
  }
- prevMatchClass=distClass?distClass:lenClass;
+ prevMatchClass=lenClass; prevDistClass=distClass;
  if(x==0||x>o.size()||o.size()+len>n) return {};'''
 assert old in s
 s=s.replace(old,new,1)
