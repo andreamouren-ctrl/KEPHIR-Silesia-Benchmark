@@ -5,8 +5,6 @@ ROOT=Path("silesia"); OUT=Path("speed1_out"); OUT.mkdir(exist_ok=True)
 FILES=["dickens","mozilla","mr","nci","ooffice","osdb","reymont","samba","sao","webster","x-ray","xml"]
 PROFILES=[
  ("FAST_A","./kephir_fast_a"),
- ("FAST_B","./kephir_fast_b"),
- ("FAST_C","./kephir_fast_c"),
 ]
 rows=[]
 for tag,exe in PROFILES:
