@@ -9,6 +9,9 @@ on:
       - "src/cpp/aurora_media/**"
       - "src/python/reference/aurora_media_container.py"
       - "tests/cpp/**"
+      - "src/cpp/aurora_media/AuroraCodecInterfaces.h"
+      - "src/cpp/aurora_media/AuroraMediaError.h"
+      - "src/cpp/aurora_media/AuroraMediaLimits.h"
       - "tests/python/test_cpp_python_binary_interop.py"
       - ".github/workflows/aurora_media_cpp_interop.yml"
 
@@ -34,6 +37,28 @@ jobs:
             src/cpp/aurora_media/AuroraMediaSession.cpp \
             tests/cpp/test_aurora_media_session.cpp \
             -Isrc/cpp/aurora_media -o aurora_media_session_test
+
+      - name: Build typed codec interface test
+        run: |
+          g++ -O2 -std=c++20 -Wall -Wextra -Werror \
+            tests/cpp/test_aurora_codec_interfaces.cpp \
+            -Isrc/cpp/aurora_media -o aurora_codec_interfaces_test
+
+      - name: Build resource-limit test
+        run: |
+          g++ -O2 -std=c++20 -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraMediaContainer.cpp \
+            src/cpp/aurora_media/AuroraStreamProtocol.cpp \
+            tests/cpp/test_aurora_limits.cpp \
+            -Isrc/cpp/aurora_media -o aurora_limits_test
+
+      - name: Typed codec interfaces
+        run: |
+          ./aurora_codec_interfaces_test
+
+      - name: Resource limits
+        run: |
+          ./aurora_limits_test limits_test.aum
 
       - name: Python/C++ binary interop
         env:
