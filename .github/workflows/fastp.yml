@@ -1,0 +1,47 @@
+name: KEPHIR FAST-P Hash19
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "make_fastp_source.py"
+      - "fastp_bench.py"
+      - ".github/workflows/fastp.yml"
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential unzip
+      - name: Build FAST-K and FAST-P
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          python3 make_exp37_source.py
+          python3 make_exp38_source.py
+          python3 make_exp39_source.py
+          K2_CHAIN_DEPTH_VALUE=24 K2_LAZY_DEPTH_VALUE=12 K2_PRED_MASK_VALUE=255 python3 make_speed1_source.py
+          python3 make_fastd_source.py
+          python3 make_fastk_source.py
+          python3 make_fastp_source.py
+          CXXFLAGS="-O3 -march=native -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=0 -DK2_PSG_MODE=0 -DK2_DIST_TOPO_MODE=0 -DK2_DUAL_MATCH_MODE=0 -DK2_FUSED_MATCH_MODE=0 -DK2_FUSED2_MODE=0 -pthread"
+          g++ $CXXFLAGS KEPHIR_FAST_K.cpp -o fast_k
+          g++ $CXXFLAGS KEPHIR_FAST_P.cpp -o fast_p
+      - name: Silesia
+        run: |
+          curl -L --fail --retry 4 -o silesia.zip https://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip
+          echo "c240c17d6805fb8a0bde763f1b94cd99  silesia.zip" | md5sum -c -
+          mkdir silesia
+          unzip -q silesia.zip -d silesia
+      - name: Benchmark
+        run: python3 fastp_bench.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fastp-results
+          path: fastp_results.json
