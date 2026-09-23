@@ -81,6 +81,16 @@ jobs:
         run: |
           ./aurora_khepri_contract_test
 
+      - name: Build 4K tile planner test
+        run: |
+          g++ -O2 -std=c++20 -Wall -Wextra -Werror \
+            tests/cpp/test_aurora_video_4k_plan.cpp \
+            -Isrc/cpp/aurora_media -o aurora_video_4k_plan_test
+
+      - name: Validate 4K tile planner
+        run: |
+          ./aurora_video_4k_plan_test
+
       - name: Python/C++ binary interop
         env:
           PYTHONPATH: src/python/reference
