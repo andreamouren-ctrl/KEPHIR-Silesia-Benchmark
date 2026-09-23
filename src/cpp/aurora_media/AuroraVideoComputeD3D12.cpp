@@ -258,10 +258,7 @@ public:
         for(std::size_t i=0;i<blockCount;++i) {
             result[i]=static_cast<Byte>(p[i] & 0xffu);
             if(i==18) {
-                std::cerr<<"GPUDBG cand0_sad="<<p[18]
-                         <<" cand9_sad="<<p[19]
-                         <<" best_packed="<<p[20]<<"\\n";
-            }
+                std::cerr<<"GPUDBG packed18="<<p[i]<<"\\n";
             }
         }
         D3D12_RANGE noWrite{0,0};
