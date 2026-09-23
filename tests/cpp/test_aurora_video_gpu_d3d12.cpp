@@ -42,6 +42,7 @@ int main() {
             const std::uint32_t by=(blockIndex/(w/8))*8;
             std::uint64_t best=~0ull;
             std::size_t bestIdx=0;
+            std::uint64_t cand0=0, cand9=0;
             for(std::size_t ci=0;ci<cand.size();++ci) {
                 const auto [dx,dy]=cand[ci];
                 const int sx=static_cast<int>(bx)+dx;
@@ -55,9 +56,12 @@ int main() {
                                           static_cast<std::size_t>(sx+static_cast<int>(xx))];
                         cost += static_cast<std::uint64_t>(a>b?a-b:b-a);
                     }
+                if(ci==0) cand0=cost;
+                if(ci==9) cand9=cost;
                 if(cost<best) { best=cost; bestIdx=ci; }
             }
-            std::cerr<<"CPUDBG block=18 idx="<<bestIdx<<" sad="<<best<<"\\n";
+            std::cerr<<"CPUDBG block=18 idx="<<bestIdx<<" sad="<<best
+                     <<" cand0_sad="<<cand0<<" cand9_sad="<<cand9<<"\\n";
         }
 
         if(cm.size()!=gm.size())
