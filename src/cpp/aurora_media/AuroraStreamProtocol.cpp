@@ -37,6 +37,7 @@ Packet decode(const std::vector<std::uint8_t>& b){
     Packet out; out.track_id=read<std::uint8_t>(b,p);out.flags=read<std::uint8_t>(b,p);(void)read<std::uint8_t>(b,p);
     out.sequence=read<std::uint32_t>(b,p);out.pts=read<std::uint64_t>(b,p);out.duration=read<std::uint64_t>(b,p);
     const auto sz=read<std::uint32_t>(b,p);const auto crc=read<std::uint32_t>(b,p);(void)read<std::uint32_t>(b,p);
+    if(sz>aurora::media::kDefaultLimits.max_packet_bytes) throw std::runtime_error("stream packet size limit");
     if(b.size()!=header_size+sz) throw std::runtime_error("stream size mismatch");
     out.payload.assign(b.begin()+static_cast<std::ptrdiff_t>(p),b.end());
     if(aurora::media::crc32(out.payload.data(),out.payload.size())!=crc) throw std::runtime_error("stream CRC");
@@ -44,12 +45,15 @@ Packet decode(const std::vector<std::uint8_t>& b){
 }
 
 void IncrementalParser::push(const std::uint8_t* data,std::size_t n){
+    if(n>max_buffer_bytes_ || buffer_.size()>max_buffer_bytes_-n)
+        throw std::runtime_error("stream buffer limit");
     buffer_.insert(buffer_.end(),data,data+n);
 }
 std::optional<Packet> IncrementalParser::pop(){
     if(buffer_.size()<header_size) return std::nullopt;
     std::size_t p=28; // size field offset in AUS1 v1
     std::uint32_t sz=0;for(int i=0;i<4;++i)sz|=std::uint32_t(buffer_[p+i])<<(8*i);
+    if(sz>aurora::media::kDefaultLimits.max_packet_bytes) throw std::runtime_error("stream packet size limit");
     const std::size_t total=header_size+sz;
     if(buffer_.size()<total) return std::nullopt;
     std::vector<std::uint8_t> one(buffer_.begin(),buffer_.begin()+static_cast<std::ptrdiff_t>(total));
