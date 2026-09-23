@@ -1,0 +1,60 @@
+name: AURORA Full-Stack Codec Benchmark v0.3
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "research/khepri-stream-codec"
+    paths:
+      - "benchmarks/major_codecs/benchmark_full_stack_v03.py"
+      - "src/python/reference/**"
+      - "research/audio/**"
+      - "research/video/**"
+      - ".github/workflows/aurora_full_stack_benchmark.yml"
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install benchmark dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential ffmpeg curl python3-numpy
+
+      - name: Build KHEPRI EXP-37A
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          python3 make_exp37_source.py
+          g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY \
+            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 -DK2_DIST_TOPO_MODE=8 \
+            -DK2_DUAL_MATCH_MODE=1 -pthread KEPHIR_2_EXP37_DUAL_MATCH.cpp -o kephir37
+
+      - name: Download benchmark media
+        run: |
+          curl -L --fail --retry 4 -o sintel_audio.flac https://media.xiph.org/sintel/sintel_trailer-audio.flac
+          ffmpeg -hide_banner -loglevel error -y -i sintel_audio.flac             -ac 2 -ar 48000 -sample_fmt s16 -f s16le sintel_audio.raw
+
+          curl -L --fail --retry 4 -o akiyo.y4m https://media.xiph.org/video/derf/y4m/akiyo_qcif.y4m
+          curl -L --fail --retry 4 -o foreman.y4m https://media.xiph.org/video/derf/y4m/foreman_qcif.y4m
+          curl -L --fail --retry 4 -o bus.y4m https://media.xiph.org/video/derf/y4m/bus_qcif_15fps.y4m
+          ffmpeg -hide_banner -loglevel error -y -i akiyo.y4m -pix_fmt yuv420p -f rawvideo akiyo.yuv
+          ffmpeg -hide_banner -loglevel error -y -i foreman.y4m -pix_fmt yuv420p -f rawvideo foreman.yuv
+          ffmpeg -hide_banner -loglevel error -y -i bus.y4m -pix_fmt yuv420p -f rawvideo bus.yuv
+
+      - name: Run full-stack benchmark
+        env:
+          PYTHONPATH: src/python/reference:research/audio/lab:research/audio/experiments:research/video/lab:research/video/experiments:research/backend
+        run: |
+          python3 benchmarks/major_codecs/benchmark_full_stack_v03.py             --audio sintel_audio.raw             --kephir ./kephir37             --clip akiyo:akiyo.yuv:30000:1001             --clip foreman:foreman.yuv:30000:1001             --clip bus:bus.yuv:15:1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-full-stack-codec-benchmark-v03
+          path: results/benchmarks/full_stack_v03/full_stack_results.json
