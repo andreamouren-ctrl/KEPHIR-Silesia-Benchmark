@@ -1,4 +1,5 @@
 #include "AuroraVideoCompute.h"
+#include "AuroraVideoMotion.h"
 #include <cstdint>
 #include <iostream>
 #include <stdexcept>
