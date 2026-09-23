@@ -156,21 +156,39 @@ public:
         const std::size_t blockCount=static_cast<std::size_t>(blocksX)*blocksY;
         const std::size_t outBytes=blockCount*sizeof(std::uint32_t);
 
-        auto curBuf=make_buffer(device_.Get(),yBytes,D3D12_HEAP_TYPE_UPLOAD,
-                                D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_GENERIC_READ);
-        auto prevBuf=make_buffer(device_.Get(),yBytes,D3D12_HEAP_TYPE_UPLOAD,
-                                 D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_GENERIC_READ);
+        auto curUpload=make_buffer(device_.Get(),yBytes,D3D12_HEAP_TYPE_UPLOAD,
+                                   D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_GENERIC_READ);
+        auto prevUpload=make_buffer(device_.Get(),yBytes,D3D12_HEAP_TYPE_UPLOAD,
+                                    D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_GENERIC_READ);
+        auto curBuf=make_buffer(device_.Get(),yBytes,D3D12_HEAP_TYPE_DEFAULT,
+                                D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_COPY_DEST);
+        auto prevBuf=make_buffer(device_.Get(),yBytes,D3D12_HEAP_TYPE_DEFAULT,
+                                 D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_COPY_DEST);
         auto outBuf=make_buffer(device_.Get(),outBytes,D3D12_HEAP_TYPE_DEFAULT,
                                 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
                                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         auto readback=make_buffer(device_.Get(),outBytes,D3D12_HEAP_TYPE_READBACK,
                                   D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_COPY_DEST);
 
-        upload(curBuf.Get(),cur.data(),yBytes);
-        upload(prevBuf.Get(),prev.data(),yBytes);
+        upload(curUpload.Get(),cur.data(),yBytes);
+        upload(prevUpload.Get(),prev.data(),yBytes);
 
         check(allocator_->Reset(),"Allocator Reset");
         check(command_list_->Reset(allocator_.Get(),pso_.Get()),"CommandList Reset");
+
+        command_list_->CopyBufferRegion(curBuf.Get(),0,curUpload.Get(),0,yBytes);
+        command_list_->CopyBufferRegion(prevBuf.Get(),0,prevUpload.Get(),0,yBytes);
+
+        D3D12_RESOURCE_BARRIER inputBarriers[2]{};
+        inputBarriers[0].Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        inputBarriers[0].Transition.pResource=curBuf.Get();
+        inputBarriers[0].Transition.StateBefore=D3D12_RESOURCE_STATE_COPY_DEST;
+        inputBarriers[0].Transition.StateAfter=D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        inputBarriers[0].Transition.Subresource=D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        inputBarriers[1]=inputBarriers[0];
+        inputBarriers[1].Transition.pResource=prevBuf.Get();
+        command_list_->ResourceBarrier(2,inputBarriers);
+
         command_list_->SetComputeRootSignature(root_.Get());
 
         const std::array<std::uint32_t,4> constants{w,h,blocksX,blocksY};
