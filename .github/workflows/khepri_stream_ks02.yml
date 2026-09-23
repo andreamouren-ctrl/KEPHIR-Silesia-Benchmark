@@ -1,0 +1,35 @@
+name: KHEPRI Stream KS-02 KMRL
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "research/khepri-stream-codec"
+    paths:
+      - "streaming/kstream_kmrl_frontend.py"
+      - "streaming/ks02_kmrl_bench.py"
+      - ".github/workflows/khepri_stream_ks02.yml"
+
+jobs:
+  kmrl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build EXP-33H backend
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY             -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 -DK2_DIST_TOPO_MODE=8             -pthread KEPHIR_2_EXP33_DISTANCE_TOPOLOGY.cpp -o kephir33
+
+      - name: Run KS-02
+        run: python3 streaming/ks02_kmrl_bench.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: khepri-stream-ks02
+          path: streaming/ks02_out/ks02_results.json
