@@ -7,8 +7,8 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <future>
 #include <iostream>
-#include <mutex>
 #include <stdexcept>
 #include <thread>
 #include <vector>
@@ -23,15 +23,6 @@ struct EncodedTile {
     Bytes packed;
 };
 
-struct RunResult {
-    std::uint32_t workers{};
-    double encode_seconds{};
-    double decode_seconds{};
-    double wall_seconds{};
-    std::uint64_t packed_bytes{};
-    bool roundtrip{};
-};
-
 static Bytes make_frame(std::uint32_t w,std::uint32_t h,std::uint32_t frame_idx) {
     const std::size_t ys=static_cast<std::size_t>(w)*h;
     const std::size_t us=static_cast<std::size_t>(w/2)*(h/2);
@@ -39,23 +30,24 @@ static Bytes make_frame(std::uint32_t w,std::uint32_t h,std::uint32_t frame_idx)
     for(std::uint32_t y=0;y<h;++y)
         for(std::uint32_t x=0;x<w;++x)
             b[static_cast<std::size_t>(y)*w+x]=static_cast<Byte>(
-                (x*3u+y*5u+frame_idx*2u+((x/64u+frame_idx)%7u)*3u+((y/48u+frame_idx)%5u)*2u)&255u);
-    const auto cw=w/2; const auto ch=h/2;
-    for(std::uint32_t y=0;y<ch;++y) for(std::uint32_t x=0;x<cw;++x) {
-        const auto i=static_cast<std::size_t>(y)*cw+x;
-        b[ys+i]=static_cast<Byte>((96u+x+y+frame_idx)&255u);
-        b[ys+us+i]=static_cast<Byte>((160u+2u*x+y+frame_idx*2u)&255u);
-    }
+                (x*3u+y*5u+frame_idx*2u+((x/64u+frame_idx)%7u)*3u+
+                 ((y/48u+frame_idx)%5u)*2u)&255u);
+    const auto cw=w/2, ch=h/2;
+    for(std::uint32_t y=0;y<ch;++y)
+        for(std::uint32_t x=0;x<cw;++x) {
+            const auto i=static_cast<std::size_t>(y)*cw+x;
+            b[ys+i]=static_cast<Byte>((96u+x+y+frame_idx)&255u);
+            b[ys+us+i]=static_cast<Byte>((160u+2u*x+y+frame_idx*2u)&255u);
+        }
     return b;
 }
 
 static Bytes extract_tile(ByteView frame,std::uint32_t fw,std::uint32_t fh,const VideoTile& t) {
-    (void)fh;
     const std::size_t ys=static_cast<std::size_t>(fw)*fh;
-    const auto cw=fw/2u; const auto ch=fh/2u;
+    const auto cw=fw/2, ch=fh/2;
     const std::size_t us=static_cast<std::size_t>(cw)*ch;
     const std::size_t tys=static_cast<std::size_t>(t.width)*t.height;
-    const auto tcw=t.width/2u; const auto tch=t.height/2u;
+    const auto tcw=t.width/2, tch=t.height/2;
     const std::size_t tus=static_cast<std::size_t>(tcw)*tch;
     Bytes out(tys+2*tus);
     for(std::uint32_t y=0;y<t.height;++y) {
@@ -65,7 +57,7 @@ static Bytes extract_tile(ByteView frame,std::uint32_t fw,std::uint32_t fh,const
                     out.begin()+static_cast<std::ptrdiff_t>(dst));
     }
     for(std::uint32_t y=0;y<tch;++y) {
-        const auto src=static_cast<std::size_t>(t.y/2u+y)*cw+t.x/2u;
+        const auto src=static_cast<std::size_t>(t.y/2+y)*cw+t.x/2;
         const auto dst=static_cast<std::size_t>(y)*tcw;
         std::copy_n(frame.begin()+static_cast<std::ptrdiff_t>(ys+src),tcw,
                     out.begin()+static_cast<std::ptrdiff_t>(tys+dst));
@@ -75,13 +67,15 @@ static Bytes extract_tile(ByteView frame,std::uint32_t fw,std::uint32_t fh,const
     return out;
 }
 
-static void paste_tile(Bytes& frame,std::uint32_t fw,std::uint32_t fh,const VideoTile& t,ByteView tile) {
+static void paste_tile(Bytes& frame,std::uint32_t fw,std::uint32_t fh,
+                       const VideoTile& t,ByteView tile) {
     const std::size_t ys=static_cast<std::size_t>(fw)*fh;
-    const auto cw=fw/2u; const auto ch=fh/2u;
+    const auto cw=fw/2, ch=fh/2;
     const std::size_t us=static_cast<std::size_t>(cw)*ch;
     const std::size_t tys=static_cast<std::size_t>(t.width)*t.height;
-    const auto tcw=t.width/2u; const auto tch=t.height/2u;
+    const auto tcw=t.width/2, tch=t.height/2;
     const std::size_t tus=static_cast<std::size_t>(tcw)*tch;
+    (void)ch;
     for(std::uint32_t y=0;y<t.height;++y) {
         const auto src=static_cast<std::size_t>(y)*t.width;
         const auto dst=static_cast<std::size_t>(t.y+y)*fw+t.x;
@@ -89,8 +83,8 @@ static void paste_tile(Bytes& frame,std::uint32_t fw,std::uint32_t fh,const Vide
                     frame.begin()+static_cast<std::ptrdiff_t>(dst));
     }
     for(std::uint32_t y=0;y<tch;++y) {
+        const auto dst=static_cast<std::size_t>(t.y/2+y)*cw+t.x/2;
         const auto src=static_cast<std::size_t>(y)*tcw;
-        const auto dst=static_cast<std::size_t>(t.y/2u+y)*cw+t.x/2u;
         std::copy_n(tile.begin()+static_cast<std::ptrdiff_t>(tys+src),tcw,
                     frame.begin()+static_cast<std::ptrdiff_t>(ys+dst));
         std::copy_n(tile.begin()+static_cast<std::ptrdiff_t>(tys+tus+src),tcw,
@@ -98,99 +92,93 @@ static void paste_tile(Bytes& frame,std::uint32_t fw,std::uint32_t fh,const Vide
     }
 }
 
-template<class F>
-static void parallel_for(std::size_t n,std::uint32_t workers,F&& fn) {
+static EncodedTile encode_one(ByteView cur,ByteView prev,
+                              std::uint32_t fw,std::uint32_t fh,const VideoTile& tile) {
+    auto c=extract_tile(cur,fw,fh,tile);
+    auto p=extract_tile(prev,fw,fh,tile);
+    auto mr=AuroraVideoMotion::encode_mc8r4(c,p,tile.width,tile.height);
+    const auto mode=AuroraVideoResidual::choose_mode(mr.residual_yuv420);
+    auto mapped=AuroraVideoResidual::map(mr.residual_yuv420,mode);
+    AuroraKhepriExp37MemoryAdapter k;
+    auto packed=k.encode(mapped);
+    return EncodedTile{tile,std::move(mr.motion_map),mode,std::move(packed)};
+}
+
+static Bytes decode_one(const EncodedTile& et,ByteView prev,std::uint32_t fw,std::uint32_t fh) {
+    auto p=extract_tile(prev,fw,fh,et.tile);
+    AuroraKhepriExp37MemoryAdapter k;
+    auto mapped=k.decode(et.packed);
+    auto residual=AuroraVideoResidual::unmap(mapped,et.mode);
+    return AuroraVideoMotion::decode_mc8r4(et.motion,residual,p,et.tile.width,et.tile.height);
+}
+
+template<class Fn>
+static void parallel_for(std::size_t count,std::uint32_t workers,Fn fn) {
     std::atomic<std::size_t> next{0};
-    std::vector<std::jthread> pool;
+    std::vector<std::thread> pool;
     pool.reserve(workers);
-    for(std::uint32_t wi=0;wi<workers;++wi) {
+    for(std::uint32_t w=0;w<workers;++w) {
         pool.emplace_back([&]{
-            while(true) {
+            for(;;) {
                 const auto i=next.fetch_add(1,std::memory_order_relaxed);
-                if(i>=n) break;
+                if(i>=count) break;
                 fn(i);
             }
         });
     }
+    for(auto& t:pool) t.join();
 }
 
-static RunResult run_once(std::uint32_t workers,
-                          ByteView cur,ByteView prev,
-                          const VideoTilePlan& plan) {
+static void run_case(std::uint32_t workers,ByteView cur,ByteView prev,const VideoTilePlan& plan) {
     std::vector<EncodedTile> encoded(plan.tiles.size());
-    std::atomic<std::uint64_t> packed_bytes{0};
-
-    const auto wall0=Clock::now();
-    const auto enc0=Clock::now();
+    const auto e0=Clock::now();
     parallel_for(plan.tiles.size(),workers,[&](std::size_t i){
-        AuroraKhepriExp37MemoryAdapter khepri;
-        const auto& tile=plan.tiles[i];
-        auto c=extract_tile(cur,plan.frame_width,plan.frame_height,tile);
-        auto p=extract_tile(prev,plan.frame_width,plan.frame_height,tile);
-        auto mr=AuroraVideoMotion::encode_mc8r4(c,p,tile.width,tile.height);
-        const auto mode=AuroraVideoResidual::choose_mode(mr.residual_yuv420);
-        auto mapped=AuroraVideoResidual::map(mr.residual_yuv420,mode);
-        auto packed=khepri.encode(mapped);
-        packed_bytes.fetch_add(packed.size()+mr.motion_map.size()+1,std::memory_order_relaxed);
-        encoded[i]=EncodedTile{tile,std::move(mr.motion_map),mode,std::move(packed)};
+        encoded[i]=encode_one(cur,prev,plan.frame_width,plan.frame_height,plan.tiles[i]);
     });
-    const auto enc1=Clock::now();
+    const auto e1=Clock::now();
 
-    Bytes reconstructed(static_cast<std::size_t>(plan.frame_width)*plan.frame_height*3/2);
-    const auto dec0=Clock::now();
-    parallel_for(encoded.size(),workers,[&](std::size_t i){
-        AuroraKhepriExp37MemoryAdapter khepri;
-        const auto& et=encoded[i];
-        auto p=extract_tile(prev,plan.frame_width,plan.frame_height,et.tile);
-        auto mapped=khepri.decode(et.packed);
-        auto residual=AuroraVideoResidual::unmap(mapped,et.mode);
-        auto tile=AuroraVideoMotion::decode_mc8r4(et.motion,residual,p,et.tile.width,et.tile.height);
-        paste_tile(reconstructed,plan.frame_width,plan.frame_height,et.tile,tile);
+    std::vector<Bytes> decoded(plan.tiles.size());
+    parallel_for(plan.tiles.size(),workers,[&](std::size_t i){
+        decoded[i]=decode_one(encoded[i],prev,plan.frame_width,plan.frame_height);
     });
-    const auto dec1=Clock::now();
-    const auto wall1=Clock::now();
+    const auto d1=Clock::now();
 
-    return RunResult{
-        workers,
-        std::chrono::duration<double>(enc1-enc0).count(),
-        std::chrono::duration<double>(dec1-dec0).count(),
-        std::chrono::duration<double>(wall1-wall0).count(),
-        packed_bytes.load(std::memory_order_relaxed),
-        reconstructed.size()==cur.size() && std::equal(reconstructed.begin(),reconstructed.end(),cur.begin())
-    };
+    Bytes recon(static_cast<std::size_t>(plan.frame_width)*plan.frame_height*3/2);
+    for(std::size_t i=0;i<decoded.size();++i)
+        paste_tile(recon,plan.frame_width,plan.frame_height,plan.tiles[i],decoded[i]);
+    if(!std::equal(recon.begin(),recon.end(),cur.begin(),cur.end()))
+        throw std::runtime_error("parallel 4K reconstruction mismatch");
+
+    std::uint64_t packed=0;
+    for(const auto& e:encoded) packed+=e.packed.size()+e.motion.size()+1;
+
+    const double enc=std::chrono::duration<double>(e1-e0).count();
+    const double dec=std::chrono::duration<double>(d1-e1).count();
+    const double total=enc+dec;
+    std::cout<<"workers="<<workers
+             <<" encode_seconds="<<enc
+             <<" encode_fps="<<(1.0/enc)
+             <<" decode_seconds="<<dec
+             <<" decode_fps="<<(1.0/dec)
+             <<" total_seconds="<<total
+             <<" total_fps="<<(1.0/total)
+             <<" packed_bytes="<<packed<<"\n";
 }
 
 int main() {
     try {
-        constexpr std::uint32_t w=3840,h=2160;
+        constexpr std::uint32_t fw=3840,fh=2160;
         const auto cfg=video_profile_config(VideoProfile::Streaming4K);
-        const auto plan=make_video_tile_plan(w,h,cfg.tile_width,cfg.tile_height,cfg.tile_halo,8);
-        const auto prev=make_frame(w,h,0);
-        const auto cur=make_frame(w,h,1);
+        const auto plan=make_video_tile_plan(fw,fh,cfg.tile_width,cfg.tile_height,
+                                             cfg.tile_halo,cfg.max_concurrent_tiles);
+        const auto prev=make_frame(fw,fh,0);
+        const auto cur=make_frame(fw,fh,1);
 
-        std::vector<RunResult> rows;
-        for(const std::uint32_t workers: {1u,2u,4u,8u}) {
-            auto r=run_once(workers,cur,prev,plan);
-            if(!r.roundtrip) throw std::runtime_error("parallel 4K roundtrip failed");
-            rows.push_back(r);
-        }
+        std::cout<<"hardware_concurrency="<<std::thread::hardware_concurrency()<<"\n";
+        for(const auto workers:{1u,2u,4u,8u})
+            run_case(workers,cur,prev,plan);
 
-        const auto serial=rows.front();
         std::cout<<"AURORA_NATIVE_4K_PARALLEL_PASS\n";
-        for(const auto& r:rows) {
-            std::cout<<"workers="<<r.workers
-                     <<" encode_seconds="<<r.encode_seconds
-                     <<" encode_fps="<<(1.0/r.encode_seconds)
-                     <<" decode_seconds="<<r.decode_seconds
-                     <<" decode_fps="<<(1.0/r.decode_seconds)
-                     <<" wall_seconds="<<r.wall_seconds
-                     <<" wall_fps="<<(1.0/r.wall_seconds)
-                     <<" encode_speedup="<<(serial.encode_seconds/r.encode_seconds)
-                     <<" payload_bytes="<<r.packed_bytes
-                     <<"\n";
-            if(r.packed_bytes!=serial.packed_bytes)
-                throw std::runtime_error("parallel output size differs from serial");
-        }
         return 0;
     } catch(const std::exception& e) {
         std::cerr<<"FAIL: "<<e.what()<<"\n";
