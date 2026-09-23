@@ -38,8 +38,16 @@ int main() {
             throw std::runtime_error("motion map size mismatch");
 
         std::size_t mismatches=0;
-        for(std::size_t i=0;i<cm.size();++i)
-            if(cm[i]!=gm[i]) ++mismatches;
+        for(std::size_t i=0;i<cm.size();++i) {
+            if(cm[i]!=gm[i]) {
+                if(mismatches<16) {
+                    std::cerr<<"MISMATCH block="<<i
+                             <<" cpu="<<static_cast<unsigned>(cm[i])
+                             <<" gpu="<<static_cast<unsigned>(gm[i])<<"\\n";
+                }
+                ++mismatches;
+            }
+        }
 
         if(mismatches!=0)
             throw std::runtime_error("CPU/GPU MC8R4 motion map mismatch count="+
