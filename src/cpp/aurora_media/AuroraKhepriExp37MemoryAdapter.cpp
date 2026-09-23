@@ -7,9 +7,19 @@
 // EXP-37A is included into this translation unit so its current static
 // research primitives can be reused without changing the algorithm.
 // The CLI main is renamed and is not used by this adapter.
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsign-compare"
+#pragma GCC diagnostic ignored "-Wmisleading-indentation"
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wunused-function"
+#endif
 #define main aurora_kephir_exp37_cli_main
 #include "../../../KEPHIR_2_EXP37_DUAL_MATCH.cpp"
 #undef main
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 namespace aurora::media {
 namespace {
@@ -53,9 +63,13 @@ Bytes AuroraKhepriExp37MemoryAdapter::encode(ByteView input) {
         std::size_t literals=0;
         for(const auto& t:ts) if(!t.dist) ++literals;
 
-        auto encoded=k2_competitive_encode(d,ts,literals);
-        const bool rawFallback = encoded.size()==d.size()+1 && !encoded.empty() && encoded.back()==0;
-        if(!rawFallback && encoded.size()<d.size()) {
+        (void)literals;
+        auto encoded=::encode(d,ts);
+#ifndef NO_INTERNAL_VERIFY
+        if(::decode(encoded,d.size())!=d)
+            throw AuroraMediaError(ErrorCode::InternalInvariant,"KHEPRI in-process internal verification failed");
+#endif
+        if(encoded.size()<d.size()) {
             payload=std::move(encoded);
             mode=kModeEncoded;
         } else {
