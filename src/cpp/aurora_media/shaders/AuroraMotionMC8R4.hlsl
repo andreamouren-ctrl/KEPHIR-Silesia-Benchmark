@@ -96,7 +96,7 @@ void main(uint3 gid : SV_GroupID, uint3 gtid : SV_GroupThreadID)
         }
         else if (!(byBlock == 0u && (bxBlock == 19u || bxBlock == 20u)))
         {
-            MotionOut.Store((byBlock * BlocksX + bxBlock) * 4u, (bestCost << 8u) | bestIndex);
+            MotionOut.Store((byBlock * BlocksX + bxBlock) * 4u, bestIndex);
         }
     }
 }
