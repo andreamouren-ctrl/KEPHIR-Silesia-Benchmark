@@ -71,3 +71,28 @@ Decision:
 - PROMOTED.
 
 The optimization preserves the exhaustive motion search and therefore does not intentionally alter motion-vector decisions or compression behavior.
+
+
+## Native compiler tuning
+
+Run 35873688674.
+
+Same source and same payload, measured in the same workflow:
+
+Baseline `-O3`, 4 workers:
+- encode: 5.4036 fps
+- decode: 49.9525 fps
+- payload: 256,727 bytes
+
+Native `-O3 -march=native -mtune=native`, 4 workers:
+- encode: **5.9483 fps**
+- decode: **50.3639 fps**
+- payload: **256,727 bytes**
+
+Encode improvement:
+- approximately **+10.1%**
+
+Decision:
+- retain a portable baseline build;
+- add/use a native-performance build profile on known target hardware;
+- do not change the bitstream or codec decisions.
