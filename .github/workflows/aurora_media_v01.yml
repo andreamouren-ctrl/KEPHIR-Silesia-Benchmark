@@ -1,0 +1,51 @@
+name: AURORA Media v0.1 End-to-End
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "research/khepri-stream-codec"
+    paths:
+      - "streaming/aurora_media_container_v01.py"
+      - "streaming/aurora_media_codec_v01.py"
+      - "streaming/aurora_media_av_v01.py"
+      - "streaming/aurora_converter_v01.py"
+      - "streaming/aurora_player_core_v01.py"
+      - "streaming/aurora_stream_protocol_v01.py"
+      - "streaming/test_aurora_media_v01.py"
+      - ".github/workflows/aurora_media_v01.yml"
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential python3-numpy
+
+      - name: Build KHEPRI EXP-37A
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          python3 make_exp37_source.py
+          g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY             -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 -DK2_DIST_TOPO_MODE=8             -DK2_DUAL_MATCH_MODE=1 -pthread KEPHIR_2_EXP37_DUAL_MATCH.cpp -o kephir37
+
+      - name: Compile Python modules
+        run: |
+          python3 -m py_compile             streaming/aurora_media_container_v01.py             streaming/aurora_media_codec_v01.py             streaming/aurora_media_av_v01.py             streaming/aurora_converter_v01.py             streaming/aurora_player_core_v01.py             streaming/aurora_stream_protocol_v01.py             streaming/test_aurora_media_v01.py
+
+      - name: Run end-to-end native AURORA Media test
+        run: |
+          PYTHONPATH=streaming python3 streaming/test_aurora_media_v01.py --kephir ./kephir37
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-media-v01-test-results
+          path: streaming/AURORA_MEDIA_V01_TEST_RESULTS.json
