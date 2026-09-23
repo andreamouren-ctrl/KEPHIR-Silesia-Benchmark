@@ -104,3 +104,31 @@ Current status:
 
 See:
 `docs/backend/AURORA_4K_STREAMING_READINESS.md`
+
+
+## Native 4K hot-path progress
+
+Validated C++20 components:
+- 4K tile planner
+- bounded tile scheduler/backpressure
+- Streaming4K / Balanced / MaxCompression profiles
+- MOD8 residual mapping
+- ZZ_INTER reversible residual mapping
+- KSV-09C mean signed residual predictor
+- MC8R4 motion search
+- motion map generation
+- Y/U/V residual generation
+- lossless MC8R4 reconstruction
+- synthetic 4K tile residual roundtrip
+
+Latest C++20 backend validation:
+- GitHub Actions run 35856003939
+- result: PASS
+- build quality gate: -Wall -Wextra -Werror
+
+The dominant remaining non-native dependency in the active research path is KHEPRI EXP-37A execution through the CLI/file staging path.
+
+Next backend gate:
+- expose actual EXP-37A encode/decode through IKhepriBackend using memory buffers;
+- connect native video tile motion/residual output directly to that in-process backend;
+- run first native 4K raw YUV420p smoke benchmark.
