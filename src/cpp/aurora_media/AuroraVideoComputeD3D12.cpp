@@ -151,13 +151,6 @@ public:
         if(cur.size()!=frameBytes||prev.size()!=frameBytes)
             throw AuroraMediaError(ErrorCode::InvalidArgument,"D3D12 MC8R4 frame size mismatch");
 
-        const auto cand=AuroraVideoMotion::candidates(4);
-        std::array<std::int32_t,50> cv{};
-        for(std::size_t i=0;i<cand.size();++i) {
-            cv[i*2]=cand[i].first;
-            cv[i*2+1]=cand[i].second;
-        }
-
         const std::uint32_t blocksX=w/8;
         const std::uint32_t blocksY=h/8;
         const std::size_t blockCount=static_cast<std::size_t>(blocksX)*blocksY;
@@ -167,17 +160,6 @@ public:
                                 D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_GENERIC_READ);
         auto prevBuf=make_buffer(device_.Get(),yBytes,D3D12_HEAP_TYPE_UPLOAD,
                                  D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_GENERIC_READ);
-        auto candBuf=make_buffer(device_.Get(),sizeof(cv),D3D12_HEAP_TYPE_UPLOAD,
-                                 D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_GENERIC_READ);
-        auto outBuf=make_buffer(device_.Get(),outBytes,D3D12_HEAP_TYPE_DEFAULT,
-                                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                                D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        auto readback=make_buffer(device_.Get(),outBytes,D3D12_HEAP_TYPE_READBACK,
-                                  D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_COPY_DEST);
-
-        upload(curBuf.Get(),cur.data(),yBytes);
-        upload(prevBuf.Get(),prev.data(),yBytes);
-        upload(candBuf.Get(),cv.data(),sizeof(cv));
 
         check(allocator_->Reset(),"Allocator Reset");
         check(command_list_->Reset(allocator_.Get(),pso_.Get()),"CommandList Reset");
@@ -187,8 +169,7 @@ public:
         command_list_->SetComputeRoot32BitConstants(0,4,constants.data(),0);
         command_list_->SetComputeRootShaderResourceView(1,curBuf->GetGPUVirtualAddress());
         command_list_->SetComputeRootShaderResourceView(2,prevBuf->GetGPUVirtualAddress());
-        command_list_->SetComputeRootShaderResourceView(3,candBuf->GetGPUVirtualAddress());
-        command_list_->SetComputeRootUnorderedAccessView(4,outBuf->GetGPUVirtualAddress());
+        command_list_->SetComputeRootUnorderedAccessView(3,outBuf->GetGPUVirtualAddress());
 
         command_list_->Dispatch((blocksX+7)/8,(blocksY+7)/8,1);
 
@@ -226,26 +207,26 @@ public:
 
 private:
     void create_pipeline() {
-        D3D12_ROOT_PARAMETER rp[5]{};
+        D3D12_ROOT_PARAMETER rp[4]{};
         rp[0].ParameterType=D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
         rp[0].Constants.ShaderRegister=0;
         rp[0].Constants.RegisterSpace=0;
         rp[0].Constants.Num32BitValues=4;
         rp[0].ShaderVisibility=D3D12_SHADER_VISIBILITY_ALL;
 
-        for(int i=1;i<=3;++i) {
+        for(int i=1;i<=2;++i) {
             rp[i].ParameterType=D3D12_ROOT_PARAMETER_TYPE_SRV;
             rp[i].Descriptor.ShaderRegister=static_cast<UINT>(i-1);
             rp[i].Descriptor.RegisterSpace=0;
             rp[i].ShaderVisibility=D3D12_SHADER_VISIBILITY_ALL;
         }
-        rp[4].ParameterType=D3D12_ROOT_PARAMETER_TYPE_UAV;
-        rp[4].Descriptor.ShaderRegister=0;
-        rp[4].Descriptor.RegisterSpace=0;
-        rp[4].ShaderVisibility=D3D12_SHADER_VISIBILITY_ALL;
+        rp[3].ParameterType=D3D12_ROOT_PARAMETER_TYPE_UAV;
+        rp[3].Descriptor.ShaderRegister=0;
+        rp[3].Descriptor.RegisterSpace=0;
+        rp[3].ShaderVisibility=D3D12_SHADER_VISIBILITY_ALL;
 
         D3D12_ROOT_SIGNATURE_DESC rsd{};
-        rsd.NumParameters=5;
+        rsd.NumParameters=4;
         rsd.pParameters=rp;
         rsd.Flags=D3D12_ROOT_SIGNATURE_FLAG_NONE;
 
