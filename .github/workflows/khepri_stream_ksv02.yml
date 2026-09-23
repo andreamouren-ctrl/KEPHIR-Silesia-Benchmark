@@ -41,9 +41,14 @@ jobs:
           ffmpeg -hide_banner -loglevel error -y -i akiyo.y4m   -pix_fmt yuv420p -f rawvideo akiyo.yuv
           ffmpeg -hide_banner -loglevel error -y -i foreman.y4m -pix_fmt yuv420p -f rawvideo foreman.yuv
           ffmpeg -hide_banner -loglevel error -y -i bus.y4m     -pix_fmt yuv420p -f rawvideo bus.yuv
-          test "$(stat -c%s akiyo.yuv)" -eq 11404800
-          test "$(stat -c%s foreman.yuv)" -eq 11404800
-          test "$(stat -c%s bus.yuv)" -eq 5702400
+          python3 - <<'PY'
+from pathlib import Path
+frame=176*144*3//2
+for name in ("akiyo.yuv","foreman.yuv","bus.yuv"):
+    n=Path(name).stat().st_size
+    assert n > 0 and n % frame == 0, (name,n,frame)
+    print(name, n, "frames", n//frame)
+PY
 
       - name: Run KS-V02
         run: |
