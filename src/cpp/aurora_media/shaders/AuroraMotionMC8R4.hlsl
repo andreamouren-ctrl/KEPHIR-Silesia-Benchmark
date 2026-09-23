@@ -6,8 +6,8 @@ cbuffer Params : register(b0)
     uint BlocksY;
 };
 
-ByteAddressBuffer CurrentY : register(t0);
-ByteAddressBuffer PreviousY : register(t1);
+Buffer<uint> CurrentY : register(t0);
+Buffer<uint> PreviousY : register(t1);
 RWByteAddressBuffer MotionOut : register(u0);
 
 static const int2 MotionCandidates[25] = {
@@ -23,11 +23,9 @@ static const int2 MotionCandidates[25] = {
 
 groupshared uint CandidateCost[32];
 
-uint LoadByte(ByteAddressBuffer b, uint index)
+uint LoadByte(Buffer<uint> b, uint index)
 {
-    uint word = b.Load(index & ~3u);
-    uint shift = (index & 3u) * 8u;
-    return (word >> shift) & 0xffu;
+    return b[index];
 }
 
 [numthreads(32, 1, 1)]
