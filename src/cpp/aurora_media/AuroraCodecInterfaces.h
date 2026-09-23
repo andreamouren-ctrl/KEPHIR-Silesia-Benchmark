@@ -26,7 +26,7 @@ struct VideoFormat {
 
 struct AudioEncodeConfig {
     AudioFormat format{};
-    std::uint32_t packet_ms = 200;
+    std::uint32_t packet_ms = 2000;
     std::uint32_t predictor_block_ms = 20;
 };
 
