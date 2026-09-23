@@ -1729,3 +1729,772 @@ Python ↔ C++ binary compatibility validated
 ```
 
 These are the reference points from which subsequent AURORA Media backend development must proceed.
+
+
+---
+
+# PART XIX — GENERAL-PURPOSE KHEPRI EVOLUTION RELEVANT TO AURORA MEDIA
+
+## 51. Why the general-purpose line matters to the media codec
+
+AURORA Media and the general-purpose KHEPRI compressor are separate development lines, but they share the same backend technology family.
+
+The separation is deliberate:
+
+- AURORA Compressor can continue to use a stable production core;
+- KHEPRI research can evolve aggressively without destabilizing the application;
+- AURORA Media can select a validated KHEPRI checkpoint as its backend;
+- a new experimental KHEPRI result is never automatically promoted into the media codec.
+
+The media branch therefore records the general-purpose lineage only where it affects backend selection, residual representation, throughput, or bitstream design.
+
+## 52. EXP-22 baseline
+
+EXP-22 established a reproducible post-R3 baseline with:
+
+- long LZ matches;
+- chunked parallel encoding;
+- sampled multidimensional prediction;
+- adaptive probability models;
+- arithmetic/range coding;
+- distance caches;
+- deterministic lossless decode.
+
+On the 211,938,580-byte Silesia corpus:
+
+- compressed size: 70,974,062 bytes;
+- ratio: 33.4880332%;
+- compression throughput: approximately 32.14 MB/s in the original benchmark;
+- decompression throughput: approximately 104.61 MB/s;
+- SHA verification: PASS.
+
+This checkpoint also exposed important container-level issues that are independent of the compression core:
+
+- raw chunks needed stronger integrity protection;
+- path traversal had to be rejected;
+- empty directories required explicit representation;
+- permissions/timestamps were not yet preserved.
+
+These findings belong to container engineering and must not be confused with entropy-coding correctness.
+
+## 53. EXP-23 — distance-penalty recalibration
+
+The parser match cost used the form:
+
+```text
+match_cost = MC
+           + length_term
+           + DPEN * log2(distance + 1)
+```
+
+with a length term approximately:
+
+```text
+1.0                         if length <= 7
+log2(length + 1)            otherwise
+```
+
+A sweep showed that the earlier distance penalty was too strong.
+
+Promoted parameters:
+
+```text
+LIT  = 6.55
+MC   = 9.42
+DPEN = 1.20
+```
+
+Full Silesia:
+
+- 66,112,603 bytes;
+- 31.1942276%;
+- SHA PASS.
+
+This was a large structural improvement because the parser stopped rejecting useful longer-distance matches too aggressively.
+
+## 54. EXP-24 through EXP-27 — adaptive parser tuning
+
+### EXP-24
+
+The distance penalty became chunk-content aware.
+
+The best discrete policy classified chunks using printable-text fraction rather than a continuous formula.
+
+Result:
+
+- 65,718,527 bytes;
+- 31.0082888%;
+- SHA PASS.
+
+### EXP-25
+
+Continuous adaptive distance penalties were tested.
+
+They regressed against the discrete bands.
+
+Decision:
+
+```text
+REJECTED
+```
+
+Lesson:
+
+A smooth formula was not automatically superior to discrete content classes.
+
+### EXP-26
+
+Band thresholds and penalties were tuned further.
+
+Best checkpoint:
+
+- 65,633,259 bytes;
+- 30.9680564%;
+- SHA PASS.
+
+### EXP-27
+
+Lazy matching depth became adaptive.
+
+Best EXP-27A:
+
+- 65,584,515 bytes;
+- 30.9450573%;
+- SHA PASS.
+
+This checkpoint later became an important base for prediction-aware parser work.
+
+## 55. EXP-28 and EXP-29
+
+EXP-28 attempted token/distance coupling by splitting models according to match properties.
+
+The best valid variant regressed.
+
+Decision:
+
+```text
+REJECTED
+```
+
+Reason:
+
+The additional conditioning fragmented statistics more than it improved specialization.
+
+EXP-29 produced only a small refinement and was superseded by the later predictive parser line.
+
+## 56. EXP-30 — Predictive Opportunity Cost
+
+This was one of the most important architectural changes.
+
+The parser stopped evaluating a match only as a generic LZ token.
+
+Instead, it estimated how expensive the literal/residual sequence would be under KHEPRI's predictor and compared that against the match cost.
+
+Conceptually:
+
+```text
+literal_gain(position, length)
+    = predicted_literal_cost(position, length)
+      - encoded_match_cost(length, distance)
+```
+
+A match therefore becomes more valuable when it replaces a sequence that the residual model considers expensive.
+
+EXP-30A:
+
+- 65,393,000 bytes;
+- 30.85469%;
+- compression approximately 30.93 MB/s in validation;
+- decompression approximately 124.43 MB/s;
+- SHA PASS.
+
+This is a key point in the evolution of KHEPRI: LZ parsing and multidimensional prediction stopped being independent subsystems.
+
+## 57. EXP-31 — Predictive Surprise Gating
+
+The literal cost was separated into low-, medium-, and high-surprise zones.
+
+High-surprise residual regions gave stronger incentive to matches, while predictable regions required less aggressive substitution.
+
+Best EXP-31C:
+
+- 65,386,865 bytes;
+- 30.8517991%;
+- SHA PASS.
+
+The size gain over EXP-30A was small and encoding speed regressed, so this checkpoint was useful mainly as a research reference.
+
+## 58. EXP-32 — sparse predictor opportunity field
+
+EXP-32 sampled predictive opportunity cost instead of evaluating the full expensive field at every position.
+
+The useful compromise was EXP-32A stride-2:
+
+- 65,394,019 bytes;
+- 30.8551746%;
+- compression approximately 30.18 MB/s;
+- decompression approximately 118.48 MB/s;
+- SHA PASS.
+
+This became a balanced checkpoint because it retained almost all compression while reducing predictor overhead.
+
+## 59. EXP-33H — distance topology
+
+Distance topology bonuses were introduced into parser cost without changing the bitstream representation.
+
+The promoted mode favored distances close to the internal 16/256 geometry:
+
+- 15/16/17;
+- 255/256/257;
+- selected multiples of 16 and 256.
+
+EXP-33H result:
+
+- 65,385,121 bytes;
+- 30.8509763%;
+- compression approximately 26.80 MB/s;
+- decompression approximately 124.21 MB/s;
+- SHA PASS.
+
+The key distinction is that the topology modifies encoder choice only. It does not require a decoder side channel.
+
+## 60. EXP-34, EXP-35 and EXP-36 — rejected direct transforms/models
+
+### EXP-34
+
+Direct distance-symbol transforms attempted to encode lattice anchors and distance quotients explicitly.
+
+All valid variants regressed.
+
+Lesson:
+
+An encoder-side topology preference can help even when explicit topology syntax does not.
+
+### EXP-35
+
+Distance deltas relative to previous matches were tested with an explicit gate.
+
+All variants regressed strongly.
+
+Lesson:
+
+The existing distance representation was already efficient enough that extra signaling cost dominated.
+
+### EXP-36
+
+A 16-way spatial residual expert indexed by data position was added.
+
+All tested variants regressed.
+
+Lesson:
+
+Position-conditioned residual models can fragment statistics when the position class is not strongly predictive.
+
+## 61. EXP-37 — Predictive Dual Match
+
+EXP-37 introduced a second match candidate selected using the predicted cost of the literals it would replace.
+
+The match finder therefore considered two different notions of quality:
+
+1. conventional LZ match quality;
+2. prediction-aware opportunity value.
+
+EXP-37A:
+
+- 65,308,450 bytes;
+- 30.81480%;
+- compression approximately 18.81 MB/s in validation;
+- decompression approximately 127.74 MB/s;
+- SHA PASS.
+
+This became the strongest direct non-router Max checkpoint and the active KHEPRI backend selected for AURORA Media.
+
+## 62. EXP-38 and EXP-39 — fused predictive matching
+
+The first EXP-37 implementation rescanned the hash chain to find the predictive candidate.
+
+EXP-38 fused conventional and predictive candidate collection into one traversal.
+
+EXP-38A:
+
+- 65,324,447 bytes;
+- 30.82235%;
+- compression approximately 22.01 MB/s;
+- decompression approximately 121.56 MB/s;
+- SHA PASS.
+
+EXP-39 retained two predictive candidates inside the fused traversal.
+
+EXP-39A:
+
+- 65,321,697 bytes;
+- 30.82105%;
+- compression approximately 22.33 MB/s;
+- decompression approximately 124.17 MB/s;
+- SHA PASS.
+
+Decision:
+
+- EXP-37A = Max direct backend;
+- EXP-39A = balanced fused research checkpoint;
+- AURORA Media remains on direct EXP-37A because its specialized frontend already removes much of the structure the general router would search for.
+
+## 63. EXP-40 through EXP-43 — structural diagnostics
+
+### EXP-40 Residual Difficulty Map
+
+Chunks were measured using:
+
+- byte entropy;
+- geometry-aware residual entropy;
+- equality rates at lags 1, 16 and 256;
+- printable-text fraction;
+- excess size relative to a 26% target.
+
+This changed the research method from blind transform testing to targeted diagnosis.
+
+### EXP-41 Dual Residual Surface Oracle
+
+Per-chunk reversible delta-lag transforms at 16 and 256 were compared against BASE.
+
+Observed oracle gain:
+
+- approximately 342,358 bytes on the chunked test;
+- almost all of the gain came from x-ray;
+- D256 did not become broadly useful.
+
+### EXP-42 Multi-Lag Residual Surface Oracle
+
+Tested lags:
+
+```text
+1, 4, 16, 64, 256, 1024
+```
+
+Major findings:
+
+- x-ray strongly favored lag 4;
+- mr strongly favored lag 1024;
+- total oracle gain on the selected difficult subset exceeded 1.14 MB.
+
+### EXP-43 Structural Reordering Oracle
+
+Delta and transposition were combined.
+
+Important results:
+
+- x-ray: D4 + T4 saved approximately 1,209,262 bytes;
+- mr: D1024 + T1024 saved approximately 539,714 bytes;
+- total gain on the tested subset: approximately 1,784,150 bytes.
+
+This established that some datasets contain strong field/record geometry that a flat byte stream hides.
+
+## 64. EXP-44 through EXP-48 — structural routing
+
+EXP-44 turned structural oracle experiments into an end-to-end decodable router.
+
+For every 512 KiB chunk, candidate reversible representations were compressed and the smallest final payload selected.
+
+EXP-44 full Silesia:
+
+- 63,581,600 bytes;
+- 30.0000123%;
+- SHA PASS.
+
+Later routing experiments added numeric/field transforms and adaptive period surfaces.
+
+Important checkpoints:
+
+- EXP-46: 63,439,947 bytes, 29.9331755%;
+- EXP-47 oracle: 63,227,225 bytes, 29.8328058%;
+- EXP-48 end-to-end router: 63,201,140 bytes, 29.8204980%;
+- SHA PASS.
+
+EXP-48 was the best validated general-purpose ratio checkpoint at this stage.
+
+Its low measured encoding throughput is not representative of the KHEPRI core: it repeatedly encodes candidate representations in order to discover the smallest one.
+
+This router is a research/oracle mechanism, not the intended final fast selector.
+
+## 65. EXP-49 and EXP-50R — rejected structural branches
+
+Bit-plane, nibble separation and XOR+bit-plane transforms were tested on the remaining difficult data.
+
+The gain was concentrated in data already handled better by EXP-48 structural modes.
+
+Therefore the extra syntax/complexity was not promoted.
+
+A 28-byte-record experiment for the SAO dataset also failed to beat BASE.
+
+Decision:
+
+```text
+REJECTED
+```
+
+These results are retained to prevent repeated experimentation.
+
+---
+
+# PART XX — HIGH-SPEED KHEPRI LINE
+
+## 66. Change of optimization objective
+
+After achieving a sub-30% structural-router checkpoint, the project temporarily changed its main optimization objective from compression ratio to throughput.
+
+Target:
+
+```text
+compression   >= 100 MB/s
+decompression ~= 180-200 MB/s or higher
+```
+
+The target refers to the core/profile implementation, not to an oracle router that evaluates multiple complete encodings.
+
+## 67. Historical evidence that the target is feasible
+
+Earlier KHEPRI checkpoints had already demonstrated high throughput on the reconstructed development corpus.
+
+Examples:
+
+- EXP-20 compression approximately 95.6 MB/s, decompression approximately 163.2 MB/s;
+- EXP-21 compression approximately 110.3 MB/s, decompression approximately 174.2 MB/s;
+- EXP-22 synthetic/mixed tests showed substantially higher decompression on some data.
+
+Therefore 100/200-class throughput is not treated as an arbitrary target. The research challenge is recovering that speed while retaining as much of the later compression work as possible.
+
+## 68. FAST-A
+
+FAST-A removed expensive ratio-oriented features:
+
+- no structural multi-probe router;
+- no predictive dual-match second scan;
+- reduced search depth;
+- reduced lazy behavior;
+- sparse predictor activity.
+
+Silesia result:
+
+- raw: 211,938,580 bytes;
+- compressed: 66,547,621 bytes;
+- ratio: 31.3994842%;
+- compression: 42.23 MB/s;
+- decompression: 116.43 MB/s;
+- SHA PASS.
+
+This result demonstrated that match-search reduction alone was not sufficient.
+
+## 69. Per-file throughput diagnosis
+
+FAST-A throughput varied strongly by data type.
+
+Examples:
+
+- nci: approximately 106 MB/s encode and 299 MB/s decode;
+- xml: approximately 70 MB/s encode and 195 MB/s decode;
+- x-ray: approximately 18.7 MB/s encode and 59 MB/s decode;
+- sao: approximately 24.3 MB/s encode and 55 MB/s decode;
+- ooffice: approximately 26.7 MB/s encode and 78 MB/s decode.
+
+Important conclusion:
+
+The KHEPRI core can already exceed the throughput target on favorable data. The bottleneck is data-dependent hot-path work, especially literal/residual processing on difficult chunks.
+
+## 70. FAST-D — literal-path bypass
+
+FAST-D was a diagnostic and optimization checkpoint.
+
+The expensive predictor/residual literal path was bypassed symmetrically and literals were handled through a simpler raw-model path while match coding remained active.
+
+Result:
+
+- compressed: 65,571,285 bytes;
+- ratio: 30.9388149%;
+- compression: 64.63 MB/s;
+- decompression: 181.67 MB/s;
+- SHA PASS.
+
+This was a major throughput improvement over FAST-A.
+
+The decompression target was effectively reached.
+
+Compared with EXP-37A direct:
+
+- EXP-37A ratio: approximately 30.8148%;
+- FAST-D ratio: approximately 30.9388%;
+- ratio cost: approximately +0.124 percentage points;
+- compressed-size difference: roughly +263 KiB on Silesia.
+
+Compared with the structural-router EXP-48:
+
+- ratio cost: approximately +1.118 percentage points;
+- size cost: approximately +2.37 MB.
+
+This is an important distinction: most of the apparent loss relative to EXP-48 comes from removing the expensive structural multi-probe router, not from the literal fast-path alone.
+
+## 71. FAST-E — reduced match search
+
+FAST-E kept the FAST-D literal bypass but further reduced match-search depth.
+
+Result:
+
+- ratio: 31.5408761%;
+- compression: 63.62 MB/s;
+- decompression: 143.95 MB/s;
+- SHA PASS.
+
+It did not improve compression throughput and materially degraded both ratio and decode speed.
+
+Decision:
+
+```text
+REJECTED
+```
+
+Conclusion:
+
+The remaining compression bottleneck cannot be solved by simply shortening the hash-chain search further.
+
+## 72. Current speed checkpoint and next optimization target
+
+Current promoted speed research checkpoint:
+
+```text
+FAST-D
+64.63 MB/s encode
+181.67 MB/s decode
+30.9388% Silesia ratio
+SHA PASS
+```
+
+The next performance work should profile and optimize:
+
+- arithmetic/range coder hot loops;
+- probability-model update frequency;
+- model memory layout and cache locality;
+- branch behavior in token/literal encoding;
+- context lookup cost;
+- per-symbol renormalization overhead;
+- possible batching of independent coding operations;
+- thread scheduling and chunk parallelism.
+
+The project must not blindly disable features without profiling because FAST-E demonstrated that reducing algorithmic work can still worsen effective throughput through changed token/literal distribution and decoder behavior.
+
+---
+
+# PART XXI — FORMAL RESEARCH RULES GOING FORWARD
+
+## 73. Separate ratio, balanced and speed profiles
+
+The project now maintains three conceptually distinct goals.
+
+### Ratio / Max research
+
+Purpose:
+
+- maximize compression;
+- structural routing/oracle work allowed;
+- speed may be temporarily sacrificed during research.
+
+Reference general checkpoint:
+
+```text
+EXP-48 structural router
+29.8205% Silesia
+```
+
+### Direct media backend
+
+Purpose:
+
+- stable backend for already-conditioned audio/video residual streams;
+- avoid redundant general-purpose transforms.
+
+Reference:
+
+```text
+EXP-37A Predictive Dual Match
+```
+
+### Fast profile
+
+Purpose:
+
+- real-time/high-throughput applications;
+- current target >=100 MB/s encode and ~200 MB/s decode;
+- compression ratio is secondary but still measured.
+
+Reference:
+
+```text
+FAST-D
+```
+
+No profile automatically replaces another.
+
+## 74. Checkpoint discipline
+
+Every promoted checkpoint must record:
+
+1. exact source revision;
+2. compiler and build flags;
+3. corpus identification;
+4. raw byte count;
+5. compressed byte count;
+6. ratio;
+7. encode throughput;
+8. decode throughput;
+9. SHA/roundtrip status;
+10. configuration macros/parameters;
+11. comparison against the previous checkpoint;
+12. promotion or rejection decision;
+13. reason for the decision.
+
+## 75. Scientific interpretation discipline
+
+A smaller compressed file does not by itself prove a general algorithmic improvement.
+
+The project distinguishes:
+
+- corpus-specific gain;
+- backend-specific coupling;
+- generalizable mechanism;
+- oracle-only potential;
+- production-feasible implementation.
+
+Likewise, a fast synthetic test does not prove production throughput.
+
+Claims must identify:
+
+- test corpus;
+- hardware/runner context;
+- thread count;
+- whether the result is a median or single run;
+- whether candidate-search overhead is included.
+
+## 76. Intellectual-property discipline
+
+The repository intentionally separates:
+
+- standard/background techniques;
+- independently implemented code;
+- project-specific combinations/architectures;
+- research hypotheses;
+- candidate inventions.
+
+No document should claim patentability merely because a technique was independently developed.
+
+Potentially distinctive areas worth prior-art review include the interaction among:
+
+- prediction-aware LZ match selection;
+- multidimensional residual cost fields;
+- topology-aware encoder-only parser decisions;
+- KHEPRI-specific media residual serialization;
+- adaptive state/reset horizons driven by backend behavior;
+- future low-cost structural-mode prediction replacing brute-force oracle routing.
+
+---
+
+# PART XXII — REPOSITORY GOVERNANCE
+
+## 77. Canonical branch roles
+
+```text
+main
+    general KHEPRI/Silesia research lineage
+
+research/khepri-stream-codec
+    AURORA Media audio/video backend, container, stream and media research
+```
+
+Do not merge experimental media code into `main` merely for convenience.
+
+Do not copy general-purpose experimental files into the media production source tree.
+
+## 78. Canonical source locations
+
+Production-candidate C++20 code:
+
+```text
+src/cpp/aurora_media/
+```
+
+Executable Python reference:
+
+```text
+src/python/reference/
+```
+
+Research:
+
+```text
+research/audio/
+research/video/
+research/backend/
+```
+
+Measured results:
+
+```text
+results/audio/
+results/video/
+results/benchmarks/
+```
+
+Long-lived engineering documentation:
+
+```text
+docs/
+```
+
+The historical `streaming/` tree is compatibility-only and must not receive new production code.
+
+## 79. Naming rule
+
+Canonical files use descriptive names that state role, not transient implementation detail.
+
+Good examples:
+
+```text
+AuroraMediaContainer.cpp
+aurora_media_container.py
+AURORA_MEDIA_TECHNICAL_MASTER.md
+KSV05_ADAPTIVE_ROUTING_RESULTS.md
+```
+
+Experiment IDs remain only where chronology itself is useful:
+
+```text
+ks06_plane_sparsity.py
+ksv05_adaptive_gop_router.py
+```
+
+Avoid ambiguous names such as:
+
+```text
+test2.py
+new_codec.py
+final_final.py
+results.json
+exp_latest.py
+```
+
+## 80. Final current project state
+
+At this checkpoint the project has:
+
+- a validated lossless audio research pipeline;
+- a validated lossless video research pipeline;
+- a project-owned AUM container;
+- project-owned AUS1 stream framing;
+- a Python executable binary/reference implementation;
+- a C++20 native container/session/stream backend;
+- Python/C++ binary interoperability;
+- reproducible benchmark infrastructure;
+- preserved positive and negative research history;
+- a direct KHEPRI media backend based on EXP-37A;
+- a general-purpose structural-router research line reaching 29.8205% on Silesia;
+- a high-speed research line currently at FAST-D, approximately 64.63 MB/s encode and 181.67 MB/s decode on Silesia;
+- an explicit repository structure separating product code, research, results and documentation.
+
+The next engineering work should continue from these checkpoints rather than recreating older experiments.
