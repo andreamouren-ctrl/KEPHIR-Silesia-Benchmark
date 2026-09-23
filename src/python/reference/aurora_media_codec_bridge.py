@@ -18,7 +18,7 @@ from pathlib import Path
 import shutil, tempfile
 
 import kstream_kmrl_lab as lab
-from ks06_plane_sparsity_bench import enc_tail16, dec_tail16
+from ks06_plane_sparsity import enc_tail16, dec_tail16
 import ksv05_adaptive_gop_router as ksv05
 
 def _audio_front_encode(raw:Path,front:Path,channels:int,rate:int,block_ms:int=20):
