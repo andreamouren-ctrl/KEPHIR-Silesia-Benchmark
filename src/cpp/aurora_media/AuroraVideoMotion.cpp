@@ -48,6 +48,12 @@ std::vector<std::pair<int,int>> AuroraVideoMotion::candidates(int radius) {
 
 MotionResidual AuroraVideoMotion::encode_mc8r4(ByteView cur,ByteView prev,
                                                std::uint32_t w,std::uint32_t h) {
+    return encode_mc8r4_limited(cur,prev,w,h,25);
+}
+
+MotionResidual AuroraVideoMotion::encode_mc8r4_limited(ByteView cur,ByteView prev,
+                                                       std::uint32_t w,std::uint32_t h,
+                                                       std::size_t max_candidates) {
     constexpr std::uint32_t block=8;
     constexpr int radius=4;
     if(w==0 || h==0 || (w%block)!=0 || (h%block)!=0 || (w%2)!=0 || (h%2)!=0)
@@ -56,7 +62,10 @@ MotionResidual AuroraVideoMotion::encode_mc8r4(ByteView cur,ByteView prev,
     if(cur.size()!=fs || prev.size()!=fs)
         throw AuroraMediaError(ErrorCode::InvalidArgument,"MC8R4 frame size mismatch");
 
-    const auto cand=candidates(radius);
+    auto cand=candidates(radius);
+    if(max_candidates==0)
+        throw AuroraMediaError(ErrorCode::InvalidArgument,"MC8R4 candidate limit must be positive");
+    if(max_candidates<cand.size()) cand.resize(max_candidates);
     const auto ys=y_size(w,h);
     const auto us=uv_size(w,h);
     const auto cw=w/2;
