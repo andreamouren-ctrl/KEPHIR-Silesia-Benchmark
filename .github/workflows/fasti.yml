@@ -1,3 +1,4 @@
+# trigger FAST-I
 name: KEPHIR FAST-I Log Cost Cache
 on:
   workflow_dispatch:
