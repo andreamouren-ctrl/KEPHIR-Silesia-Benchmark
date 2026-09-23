@@ -101,17 +101,24 @@ MotionResidual AuroraVideoMotion::encode_mc8r4_limited(ByteView cur,ByteView pre
                    sy+static_cast<int>(block)>static_cast<int>(h)) continue;
 
                 std::uint64_t cost=0;
-                for(std::uint32_t yy=0;yy<block;++yy)
+                bool pruned=false;
+                for(std::uint32_t yy=0;yy<block && !pruned;++yy) {
                     for(std::uint32_t xx=0;xx<block;++xx) {
                         const auto ci=static_cast<std::size_t>(by+yy)*w+(bx+xx);
                         const auto pi=static_cast<std::size_t>(sy+static_cast<int>(yy))*w+
                                       static_cast<std::size_t>(sx+static_cast<int>(xx));
                         cost += static_cast<std::uint64_t>(
                             std::abs(static_cast<int>(cur[ci])-static_cast<int>(prev[pi])));
+                        if(cost>=best_cost) {
+                            pruned=true;
+                            break;
+                        }
                     }
-                if(cost<best_cost) {
+                }
+                if(!pruned && cost<best_cost) {
                     best_cost=cost;
                     best_idx=static_cast<int>(i);
+                    if(best_cost==0) break;
                 }
             }
 
