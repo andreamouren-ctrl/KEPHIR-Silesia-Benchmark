@@ -2,13 +2,6 @@ name: KHEPRI Stream KS-06 FULL256 Sparsity
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - "research/khepri-stream-codec"
-    paths:
-      - "streaming/ks06_plane_sparsity_bench.py"
-      - "streaming/kstream_kmrl_lab.py"
-      - ".github/workflows/khepri_stream_ks06.yml"
 
 jobs:
   ks06:
@@ -30,12 +23,12 @@ jobs:
           g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY             -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 -DK2_DIST_TOPO_MODE=8             -pthread KEPHIR_2_EXP33_DISTANCE_TOPOLOGY.cpp -o kephir33
       - name: Prepare benchmark PCM
         run: |
-          curl -L --fail --retry 4             -o streaming/sintel_trailer_source.flac             https://media.xiph.org/sintel/sintel_trailer-audio.flac
-          ffmpeg -hide_banner -loglevel error -y             -i streaming/sintel_trailer_source.flac             -ac 2 -ar 48000 -sample_fmt s16 -f s16le             streaming/ks06_source.raw
+          curl -L --fail --retry 4             -o /tmp/sintel_trailer_source.flac             https://media.xiph.org/sintel/sintel_trailer-audio.flac
+          ffmpeg -hide_banner -loglevel error -y             -i /tmp/sintel_trailer_source.flac             -ac 2 -ar 48000 -sample_fmt s16 -f s16le             /tmp/ks06_source.raw
       - name: Run KS-06
         run: |
-          python3 streaming/ks06_plane_sparsity_bench.py             --raw streaming/ks06_source.raw             --kephir ./kephir33
+          python3 research/audio/experiments/ks06_plane_sparsity.py             --raw /tmp/ks06_source.raw             --kephir ./kephir33
       - uses: actions/upload-artifact@v4
         with:
           name: khepri-stream-ks06
-          path: streaming/ks06_out/ks06_results.json
+          path: research/audio/experiments/ks06_out/ks06_results.json
