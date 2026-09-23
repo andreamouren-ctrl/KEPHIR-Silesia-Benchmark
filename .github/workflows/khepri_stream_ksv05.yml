@@ -1,0 +1,50 @@
+name: KHEPRI Stream KSV-05 Adaptive GOP Router
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "research/khepri-stream-codec"
+    paths:
+      - "streaming/ksv05_adaptive_gop_router.py"
+      - ".github/workflows/khepri_stream_ksv05.yml"
+
+jobs:
+  video:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential ffmpeg curl python3-numpy
+
+      - name: Build EXP-37A
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          python3 make_exp37_source.py
+          g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY             -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 -DK2_DIST_TOPO_MODE=8             -DK2_DUAL_MATCH_MODE=1 -pthread KEPHIR_2_EXP37_DUAL_MATCH.cpp -o kephir37
+
+      - name: Download clips
+        run: |
+          curl -L --fail --retry 4 -o akiyo.y4m https://media.xiph.org/video/derf/y4m/akiyo_qcif.y4m
+          curl -L --fail --retry 4 -o foreman.y4m https://media.xiph.org/video/derf/y4m/foreman_qcif.y4m
+          curl -L --fail --retry 4 -o bus.y4m https://media.xiph.org/video/derf/y4m/bus_qcif_15fps.y4m
+          ffmpeg -hide_banner -loglevel error -y -i akiyo.y4m -pix_fmt yuv420p -f rawvideo akiyo.yuv
+          ffmpeg -hide_banner -loglevel error -y -i foreman.y4m -pix_fmt yuv420p -f rawvideo foreman.yuv
+          ffmpeg -hide_banner -loglevel error -y -i bus.y4m -pix_fmt yuv420p -f rawvideo bus.yuv
+
+      - name: Run KSV-05
+        run: |
+          python3 streaming/ksv05_adaptive_gop_router.py             --kephir ./kephir37             --clip akiyo:akiyo.yuv:176:144:30000:1001:10             --clip foreman:foreman.yuv:176:144:30000:1001:10             --clip bus:bus.yuv:176:144:15:1:10
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: khepri-stream-ksv05
+          path: streaming/ksv05_out/ksv05_results.json
