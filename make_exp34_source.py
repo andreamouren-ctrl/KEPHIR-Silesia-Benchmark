@@ -67,13 +67,15 @@ old=''' else{
 }'''
 new=''' else{
  uint8_t lc=K2_LDT_MODE?decsmall(a,ldt):0;
- if(lc>=1 && lc<=6){
+ if(K2_LDT_MODE==2 && (lc==1||lc==2)){
+   uint8_t two=decsmall(a,ldtqnb); uint32_t q=decsym(a,ldtq0); if(two) q|=(uint32_t)decsym(a,ldtq1)<<8;
+   x=(lc==1)?q*256u:q*16u;
+ } else if((K2_LDT_MODE==1 || K2_LDT_MODE==3) && lc>=1 && lc<=6){
    static const uint32_t anchors[7]={0,15,16,17,255,256,257};
    x=anchors[lc];
- } else if((K2_LDT_MODE==2 && (lc==1||lc==2)) || (K2_LDT_MODE==3 && (lc==7||lc==8))){
+ } else if(K2_LDT_MODE==3 && (lc==7||lc==8)){
    uint8_t two=decsmall(a,ldtqnb); uint32_t q=decsym(a,ldtq0); if(two) q|=(uint32_t)decsym(a,ldtq1)<<8;
-   if(K2_LDT_MODE==2) x=(lc==1)?q*256u:q*16u;
-   else x=(lc==7)?q*256u:q*16u;
+   x=(lc==7)?q*256u:q*16u;
  } else {
    uint8_t nb=(uint8_t)(decsmall(a,dnb[dnbctx])+1); dnbctx=nb-1; x=decsym(a,md0w[nb-1]);
    if(nb>=2) x|=(uint32_t)decsym(a,md1w[nb-2])<<8;
