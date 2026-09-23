@@ -163,6 +163,22 @@ jobs:
         run: |
           ./aurora_khepri_exp37_memory_test
 
+      - name: Build native video pipeline integration test
+        run: |
+          g++ -O2 -std=c++20 -Wall -Wextra -Werror \
+            -DNDEBUG -DNO_INTERNAL_VERIFY \
+            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 \
+            -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 -pthread \
+            src/cpp/aurora_media/AuroraKhepriExp37MemoryAdapter.cpp \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            src/cpp/aurora_media/AuroraVideoResidual.cpp \
+            tests/cpp/test_aurora_native_video_pipeline.cpp \
+            -Isrc/cpp/aurora_media -o aurora_native_video_pipeline_test
+
+      - name: Validate native video pipeline
+        run: |
+          ./aurora_native_video_pipeline_test
+
       - name: Python/C++ binary interop
         env:
           PYTHONPATH: src/python/reference
