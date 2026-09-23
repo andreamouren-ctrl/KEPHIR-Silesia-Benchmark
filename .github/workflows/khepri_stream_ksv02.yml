@@ -2,15 +2,11 @@ name: KHEPRI Stream KS-V02 Multi-Motion Video
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - "research/khepri-stream-codec"
-    paths:
-      - "streaming/ksv02_multiclip_bench.py"
-      - ".github/workflows/khepri_stream_ksv02.yml"
 
 jobs:
   video:
+    env:
+      PYTHONPATH: research/video/lab:research/video/experiments:research/video/diagnostics:research/audio/lab:research/audio/experiments:research/backend:src/python/reference
     runs-on: ubuntu-latest
     timeout-minutes: 40
 
@@ -45,7 +41,7 @@ jobs:
 
       - name: Run KS-V02
         run: |
-          python3 streaming/ksv02_multiclip_bench.py \
+          python3 research/video/experiments/ksv02_multiclip.py \
             --kephir ./kephir33 \
             --clip akiyo:akiyo.yuv:30000:1001 \
             --clip foreman:foreman.yuv:30000:1001 \
