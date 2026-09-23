@@ -183,13 +183,13 @@ public:
         auto cpu0=srvHeap->GetCPUDescriptorHandleForHeapStart();
 
         D3D12_SHADER_RESOURCE_VIEW_DESC sd{};
-        sd.Format=DXGI_FORMAT_R32_TYPELESS;
+        sd.Format=DXGI_FORMAT_R8_UINT;
         sd.ViewDimension=D3D12_SRV_DIMENSION_BUFFER;
         sd.Shader4ComponentMapping=D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
         sd.Buffer.FirstElement=0;
-        sd.Buffer.NumElements=static_cast<UINT>(yBytes/4);
+        sd.Buffer.NumElements=static_cast<UINT>(yBytes);
         sd.Buffer.StructureByteStride=0;
-        sd.Buffer.Flags=D3D12_BUFFER_SRV_FLAG_RAW;
+        sd.Buffer.Flags=D3D12_BUFFER_SRV_FLAG_NONE;
 
         device_->CreateShaderResourceView(curBuf.Get(),&sd,cpu0);
         auto cpu1=cpu0;
