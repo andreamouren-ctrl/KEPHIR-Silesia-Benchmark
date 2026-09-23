@@ -103,7 +103,7 @@ Bytes AuroraKhepriExp37MemoryAdapter::decode(ByteView input) {
         throw AuroraMediaError(ErrorCode::CorruptPacket,"KHEPRI memory frame mode");
 
     try {
-        auto decoded=decode(payload,rawSize);
+        auto decoded=::decode(payload,rawSize);
         if(decoded.size()!=rawSize)
             throw AuroraMediaError(ErrorCode::DecodeFailure,"KHEPRI decoded size mismatch");
         return Bytes(decoded.begin(),decoded.end());
