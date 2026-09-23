@@ -2,15 +2,11 @@ name: KHEPRI Stream KSV-D01 Matchability
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - "research/khepri-stream-codec"
-    paths:
-      - "streaming/ksvd01_matchability.py"
-      - ".github/workflows/khepri_stream_ksvd01.yml"
 
 jobs:
   diagnostic:
+    env:
+      PYTHONPATH: research/video/lab:research/video/experiments:research/video/diagnostics:research/audio/lab:research/audio/experiments:research/backend:src/python/reference
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -30,7 +26,7 @@ jobs:
 
       - name: Run KSV-D01
         run: |
-          python3 streaming/ksvd01_matchability.py \
+          python3 research/video/diagnostics/ksvd01_matchability.py \
             --clip foreman:foreman.yuv:30000:1001 \
             --clip bus:bus.yuv:15:1
 
