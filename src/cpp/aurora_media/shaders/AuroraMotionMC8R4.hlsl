@@ -33,7 +33,7 @@ void main(uint3 tid : SV_DispatchThreadID)
     uint bestCost = 0xffffffffu;
     bool found = false;
 
-    [unroll]
+    [loop]
     for (uint ci = 0u; ci < 25u; ++ci)
     {
         uint2 rawMv = Candidates.Load2(ci * 8u);
