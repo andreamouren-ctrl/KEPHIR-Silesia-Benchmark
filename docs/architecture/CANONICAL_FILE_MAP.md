@@ -78,17 +78,15 @@ Result filenames use uppercase checkpoint identifiers plus a descriptive suffix.
 - `docs/ip/IP_REGISTER.md` — standard/background/candidate-IP classification.
 - `docs/roadmap/BACKEND_ROADMAP.md` — forward engineering roadmap.
 
-## 7. Legacy compatibility tree
+## 7. Historical implementation policy
 
-`streaming/` is not a canonical development location.
+The former `streaming/` source tree has been removed.
 
-It is retained only for historical scripts/imports that have not yet been migrated.
+Historical versions are preserved by Git history rather than by duplicate files in the working tree.
 
-Exact byte-for-byte duplicates of canonical files are removed when verified.
+A historical experiment that still needs executable reproduction must point to its canonical file under `research/`, `src/`, `tests/` or `benchmarks/`.
 
-Legacy files that differ are preserved until their historical role is classified or their workflow/import dependency is removed.
-
-No new production file may be added to `streaming/`.
+Do not create a second compatibility source tree.
 
 ## 8. General KHEPRI root files
 
@@ -127,16 +125,10 @@ UPPERCASE descriptive names.
 - `results.json` without experiment identity
 - duplicate version identifiers for unrelated experiments.
 
-## 10. Current duplicate-removal record
+## 10. Migration result
 
-Verified exact legacy duplicates removed from `streaming/`:
+The duplicate-removal/migration pass is complete for AURORA Media.
 
-- `cpp/AuroraMediaSession.cpp`
-- `cpp/AuroraMediaSession.h`
-- `aurora_media_container_v01.py`
-- `aurora_stream_protocol_v01.py`
-- `KSV05_RESULTS.md`
-- `MAJOR_CODEC_BENCHMARK_RESULTS.md`
-- `IP_REGISTER.md`
+Verified duplicate and superseded legacy files were removed from the tracked tree after their canonical replacements were identified.
 
-Their canonical copies remain in `src/`, `results/` or `docs/`.
+Historical pre-migration content remains accessible through Git history.
