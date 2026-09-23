@@ -135,6 +135,115 @@ MotionResidual AuroraVideoMotion::encode_mc8r4_limited(ByteView cur,ByteView pre
     return out;
 }
 
+
+MotionResidual AuroraVideoMotion::encode_mc8r4_shortlist(ByteView cur,ByteView prev,
+                                                         std::uint32_t w,std::uint32_t h,
+                                                         std::uint32_t shortlist) {
+    constexpr std::uint32_t block=8;
+    constexpr int radius=4;
+    if(shortlist==0 || shortlist>25)
+        throw AuroraMediaError(ErrorCode::InvalidArgument,"MC8R4 shortlist must be 1..25");
+    if(w==0 || h==0 || (w%block)!=0 || (h%block)!=0 || (w%2)!=0 || (h%2)!=0)
+        throw AuroraMediaError(ErrorCode::InvalidArgument,"MC8R4 invalid dimensions");
+    const auto fs=frame_size(w,h);
+    if(cur.size()!=fs || prev.size()!=fs)
+        throw AuroraMediaError(ErrorCode::InvalidArgument,"MC8R4 frame size mismatch");
+
+    const auto cand=candidates(radius);
+    const auto ys=y_size(w,h);
+    const auto us=uv_size(w,h);
+    const auto cw=w/2;
+
+    MotionResidual out;
+    out.motion_map.reserve(static_cast<std::size_t>(w/block)*(h/block));
+    out.residual_yuv420.resize(fs);
+
+    auto residual_plane=[&](std::size_t cur_off,std::size_t prev_off,std::size_t out_off,
+                            std::uint32_t stride,std::uint32_t x,std::uint32_t y,
+                            std::uint32_t bs,int dx,int dy) {
+        for(std::uint32_t yy=0;yy<bs;++yy)
+            for(std::uint32_t xx=0;xx<bs;++xx) {
+                const auto ci=cur_off+static_cast<std::size_t>(y+yy)*stride+(x+xx);
+                const auto pi=prev_off+static_cast<std::size_t>(static_cast<int>(y)+dy+static_cast<int>(yy))*stride+
+                              static_cast<std::size_t>(static_cast<int>(x)+dx+static_cast<int>(xx));
+                const int d=static_cast<int>(cur[ci])-static_cast<int>(prev[pi]);
+                out.residual_yuv420[out_off+static_cast<std::size_t>(y+yy)*stride+(x+xx)]
+                    = static_cast<Byte>(d & 0xff);
+            }
+    };
+
+    struct CandidateCost { std::uint32_t idx; std::uint64_t cost; };
+    std::vector<CandidateCost> coarse;
+    coarse.reserve(cand.size());
+
+    for(std::uint32_t by=0;by<h;by+=block) {
+        for(std::uint32_t bx=0;bx<w;bx+=block) {
+            coarse.clear();
+            for(std::size_t i=0;i<cand.size();++i) {
+                const auto [dx,dy]=cand[i];
+                const int sx=static_cast<int>(bx)+dx;
+                const int sy=static_cast<int>(by)+dy;
+                if(sx<0 || sy<0 || sx+static_cast<int>(block)>static_cast<int>(w) ||
+                   sy+static_cast<int>(block)>static_cast<int>(h)) continue;
+                std::uint64_t cost=0;
+                for(std::uint32_t yy=0;yy<block;yy+=2)
+                    for(std::uint32_t xx=0;xx<block;xx+=2) {
+                        const auto ci=static_cast<std::size_t>(by+yy)*w+(bx+xx);
+                        const auto pi=static_cast<std::size_t>(sy+static_cast<int>(yy))*w+
+                                      static_cast<std::size_t>(sx+static_cast<int>(xx));
+                        cost += static_cast<std::uint64_t>(
+                            std::abs(static_cast<int>(cur[ci])-static_cast<int>(prev[pi])));
+                    }
+                coarse.push_back(CandidateCost{static_cast<std::uint32_t>(i),cost});
+            }
+
+            const auto n=std::min<std::size_t>(shortlist,coarse.size());
+            std::partial_sort(coarse.begin(),coarse.begin()+static_cast<std::ptrdiff_t>(n),coarse.end(),
+                [](const CandidateCost& a,const CandidateCost& b){
+                    return a.cost<b.cost || (a.cost==b.cost && a.idx<b.idx);
+                });
+
+            int best_idx=-1;
+            std::uint64_t best_cost=std::numeric_limits<std::uint64_t>::max();
+            for(std::size_t k=0;k<n;++k) {
+                const auto idx=coarse[k].idx;
+                const auto [dx,dy]=cand[idx];
+                const int sx=static_cast<int>(bx)+dx;
+                const int sy=static_cast<int>(by)+dy;
+                std::uint64_t cost=0;
+                for(std::uint32_t yy=0;yy<block;++yy)
+                    for(std::uint32_t xx=0;xx<block;++xx) {
+                        const auto ci=static_cast<std::size_t>(by+yy)*w+(bx+xx);
+                        const auto pi=static_cast<std::size_t>(sy+static_cast<int>(yy))*w+
+                                      static_cast<std::size_t>(sx+static_cast<int>(xx));
+                        cost += static_cast<std::uint64_t>(
+                            std::abs(static_cast<int>(cur[ci])-static_cast<int>(prev[pi])));
+                    }
+                if(cost<best_cost) {
+                    best_cost=cost;
+                    best_idx=static_cast<int>(idx);
+                }
+            }
+
+            if(best_idx<0)
+                throw AuroraMediaError(ErrorCode::InternalInvariant,"MC8R4 shortlist found no candidate");
+
+            out.motion_map.push_back(static_cast<Byte>(best_idx));
+            const auto [dx,dy]=cand[static_cast<std::size_t>(best_idx)];
+            residual_plane(0,0,0,w,bx,by,block,dx,dy);
+
+            const auto cb=block/2;
+            const auto cx=bx/2;
+            const auto cy=by/2;
+            const auto cdx=dx/2;
+            const auto cdy=dy/2;
+            residual_plane(ys,ys,ys,cw,cx,cy,cb,cdx,cdy);
+            residual_plane(ys+us,ys+us,ys+us,cw,cx,cy,cb,cdx,cdy);
+        }
+    }
+    return out;
+}
+
 Bytes AuroraVideoMotion::decode_mc8r4(ByteView motion,ByteView residual,ByteView prev,
                                       std::uint32_t w,std::uint32_t h) {
     constexpr std::uint32_t block=8;
