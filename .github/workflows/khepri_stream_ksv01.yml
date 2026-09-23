@@ -2,16 +2,11 @@ name: KHEPRI Stream KS-V01 Video
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - "research/khepri-stream-codec"
-    paths:
-      - "streaming/kstream_video_baseline.py"
-      - "streaming/ksv01_video_bench.py"
-      - ".github/workflows/khepri_stream_ksv01.yml"
 
 jobs:
   video:
+    env:
+      PYTHONPATH: research/video/lab:research/video/experiments:research/video/diagnostics:research/audio/lab:research/audio/experiments:research/backend:src/python/reference
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -45,7 +40,7 @@ jobs:
 
       - name: Run KS-V01
         run: |
-          python3 streaming/ksv01_video_bench.py \
+          python3 research/video/experiments/ksv01_video_baseline.py \
             --raw akiyo_qcif.yuv \
             --kephir ./kephir33
 
