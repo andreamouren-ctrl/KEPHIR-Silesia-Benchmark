@@ -101,6 +101,16 @@ jobs:
         run: |
           ./aurora_video_4k_scheduler_test
 
+      - name: Build video profile test
+        run: |
+          g++ -O2 -std=c++20 -Wall -Wextra -Werror \
+            tests/cpp/test_aurora_video_profiles.cpp \
+            -Isrc/cpp/aurora_media -o aurora_video_profiles_test
+
+      - name: Validate video profiles
+        run: |
+          ./aurora_video_profiles_test
+
       - name: Python/C++ binary interop
         env:
           PYTHONPATH: src/python/reference
