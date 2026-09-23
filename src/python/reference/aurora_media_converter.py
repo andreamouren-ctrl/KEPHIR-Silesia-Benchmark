@@ -10,6 +10,6 @@ This converter does not require FFmpeg. Future import adapters may use external
 decoders outside the AURORA core to turn MP4/MKV/etc. into these canonical raw
 inputs, but .aum creation itself remains native AURORA code.
 """
-from aurora_media_av_v01 import main
+from aurora_media_pipeline import main
 if __name__=="__main__":
     main()
