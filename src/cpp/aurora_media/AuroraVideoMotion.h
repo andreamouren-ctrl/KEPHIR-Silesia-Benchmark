@@ -20,6 +20,12 @@ public:
                                       std::uint32_t width,
                                       std::uint32_t height);
 
+    static MotionResidual encode_mc8r4_limited(ByteView current_yuv420,
+                                               ByteView previous_yuv420,
+                                               std::uint32_t width,
+                                               std::uint32_t height,
+                                               std::size_t max_candidates);
+
     static Bytes decode_mc8r4(ByteView motion_map,
                              ByteView residual_yuv420,
                              ByteView previous_yuv420,
