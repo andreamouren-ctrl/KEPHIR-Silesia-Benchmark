@@ -36,9 +36,11 @@ new=''' if(ci<0){
    else if((x%16u)==0u && x/16u<=65535u){lc=8;q=x/16u;}
  }
  if(K2_LDT_MODE) ldt.enc(a,lc);
- if(lc>=1 && lc<=6){
+ if(K2_LDT_MODE==2 && (lc==1||lc==2)){
+   bool two=q>255u; ldtqnb.enc(a,(uint8_t)two); ldtq0.enc(a,(uint8_t)q); if(two) ldtq1.enc(a,(uint8_t)(q>>8));
+ } else if((K2_LDT_MODE==1 || K2_LDT_MODE==3) && lc>=1 && lc<=6){
    // exact lattice anchors carry no payload
- } else if((K2_LDT_MODE==2 && (lc==1||lc==2)) || (K2_LDT_MODE==3 && (lc==7||lc==8))){
+ } else if(K2_LDT_MODE==3 && (lc==7||lc==8)){
    bool two=q>255u; ldtqnb.enc(a,(uint8_t)two); ldtq0.enc(a,(uint8_t)q); if(two) ldtq1.enc(a,(uint8_t)(q>>8));
  } else {
    uint8_t nb=(x<256u)?1:((x<65536u)?2:3);
