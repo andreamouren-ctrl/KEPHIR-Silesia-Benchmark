@@ -23,5 +23,5 @@ jobs:
           K2_CHAIN_DEPTH_VALUE=24 K2_LAZY_DEPTH_VALUE=12 K2_PRED_MASK_VALUE=255 python3 make_speed1_source.py
           python3 make_fastd_source.py
           python3 make_fastk_source.py
-          echo "===== PARSER MEMORY BLOCK ====="
-          sed -n '465,540p' KEPHIR_FAST_K.cpp
+          echo "===== PARSER TAIL ====="
+          sed -n '650,725p' KEPHIR_FAST_K.cpp
