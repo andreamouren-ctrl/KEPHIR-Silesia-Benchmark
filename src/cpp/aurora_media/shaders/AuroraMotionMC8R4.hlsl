@@ -87,17 +87,5 @@ void main(uint3 gid : SV_GroupID, uint3 gtid : SV_GroupThreadID)
         }
 
         MotionOut.Store((byBlock * BlocksX + bxBlock) * 4u, bestIndex);
-        if (bxBlock == 18u && byBlock == 0u)
-        {
-            uint debugBase = BlocksX * BlocksY;
-            MotionOut.Store(debugBase * 4u, CandidateCost[0]);
-            MotionOut.Store((debugBase + 1u) * 4u, CandidateCost[9]);
-            MotionOut.Store((debugBase + 2u) * 4u, Width);
-            MotionOut.Store((debugBase + 3u) * 4u, Height);
-            uint bxDbg = bxBlock * 8u;
-            uint byDbg = byBlock * 8u;
-            MotionOut.Store((debugBase + 4u) * 4u, LoadByte(CurrentY, byDbg * Width + bxDbg));
-            MotionOut.Store((debugBase + 5u) * 4u, LoadByte(PreviousY, byDbg * Width + bxDbg));
-        }
     }
 }
