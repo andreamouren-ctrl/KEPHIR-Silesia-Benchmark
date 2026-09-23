@@ -198,7 +198,7 @@ public:
         command_list_->SetComputeRootShaderResourceView(2,prevBuf->GetGPUVirtualAddress());
         command_list_->SetComputeRootUnorderedAccessView(3,outBuf->GetGPUVirtualAddress());
 
-        command_list_->Dispatch((blocksX+7)/8,(blocksY+7)/8,1);
+        command_list_->Dispatch(blocksX,blocksY,1);
 
         D3D12_RESOURCE_BARRIER barrier{};
         barrier.Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
