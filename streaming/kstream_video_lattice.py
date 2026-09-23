@@ -11,7 +11,7 @@ import struct
 import zlib
 from pathlib import Path
 
-from kstream_video_baseline import plane_spatial, plane_spatial_inv, split_frame, join_frame
+from kstream_video_baseline import frame_sizes, plane_spatial, plane_spatial_inv, split_frame, join_frame
 from kstream_video_mc import motion_residual, motion_inverse
 
 MAGIC=b"KSL1"
