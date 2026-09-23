@@ -25,33 +25,44 @@ KASH-01 research result:
 
 ## Video baseline
 
-Active codec path:
+Active operational codec path:
 - YUV420p8
 - 20-frame routing horizon
-- three candidates per window:
-  - TEMP
-  - MC8R4 MOD8
-  - MC8R4 ZZ_INTER
-- final-size selection using KHEPRI EXP-37A
+- TEMP candidate
+- cached MC8R4 motion/residual field
+- cheap MC symbol predictor:
+  - mean signed residual magnitude < 2.60 -> ZZ_INTER
+  - otherwise -> MOD8
+- KHEPRI EXP-37A
 - AUM v0.1
 
-KSV-08 research aggregate:
-- 9,725,887 bytes before outer AUM packet overhead
+Operational router: **KSV-09C**
+
+KSV-09C pre-AUM aggregate:
+- 9,727,633 bytes
 
 Full AUM aggregate:
+- **9,730,778 bytes**
+
+KSV-08 oracle full-AUM aggregate:
 - 9,729,032 bytes
 
-Previous KSV-05 full-AUM aggregate:
-- 9,787,973 bytes
+Operational penalty versus oracle:
+- 1,746 bytes
+- +0.01795%
 
-Gain:
-- 58,941 bytes
-- -0.602%
+True wall-clock comparison:
+- KSV-08: 62.7543 s
+- KSV-09C: 34.8628 s
+- speedup: 1.80x
+- wall-clock reduction: 44.45%
 
-FFV1 aggregate on same diagnostic corpus:
+FFV1 aggregate on the same diagnostic corpus:
 - 10,357,351 bytes
 
-AURORA full AUM is approximately 6.07% smaller than FFV1 on this limited diagnostic corpus.
+KSV-09C full AUM remains approximately **6.05% smaller than FFV1** on this limited three-clip diagnostic corpus.
+
+KSV-08 remains the research oracle for validating future cheap predictors.
 
 This is not a general codec superiority claim.
 
