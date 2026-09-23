@@ -61,10 +61,10 @@ std::uint32_t crc32(const std::uint8_t* data,std::size_t n) {
 }
 
 Muxer::Muxer(const std::filesystem::path& path,std::vector<Track> tracks,
-             std::uint32_t timescale)
-: out_(path,std::ios::binary), tracks_(std::move(tracks)), timescale_(timescale) {
+             std::uint32_t timescale, Limits limits)
+: out_(path,std::ios::binary), tracks_(std::move(tracks)), timescale_(timescale), limits_(limits) {
     if(!out_) throw std::runtime_error("cannot open output");
-    if(tracks_.empty() || tracks_.size()>255) throw std::invalid_argument("invalid tracks");
+    if(tracks_.empty() || tracks_.size()>limits_.max_tracks) throw std::invalid_argument("invalid tracks");
     std::unordered_set<unsigned> ids;
     for(const auto& t:tracks_) {
         if(!ids.insert(t.id).second) throw std::invalid_argument("duplicate track id");
@@ -92,7 +92,7 @@ void Muxer::write_packet(std::uint8_t track_id,std::uint64_t pts,
     if(closed_) throw std::runtime_error("muxer closed");
     if(std::none_of(tracks_.begin(),tracks_.end(),[&](const Track& t){return t.id==track_id;}))
         throw std::invalid_argument("unknown track");
-    if(payload.size()>std::numeric_limits<std::uint32_t>::max())
+    if(payload.size()>std::numeric_limits<std::uint32_t>::max() || payload.size()>limits_.max_packet_bytes)
         throw std::invalid_argument("payload too large");
 
     const auto off=static_cast<std::uint64_t>(out_.tellp());
@@ -132,7 +132,7 @@ void Muxer::close() {
     closed_=true;
 }
 
-Demuxer::Demuxer(const std::filesystem::path& path):in_(path,std::ios::binary) {
+Demuxer::Demuxer(const std::filesystem::path& path, Limits limits):in_(path,std::ios::binary), limits_(limits) {
     if(!in_) throw std::runtime_error("cannot open input");
     read_header_and_tracks();
     read_index();
@@ -145,7 +145,7 @@ void Demuxer::read_header_and_tracks() {
     const auto n=get_le<std::uint16_t>(in_);
     timescale_=get_le<std::uint32_t>(in_);
     (void)get_le<std::uint32_t>(in_);
-    if(ver!=kVersion || n==0 || n>255) throw std::runtime_error("unsupported header");
+    if(ver!=kVersion || n==0 || n>limits_.max_tracks) throw std::runtime_error("unsupported header");
     std::unordered_set<unsigned> ids;
     for(std::uint16_t i=0;i<n;++i) {
         Track t{};
@@ -168,7 +168,7 @@ void Demuxer::read_index() {
     const auto off=get_le<std::uint64_t>(in_);
     const auto sz=get_le<std::uint64_t>(in_);
     const auto expected_crc=get_le<std::uint32_t>(in_);
-    if(off<data_start_ || off+sz>end-kFooterSize || sz<kIndexHdrSize)
+    if(off<data_start_ || off+sz>end-kFooterSize || sz<kIndexHdrSize || sz>limits_.max_index_bytes)
         throw std::runtime_error("bad index bounds");
 
     in_.seekg(static_cast<std::streamoff>(off));
@@ -185,6 +185,7 @@ void Demuxer::read_index() {
 
     for(char c:kIndexMagic) if(get8()!=static_cast<std::uint8_t>(c)) throw std::runtime_error("bad index magic");
     const auto count=get32();
+    if(count>limits_.max_index_entries) throw std::runtime_error("index entry limit");
     if(kIndexHdrSize+static_cast<std::uint64_t>(count)*kIndexEntSize!=sz)
         throw std::runtime_error("index size mismatch");
     index_.reserve(count);
@@ -192,6 +193,7 @@ void Demuxer::read_index() {
         PacketInfo e{};
         e.track_id=get8(); e.flags=get8(); (void)get16();
         e.pts=get64(); e.duration=get64(); e.file_offset=get64(); e.size=get32();
+        if(e.size>limits_.max_packet_bytes) throw std::runtime_error("packet size limit");
         if(e.file_offset<data_start_ || e.file_offset+kPacketHdrSize+e.size>off)
             throw std::runtime_error("packet index bounds");
         index_.push_back(e);
@@ -203,6 +205,7 @@ std::vector<std::uint8_t> Demuxer::read_packet(const PacketInfo& e) {
     const auto tid=get_le<std::uint8_t>(in_); const auto flags=get_le<std::uint8_t>(in_);
     (void)get_le<std::uint16_t>(in_); const auto pts=get_le<std::uint64_t>(in_);
     const auto dur=get_le<std::uint64_t>(in_); const auto sz=get_le<std::uint32_t>(in_);
+    if(sz>limits_.max_packet_bytes) throw std::runtime_error("packet size limit");
     const auto expected_crc=get_le<std::uint32_t>(in_); (void)get_le<std::uint32_t>(in_);
     if(tid!=e.track_id||flags!=e.flags||pts!=e.pts||dur!=e.duration||sz!=e.size)
         throw std::runtime_error("packet/index mismatch");
