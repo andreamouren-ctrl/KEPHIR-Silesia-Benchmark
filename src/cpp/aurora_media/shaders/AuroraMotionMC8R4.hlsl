@@ -88,6 +88,13 @@ void main(uint3 gid : SV_GroupID, uint3 gtid : SV_GroupThreadID)
             }
         }
 
-        MotionOut.Store((byBlock * BlocksX + bxBlock) * 4u, (bestCost << 8u) | bestIndex);
+        uint packed=(bestCost << 8u) | bestIndex;
+        if (bxBlock == 18u && byBlock == 0u)
+        {
+            uint cur0=LoadByte(CurrentY, (byBlock*8u)*Width + (bxBlock*8u));
+            uint prev0=LoadByte(PreviousY, (byBlock*8u)*Width + (bxBlock*8u));
+            packed=(cur0 << 16u) | (prev0 << 8u) | bestIndex;
+        }
+        MotionOut.Store((byBlock * BlocksX + bxBlock) * 4u, packed);
     }
 }
