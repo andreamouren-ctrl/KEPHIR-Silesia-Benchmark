@@ -12,6 +12,7 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <iostream>
 #include <string>
 #include <vector>
 
@@ -225,7 +226,12 @@ public:
         const auto* p=static_cast<const std::uint32_t*>(mapped);
         Bytes result(blockCount);
         for(std::size_t i=0;i<blockCount;++i)
-            result[i]=static_cast<Byte>(p[i]);
+            result[i]=static_cast<Byte>(p[i] & 0xffu);
+            if(i==18 || i==33) {
+                std::cerr<<"GPUDBG block="<<i
+                         <<" idx="<<(p[i]&0xffu)
+                         <<" sad="<<(p[i]>>8u)<<"\\n";
+            }
         D3D12_RANGE noWrite{0,0};
         readback->Unmap(0,&noWrite);
         return result;
