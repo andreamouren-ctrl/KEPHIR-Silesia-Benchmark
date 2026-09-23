@@ -17,9 +17,6 @@ std::size_t uv_size(std::uint32_t w,std::uint32_t h) {
 std::size_t frame_size(std::uint32_t w,std::uint32_t h) {
     return y_size(w,h)+2*uv_size(w,h);
 }
-int signed_byte(Byte b) {
-    return b < 128 ? static_cast<int>(b) : static_cast<int>(b)-256;
-}
 
 } // namespace
 
