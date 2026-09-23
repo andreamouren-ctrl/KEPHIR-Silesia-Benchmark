@@ -79,14 +79,15 @@ When an experiment is promoted into canonical backend code:
 3. keep the old experiment workflow only if it is still needed for reproducibility;
 4. otherwise archive its method/result in documentation and stop triggering it automatically.
 
-## Current cleanup direction
+## Current workflow state
 
-The repository currently contains many historical EXP/KS/KSV workflows. They are intentionally not mass-deleted in one commit because several still reproduce checkpoints and some flat research imports remain.
+The AURORA Media source migration is complete.
 
-The safe cleanup sequence is:
+Historical KS/KSV workflows:
+- use canonical research paths;
+- are manual reproducibility jobs unless still serving active validation;
+- may create temporary runtime output directories, but do not depend on tracked legacy source.
 
-1. remove automatic triggers from completed historical experiments;
-2. migrate imports to canonical package-safe paths;
-3. verify canonical tests;
-4. move no-longer-executable workflow YAML into documented research history if desired;
-5. leave only active CI and explicitly manual reproducibility workflows in `.github/workflows/`.
+Active AURORA backend workflows continue to target `src/`, `tests/`, `research/`, `benchmarks/` and `results/`.
+
+General EXP-numbered workflows remain part of the wider KHEPRI research lineage and are managed separately.
