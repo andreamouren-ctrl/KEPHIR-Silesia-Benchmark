@@ -4,6 +4,9 @@
 #include <cstdlib>
 #include <limits>
 #include <tuple>
+#if defined(__SSE2__)
+#include <emmintrin.h>
+#endif
 
 namespace aurora::media {
 namespace {
@@ -16,6 +19,34 @@ std::size_t uv_size(std::uint32_t w,std::uint32_t h) {
 }
 std::size_t frame_size(std::uint32_t w,std::uint32_t h) {
     return y_size(w,h)+2*uv_size(w,h);
+}
+
+std::uint64_t sad8x8(ByteView cur,ByteView prev,
+                    std::uint32_t stride,
+                    std::uint32_t cx,std::uint32_t cy,
+                    std::uint32_t px,std::uint32_t py) {
+#if defined(__SSE2__)
+    std::uint64_t sum=0;
+    for(std::uint32_t yy=0;yy<8;++yy) {
+        const auto* ca=cur.data()+static_cast<std::size_t>(cy+yy)*stride+cx;
+        const auto* pa=prev.data()+static_cast<std::size_t>(py+yy)*stride+px;
+        const __m128i a=_mm_loadl_epi64(reinterpret_cast<const __m128i*>(ca));
+        const __m128i b=_mm_loadl_epi64(reinterpret_cast<const __m128i*>(pa));
+        const __m128i s=_mm_sad_epu8(a,b);
+        sum += static_cast<std::uint64_t>(_mm_cvtsi128_si64(s));
+    }
+    return sum;
+#else
+    std::uint64_t sum=0;
+    for(std::uint32_t yy=0;yy<8;++yy)
+        for(std::uint32_t xx=0;xx<8;++xx) {
+            const auto ci=static_cast<std::size_t>(cy+yy)*stride+(cx+xx);
+            const auto pi=static_cast<std::size_t>(py+yy)*stride+(px+xx);
+            sum += static_cast<std::uint64_t>(
+                std::abs(static_cast<int>(cur[ci])-static_cast<int>(prev[pi])));
+        }
+    return sum;
+#endif
 }
 
 } // namespace
@@ -100,15 +131,10 @@ MotionResidual AuroraVideoMotion::encode_mc8r4_limited(ByteView cur,ByteView pre
                 if(sx<0 || sy<0 || sx+static_cast<int>(block)>static_cast<int>(w) ||
                    sy+static_cast<int>(block)>static_cast<int>(h)) continue;
 
-                std::uint64_t cost=0;
-                for(std::uint32_t yy=0;yy<block;++yy)
-                    for(std::uint32_t xx=0;xx<block;++xx) {
-                        const auto ci=static_cast<std::size_t>(by+yy)*w+(bx+xx);
-                        const auto pi=static_cast<std::size_t>(sy+static_cast<int>(yy))*w+
-                                      static_cast<std::size_t>(sx+static_cast<int>(xx));
-                        cost += static_cast<std::uint64_t>(
-                            std::abs(static_cast<int>(cur[ci])-static_cast<int>(prev[pi])));
-                    }
+                const std::uint64_t cost=sad8x8(
+                    cur,prev,w,bx,by,
+                    static_cast<std::uint32_t>(sx),
+                    static_cast<std::uint32_t>(sy));
                 if(cost<best_cost) {
                     best_cost=cost;
                     best_idx=static_cast<int>(i);
