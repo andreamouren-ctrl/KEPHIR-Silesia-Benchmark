@@ -1,0 +1,55 @@
+name: KHEPRI Stream KS-V01 Video
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "research/khepri-stream-codec"
+    paths:
+      - "streaming/kstream_video_baseline.py"
+      - "streaming/ksv01_video_bench.py"
+      - ".github/workflows/khepri_stream_ksv01.yml"
+
+jobs:
+  video:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential ffmpeg curl
+
+      - name: Build EXP-33H backend
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY \
+            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 -DK2_DIST_TOPO_MODE=8 \
+            -pthread KEPHIR_2_EXP33_DISTANCE_TOPOLOGY.cpp -o kephir33
+
+      - name: Download real QCIF source
+        run: |
+          curl -L --fail --retry 4 \
+            -o akiyo_qcif.y4m \
+            https://media.xiph.org/video/derf/y4m/akiyo_qcif.y4m
+          ffmpeg -hide_banner -loglevel error -y \
+            -i akiyo_qcif.y4m -pix_fmt yuv420p -f rawvideo akiyo_qcif.yuv
+          test "$(stat -c%s akiyo_qcif.yuv)" -eq 11404800
+
+      - name: Run KS-V01
+        run: |
+          python3 streaming/ksv01_video_bench.py \
+            --raw akiyo_qcif.yuv \
+            --kephir ./kephir33
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: khepri-stream-ksv01
+          path: streaming/ksv01_out/ksv01_results.json
