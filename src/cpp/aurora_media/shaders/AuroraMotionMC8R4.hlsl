@@ -75,5 +75,5 @@ void main(uint3 tid : SV_DispatchThreadID)
         }
     }
 
-    MotionOut.Store((byBlock * BlocksX + bxBlock) * 4u, bestIndex);
+    MotionOut.Store((byBlock * BlocksX + bxBlock) * 4u, (bestCost << 8u) | bestIndex);
 }
