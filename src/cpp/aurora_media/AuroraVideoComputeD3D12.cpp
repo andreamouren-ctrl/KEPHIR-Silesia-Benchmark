@@ -258,16 +258,9 @@ public:
         for(std::size_t i=0;i<blockCount;++i) {
             result[i]=static_cast<Byte>(p[i] & 0xffu);
             if(i==18 || i==33) {
-                if(i==18) {
-                    std::cerr<<"GPUDBG block="<<i
-                             <<" idx="<<(p[i]&0xffu)
-                             <<" prev_byte="<<((p[i]>>8u)&0xffu)
-                             <<" cur_byte="<<((p[i]>>16u)&0xffu)<<"\\n";
-                } else {
-                    std::cerr<<"GPUDBG block="<<i
-                             <<" idx="<<(p[i]&0xffu)
-                             <<" sad="<<(p[i]>>8u)<<"\\n";
-                }
+                std::cerr<<"GPUDBG block="<<i
+                         <<" idx="<<(p[i]&0xffu)
+                         <<" sad="<<(p[i]>>8u)<<"\\n";
             }
         }
         D3D12_RANGE noWrite{0,0};
