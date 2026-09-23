@@ -117,3 +117,17 @@ Before public release of detailed candidate-IP algorithms:
 3. record the first working commit and test run;
 4. perform a focused patent/literature search;
 5. obtain professional patent advice for jurisdictions of interest before relying on public-disclosure grace periods.
+
+
+## KS-05 disposition — KTARP
+
+Status: **REJECTED-IP / NOT PROMOTED IN CURRENT FORM**
+
+Measured on the KS-03/04 real-audio checkpoint:
+- fixed FULL256 baseline: 5,552,105 bytes;
+- best KTARP adaptive variant: 5,596,006 bytes;
+- delta: +0.791% (worse).
+
+The tested topology-affinity objectives do not provide enough predictive value for final EXP-33H archive size. The source and results remain preserved as negative research evidence, but KTARP is not part of the promoted KHEPRI Stream technical core.
+
+A future topology-adaptive family would require a materially different cost model and fresh prior-art review before returning to CANDIDATE-IP status.
