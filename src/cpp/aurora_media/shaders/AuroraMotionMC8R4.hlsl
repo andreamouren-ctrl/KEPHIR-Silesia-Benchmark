@@ -66,7 +66,7 @@ void main(uint3 tid : SV_DispatchThreadID)
             }
         }
 
-        if (!found || cost < bestCost)
+        if (!found || cost < bestCost || (cost == bestCost && ci < bestIndex))
         {
             found = true;
             bestCost = cost;
