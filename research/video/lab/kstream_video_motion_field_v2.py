@@ -16,8 +16,8 @@ coordinates improves final backend compression.
 import argparse, struct, zlib
 from pathlib import Path
 
-from kstream_video_baseline import frame_sizes, spatial_frame, spatial_frame_inv
-from kstream_video_motion_control import candidates, motion_residual, motion_inverse
+from kstream_video_baseline import frame_sizes
+from kstream_video_motion_control import candidates, motion_residual, motion_inverse, spatial_frame, spatial_frame_inv
 
 MAGIC=b"KSM2"
 VERSION=1
