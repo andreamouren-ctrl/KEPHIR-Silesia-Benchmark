@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include "AuroraMediaLimits.h"
 
 namespace aurora::media {
 
@@ -40,7 +41,8 @@ std::uint32_t crc32(const std::uint8_t* data, std::size_t size);
 class Muxer {
 public:
     Muxer(const std::filesystem::path& path, std::vector<Track> tracks,
-          std::uint32_t timescale = kDefaultTimescale);
+          std::uint32_t timescale = kDefaultTimescale,
+          Limits limits = kDefaultLimits);
     ~Muxer();
     Muxer(const Muxer&) = delete;
     Muxer& operator=(const Muxer&) = delete;
@@ -57,11 +59,13 @@ private:
     std::vector<PacketInfo> index_;
     std::uint32_t timescale_{};
     bool closed_{false};
+    Limits limits_{};
 };
 
 class Demuxer {
 public:
-    explicit Demuxer(const std::filesystem::path& path);
+    explicit Demuxer(const std::filesystem::path& path,
+                     Limits limits = kDefaultLimits);
 
     const std::vector<Track>& tracks() const noexcept { return tracks_; }
     const std::vector<PacketInfo>& index() const noexcept { return index_; }
@@ -80,6 +84,7 @@ private:
     std::vector<PacketInfo> index_;
     std::uint32_t timescale_{};
     std::uint64_t data_start_{};
+    Limits limits_{};
 };
 
 } // namespace aurora::media
