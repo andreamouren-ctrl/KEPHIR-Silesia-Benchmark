@@ -8,7 +8,7 @@ cbuffer Params : register(b0)
 
 ByteAddressBuffer CurrentY : register(t0);
 ByteAddressBuffer PreviousY : register(t1);
-StructuredBuffer<int2> Candidates : register(t2);
+ByteAddressBuffer Candidates : register(t2);
 RWStructuredBuffer<uint> MotionOut : register(u0);
 
 uint LoadByte(ByteAddressBuffer b, uint index)
@@ -36,7 +36,7 @@ void main(uint3 tid : SV_DispatchThreadID)
     [unroll]
     for (uint ci = 0u; ci < 25u; ++ci)
     {
-        int2 mv = Candidates[ci];
+        uint2 rawMv = Candidates.Load2(ci * 8u);\n        int2 mv = int2(asint(rawMv.x), asint(rawMv.y));
         int sx = int(bx) + mv.x;
         int sy = int(by) + mv.y;
 
