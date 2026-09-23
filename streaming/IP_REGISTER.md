@@ -131,3 +131,23 @@ Measured on the KS-03/04 real-audio checkpoint:
 The tested topology-affinity objectives do not provide enough predictive value for final EXP-33H archive size. The source and results remain preserved as negative research evidence, but KTARP is not part of the promoted KHEPRI Stream technical core.
 
 A future topology-adaptive family would require a materially different cost model and fresh prior-art review before returning to CANDIDATE-IP status.
+
+
+## Video prior-art narrowing after KS-V02
+
+KS-V02 identified motion compensation as the principal missing transform for medium/high-motion video. Generic motion estimation, motion-compensated prediction, motion-vector prediction and entropy coding are BACKGROUND.
+
+Focused prior-art review also found earlier disclosures that select prediction/reference blocks using bitrate or entropy-related cost, including:
+- US9313526B2 / WO2011101453A2: video block matching with bitrate/rate-estimation metrics and entropy-coded side information;
+- US9609342B2: candidate reference selection using metrics correlated with the number of coded bits;
+- US9918104B2 / US9596475B2: entropy coding of motion-vector differences.
+
+Therefore the following are explicitly **not** candidate KHEPRI Stream inventions:
+- integer or fractional block motion estimation by SAD/SSE;
+- selecting a motion vector/reference by predicted coded bitrate;
+- entropy coding motion vectors or motion-vector differences;
+- ordinary rate-distortion optimization around motion compensation.
+
+KSV-03 will use bounded integer-pixel motion compensation only as a control baseline.
+
+Any future CANDIDATE-IP video mechanism must add a materially different KHEPRI-specific coupling beyond generic rate-based motion search.
