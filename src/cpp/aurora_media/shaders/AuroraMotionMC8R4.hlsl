@@ -8,7 +8,6 @@ cbuffer Params : register(b0)
 
 ByteAddressBuffer CurrentY : register(t0);
 ByteAddressBuffer PreviousY : register(t1);
-ByteAddressBuffer Candidates : register(t2);
 RWStructuredBuffer<uint> MotionOut : register(u0);
 
 uint LoadByte(ByteAddressBuffer b, uint index)
@@ -36,8 +35,17 @@ void main(uint3 tid : SV_DispatchThreadID)
     [loop]
     for (uint ci = 0u; ci < 25u; ++ci)
     {
-        uint2 rawMv = Candidates.Load2(ci * 8u);
-        int2 mv = int2(asint(rawMv.x), asint(rawMv.y));
+        static const int2 C[25] = {
+            int2(0,0),
+            int2(-2,0), int2(2,0), int2(0,-2), int2(0,2),
+            int2(-4,0), int2(4,0),
+            int2(-2,-2), int2(2,-2), int2(-2,2), int2(2,2),
+            int2(0,-4), int2(0,4),
+            int2(-4,-2), int2(4,-2), int2(-4,2), int2(4,2),
+            int2(-2,-4), int2(2,-4), int2(-2,4), int2(2,4),
+            int2(-4,-4), int2(4,-4), int2(-4,4), int2(4,4)
+        };
+        int2 mv = C[ci];
         int sx = int(bx) + mv.x;
         int sy = int(by) + mv.y;
 
