@@ -50,7 +50,6 @@ benchmarks/                 reusable benchmark harnesses
 results/                    validated measured results
 docs/                       canonical engineering knowledge
 tests/                      active backend/reference tests
-streaming/                  legacy compatibility only
 source_parts/               historical KHEPRI reconstruction assets
 ```
 
@@ -79,4 +78,4 @@ An experiment becomes an active baseline only after:
 
 No GUI code belongs in this backend research branch.
 
-No new production/backend files belong in `streaming/`.
+Historical pre-migration implementations remain available through Git history; they are no longer duplicated in the tracked tree.
