@@ -35,7 +35,7 @@ new=''' if(ci<0){
  bool useDelta=K2_DRS_MODE && prevDist>0 && delta>=-(int64_t)lim && delta<=(int64_t)lim;
  if(K2_DRS_MODE) drgate.enc(a,(uint8_t)useDelta);
  if(useDelta){
-   uint32_t zz=(uint32_t)((delta<<1)^(delta>>63));
+   uint32_t zz=(uint32_t)(((uint64_t)(delta<0?-delta:delta)<<1) - (delta<0?1u:0u));
    uint8_t nb=(zz<256u)?1:((zz<65536u)?2:3);
    drnb.enc(a,nb-1); dr0.enc(a,(uint8_t)zz);
    if(nb>=2) dr1.enc(a,(uint8_t)(zz>>8));
@@ -81,7 +81,7 @@ new=''' else{
    uint8_t nb=(uint8_t)(decsmall(a,drnb)+1); uint32_t zz=decsym(a,dr0);
    if(nb>=2) zz|=(uint32_t)decsym(a,dr1)<<8;
    if(nb>=3) zz|=(uint32_t)decsym(a,dr2)<<16;
-   int64_t delta=(int64_t)((zz>>1) ^ (uint32_t)-(int32_t)(zz&1u));
+   int64_t delta=(zz&1u)?-(int64_t)((zz+1u)>>1):(int64_t)(zz>>1);
    int64_t nx=(int64_t)prevDist+delta;
    if(nx<=0 || nx>(1u<<22)) return {};
    x=(uint32_t)nx;
