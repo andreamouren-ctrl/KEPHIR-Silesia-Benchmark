@@ -11,7 +11,7 @@ import argparse, hashlib, json, shutil, struct, subprocess, tempfile, time
 from pathlib import Path
 
 from kstream_video_baseline import encode_file as temp_encode, decode_file as temp_decode
-from kstream_video_mc import encode_file as mc_encode, decode_file as mc_decode
+from kstream_video_motion_control import encode_file as mc_encode, decode_file as mc_decode
 
 MAGIC=b"K5GR"
 VERSION=2
