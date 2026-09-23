@@ -1,0 +1,59 @@
+name: KHEPRI Stream KS-V02 Multi-Motion Video
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "research/khepri-stream-codec"
+    paths:
+      - "streaming/ksv02_multiclip_bench.py"
+      - ".github/workflows/khepri_stream_ksv02.yml"
+
+jobs:
+  video:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential ffmpeg curl
+
+      - name: Build EXP-33H backend
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY \
+            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 -DK2_DIST_TOPO_MODE=8 \
+            -pthread KEPHIR_2_EXP33_DISTANCE_TOPOLOGY.cpp -o kephir33
+
+      - name: Download standard QCIF clips
+        run: |
+          curl -L --fail --retry 4 -o akiyo.y4m https://media.xiph.org/video/derf/y4m/akiyo_qcif.y4m
+          curl -L --fail --retry 4 -o foreman.y4m https://media.xiph.org/video/derf/y4m/foreman_qcif.y4m
+          curl -L --fail --retry 4 -o bus.y4m https://media.xiph.org/video/derf/y4m/bus_qcif_15fps.y4m
+          ffmpeg -hide_banner -loglevel error -y -i akiyo.y4m   -pix_fmt yuv420p -f rawvideo akiyo.yuv
+          ffmpeg -hide_banner -loglevel error -y -i foreman.y4m -pix_fmt yuv420p -f rawvideo foreman.yuv
+          ffmpeg -hide_banner -loglevel error -y -i bus.y4m     -pix_fmt yuv420p -f rawvideo bus.yuv
+          test "$(stat -c%s akiyo.yuv)" -eq 11404800
+          test "$(stat -c%s foreman.yuv)" -eq 11404800
+          test "$(stat -c%s bus.yuv)" -eq 5702400
+
+      - name: Run KS-V02
+        run: |
+          python3 streaming/ksv02_multiclip_bench.py \
+            --kephir ./kephir33 \
+            --clip akiyo:akiyo.yuv:30000:1001 \
+            --clip foreman:foreman.yuv:30000:1001 \
+            --clip bus:bus.yuv:15:1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: khepri-stream-ksv02
+          path: streaming/ksv02_out/ksv02_results.json
