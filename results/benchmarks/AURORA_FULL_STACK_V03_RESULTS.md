@@ -1,7 +1,7 @@
 # AURORA Media v0.3 — Full-Stack Codec Benchmark
 
 Date: 2026-09-23
-GitHub Actions run: 35843970101
+GitHub Actions run (current 2 s audio baseline): 35845976521
 Audio packet-horizon run: 35844650459
 
 ## Scope
@@ -38,12 +38,12 @@ Initial streaming structure used 200 ms independent audio packets.
 | WavPack high compression | **4,587,265** | **45.946%** |
 | FLAC level 8 | 4,663,310 | 46.708% |
 | ALAC | 4,862,860 | 48.707% |
-| AURORA AUM, 200 ms recovery packets | 5,825,143 | 58.345% |
+| **AURORA AUM, 2000 ms recovery packets (promoted)** | **5,546,958** | **55.558%** |
 
-At 200 ms, AURORA is:
-- 24.91% larger than FLAC;
-- 19.79% larger than ALAC;
-- 26.99% larger than WavPack high compression.
+At the promoted 2000 ms horizon, AURORA is approximately:
+- 18.95% larger than FLAC;
+- 14.07% larger than ALAC;
+- 20.92% larger than WavPack high compression.
 
 The difference versus the earlier single-stream AURORA result is not mainly AUM metadata. It is the repeated KHEPRI state reset caused by 260 independently decodable packets.
 
