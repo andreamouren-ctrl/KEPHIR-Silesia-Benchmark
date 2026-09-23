@@ -103,17 +103,10 @@ Long-lived technical knowledge belongs here.
 
 The master document is the central historical/scientific record.
 
-## streaming legacy tree
+## Historical pre-migration tree
 
-The historical `streaming/` directory is temporarily retained because:
-- existing workflows reference it;
-- Python imports reference neighboring files;
-- historical commit links and experiment reproduction still use those paths.
+The former `streaming/` working tree has been fully removed from the tracked repository after canonical migration.
 
-It is not the canonical location for new files.
+Its historical content remains recoverable through Git history. Current code must use only the canonical paths above.
 
-New backend work goes into `src/`.
-New experiments go into `research/`.
-New results go into `results/`.
-
-Legacy deletion should happen only after workflow/import migration tests pass.
+Historical KS/KSV workflows may still create temporary runtime output directories whose names contain `streaming/`; these are generated artifacts on CI runners and are not tracked repository source.
