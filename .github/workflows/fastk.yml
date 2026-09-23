@@ -1,10 +1,10 @@
-name: KEPHIR FAST-K Best-Length Prefilter
+name: KEPHIR FAST-K Aggressive Adaptive Chain
 on:
   workflow_dispatch:
   push:
     paths:
       - "make_fastk_source.py"
-      - "fastk_bench.py"
+      - "fastk_ab.py"
       - ".github/workflows/fastk.yml"
 jobs:
   bench:
@@ -16,7 +16,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential unzip
-      - name: Build FAST-H and FAST-K
+      - name: Build
         run: |
           cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
           python3 make_exp26_source.py
@@ -29,9 +29,8 @@ jobs:
           K2_CHAIN_DEPTH_VALUE=24 K2_LAZY_DEPTH_VALUE=12 K2_PRED_MASK_VALUE=255 python3 make_speed1_source.py
           python3 make_fastd_source.py
           python3 make_fasth_source.py
-          cp KEPHIR_FAST_H.cpp KEPHIR_FAST_H_BASE.cpp
           python3 make_fastk_source.py
-          g++ -O3 -march=native -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=0 -DK2_PSG_MODE=0 -DK2_DIST_TOPO_MODE=0 -DK2_DUAL_MATCH_MODE=0 -DK2_FUSED_MATCH_MODE=0 -DK2_FUSED2_MODE=0 -pthread KEPHIR_FAST_H_BASE.cpp -o fast_h
+          g++ -O3 -march=native -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=0 -DK2_PSG_MODE=0 -DK2_DIST_TOPO_MODE=0 -DK2_DUAL_MATCH_MODE=0 -DK2_FUSED_MATCH_MODE=0 -DK2_FUSED2_MODE=0 -pthread KEPHIR_FAST_H.cpp -o fast_h
           g++ -O3 -march=native -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=0 -DK2_PSG_MODE=0 -DK2_DIST_TOPO_MODE=0 -DK2_DUAL_MATCH_MODE=0 -DK2_FUSED_MATCH_MODE=0 -DK2_FUSED2_MODE=0 -pthread KEPHIR_FAST_K.cpp -o fast_k
       - name: Silesia
         run: |
@@ -39,8 +38,8 @@ jobs:
           echo "c240c17d6805fb8a0bde763f1b94cd99  silesia.zip" | md5sum -c -
           mkdir silesia
           unzip -q silesia.zip -d silesia
-      - name: Benchmark
-        run: python3 fastk_bench.py
+      - name: A-B
+        run: python3 fastk_ab.py
       - uses: actions/upload-artifact@v4
         with:
           name: fastk-results
