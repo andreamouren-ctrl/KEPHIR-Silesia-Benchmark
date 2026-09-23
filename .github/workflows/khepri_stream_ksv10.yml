@@ -1,0 +1,47 @@
+name: KHEPRI Stream KSV-10 Adaptive Partition
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["research/khepri-stream-codec"]
+    paths:
+      - "research/video/lab/kstream_video_adaptive_partition_v10.py"
+      - "research/video/experiments/ksv10_adaptive_partition_bench.py"
+      - ".github/workflows/khepri_stream_ksv10.yml"
+
+jobs:
+  ksv10:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential ffmpeg curl python3-numpy
+      - name: Build EXP-37A
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          python3 make_exp37_source.py
+          g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 -pthread KEPHIR_2_EXP37_DUAL_MATCH.cpp -o kephir37
+      - name: Download clips
+        run: |
+          curl -L --fail --retry 4 -o akiyo.y4m https://media.xiph.org/video/derf/y4m/akiyo_qcif.y4m
+          curl -L --fail --retry 4 -o foreman.y4m https://media.xiph.org/video/derf/y4m/foreman_qcif.y4m
+          curl -L --fail --retry 4 -o bus.y4m https://media.xiph.org/video/derf/y4m/bus_qcif_15fps.y4m
+          ffmpeg -hide_banner -loglevel error -y -i akiyo.y4m -pix_fmt yuv420p -f rawvideo akiyo.yuv
+          ffmpeg -hide_banner -loglevel error -y -i foreman.y4m -pix_fmt yuv420p -f rawvideo foreman.yuv
+          ffmpeg -hide_banner -loglevel error -y -i bus.y4m -pix_fmt yuv420p -f rawvideo bus.yuv
+      - name: Run KSV-10
+        env:
+          PYTHONPATH: research/video/lab
+        run: |
+          python3 research/video/experiments/ksv10_adaptive_partition_bench.py             --kephir ./kephir37             --clip akiyo:akiyo.yuv:30000:1001             --clip foreman:foreman.yuv:30000:1001             --clip bus:bus.yuv:15:1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ksv10-adaptive-partition
+          path: results/video/ksv10_adaptive_partition/KSV10_RESULTS.json
