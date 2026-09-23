@@ -1,10 +1,17 @@
 from pathlib import Path
-p=Path("KEPHIR_FAST_H.cpp")
+import re
+p=Path("KEPHIR_SPEED_D_SOURCE.cpp")
 s=p.read_text()
-old='''bool stop=(l==lim || (depth>=7 && bestL>=128) || (depth>=15 && bestL>=64) || (depth>=31 && bestL>=32));'''
-new='''bool stop=(l==lim || (depth>=3 && bestL>=128) || (depth>=7 && bestL>=64) || (depth>=15 && bestL>=32));'''
-if old not in s:
-    raise SystemExit("FAST_J_EARLY_STOP_PATTERN_NOT_FOUND")
-s=s.replace(old,new,1)
+
+# Exact-output parser acceleration:
+# if current candidate already differs at bestL, it cannot beat bestL.
+pat=r'(if\(dd>0 && dd<=W && q\+3<n && h4\(q\)==hp\)\{\s*)(int l=4;)'
+repl=r'''\1
+                if(bestL>=4 && bestL<lim && q+bestL<n && d[(size_t)q+bestL]!=d[(size_t)p+bestL]){
+                    q=prev[q]; ++depth; continue;
+                }
+                \2'''
+s,n=re.subn(pat,repl,s,count=1)
+print("FAST_J_PREFILTER_PATCHED",n)
+if n!=1: raise SystemExit("FAST_J_PATTERN_NOT_FOUND")
 Path("KEPHIR_FAST_J.cpp").write_text(s)
-print("FAST_J_READY")
