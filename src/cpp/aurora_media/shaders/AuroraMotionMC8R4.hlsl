@@ -8,7 +8,7 @@ cbuffer Params : register(b0)
 
 ByteAddressBuffer CurrentY : register(t0);
 ByteAddressBuffer PreviousY : register(t1);
-RWStructuredBuffer<uint> MotionOut : register(u0);
+RWByteAddressBuffer MotionOut : register(u0);
 
 uint LoadByte(ByteAddressBuffer b, uint index)
 {
@@ -74,5 +74,5 @@ void main(uint3 tid : SV_DispatchThreadID)
         }
     }
 
-    MotionOut[byBlock * BlocksX + bxBlock] = bestIndex;
+    MotionOut.Store((byBlock * BlocksX + bxBlock) * 4u, bestIndex);
 }
