@@ -1,53 +1,82 @@
 # AURORA Media / KHEPRI Codec
 
-Research and backend repository for the AURORA Media lossless audio/video codec and its KHEPRI compression backend.
+Research and backend repository for the **AURORA Media** lossless audio/video codec and its **KHEPRI** compression backend.
 
-## Current validated baseline
+> This branch is the canonical audio/video research and backend branch. The general-purpose KHEPRI/Silesia research line remains on `main`.
 
-- Media backend: **KHEPRI EXP-37A PREDICTIVE-DUAL-MATCH**
-- Audio: **KMRL FULL256 + TAIL16**
-- Video: **TEMP / MC8R4 adaptive routing, 20-frame horizon**
-- Container: **AUM v0.1**
-- Stream framing: **AUS1 v0.1**
-- Python executable reference: validated
-- C++20 container/session/stream backend: validated
-- Python ↔ C++ binary interoperability: validated
-- Current path: **lossless / bit-exact**
+## Current canonical checkpoints
+
+### Media backend
+- KHEPRI **EXP-37A Predictive Dual Match**
+- deterministic lossless decode
+- specialized media frontend avoids redundant general-purpose structural routing
+
+### Audio
+- reversible stereo decorrelation
+- predictor residuals + ZigZag
+- **KMRL FULL256 + TAIL16**
+- bit-exact PCM reconstruction
+
+### Video
+- YUV420p8 lossless path
+- TEMP and MC8R4 reversible prediction controls
+- automatic mode routing
+- **20-frame routing-horizon baseline**
+- bit-exact reconstruction
+
+### Container / streaming
+- **AUM v0.1** native container
+- **AUS1 v0.1** stream framing
+- CRC, timestamps, index, recovery flags and seek
+- Python executable reference
+- C++20 native container/session/stream backend
+- Python ↔ C++ binary interoperability validated
+
+### General KHEPRI research references
+- best structural-router ratio checkpoint: **EXP-48 — 29.8205% Silesia**
+- promoted speed-research checkpoint: **FAST-D — 64.63 MB/s encode, 181.67 MB/s decode, 30.9388% Silesia**
+
+These general checkpoints are research references and are not automatically the active media backend.
 
 ## Repository map
 
-- `src/cpp/aurora_media/` — canonical C++20 backend
-- `src/python/reference/` — executable binary-format/reference model
-- `tests/` — interoperability, corruption and end-to-end tests
-- `research/audio/` — audio experiments and lab code
-- `research/video/` — video experiments and lab code
-- `research/backend/` — KHEPRI backend integration experiments
-- `benchmarks/` — reproducible comparison harnesses
-- `results/` — validated measured results
-- `docs/` — architecture, format, scientific history, IP and roadmap
-- `streaming/` — legacy compatibility tree retained temporarily while workflows/imports are migrated
-- `source_parts/` — historical/reconstruction assets for KHEPRI research sources
+```text
+src/cpp/aurora_media/      canonical C++20 backend
+src/python/reference/       executable Python reference
+research/audio/             KS audio research
+research/video/             KSV video research
+research/backend/           media/backend integration research
+benchmarks/                 reusable benchmark harnesses
+results/                    validated measured results
+docs/                       canonical engineering knowledge
+tests/                      active backend/reference tests
+streaming/                  legacy compatibility only
+source_parts/               historical KHEPRI reconstruction assets
+```
 
-## Canonical documentation
+## Read these first
 
-Start here:
+1. `docs/research/AURORA_MEDIA_TECHNICAL_MASTER.md` — complete scientific/technical history.
+2. `docs/architecture/CHECKPOINT_REGISTRY.md` — promoted/rejected checkpoints.
+3. `docs/architecture/CANONICAL_FILE_MAP.md` — where every artifact belongs.
+4. `docs/architecture/REPOSITORY_STRUCTURE.md` — directory architecture.
+5. `docs/specs/AURORA_MEDIA_FORMAT_V01.md` — AUM format baseline.
+6. `docs/benchmarks/BENCHMARK_METHOD.md` — benchmark rules.
+7. `docs/ip/IP_REGISTER.md` — standard techniques vs candidate project-specific research.
+8. `docs/roadmap/BACKEND_ROADMAP.md` — forward backend work.
 
-1. `docs/research/AURORA_MEDIA_TECHNICAL_MASTER.md`
-2. `docs/architecture/REPOSITORY_STRUCTURE.md`
-3. `docs/specs/AURORA_MEDIA_FORMAT_V01.md`
-4. `docs/benchmarks/BENCHMARK_METHOD.md`
-5. `docs/ip/IP_REGISTER.md`
-6. `docs/roadmap/BACKEND_ROADMAP.md`
+## Development rules
 
-## Development rule
+An experiment becomes an active baseline only after:
 
-Production/backend code and research code are separated.
+- deterministic encode/decode;
+- bit-exact verification for lossless modes;
+- recorded source/corpus;
+- measured compressed size;
+- measured throughput where meaningful;
+- explicit comparison with the previous checkpoint;
+- documented promotion decision.
 
-An experiment becomes part of the active baseline only after:
-- successful encode/decode;
-- bit-exact validation for lossless modes;
-- measured improvement or required architectural value;
-- result documentation;
-- explicit promotion in backend documentation.
+No GUI code belongs in this backend research branch.
 
-No GUI work belongs in this branch's backend core.
+No new production/backend files belong in `streaming/`.
