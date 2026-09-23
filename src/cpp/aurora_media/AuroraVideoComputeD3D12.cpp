@@ -160,6 +160,14 @@ public:
                                 D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_GENERIC_READ);
         auto prevBuf=make_buffer(device_.Get(),yBytes,D3D12_HEAP_TYPE_UPLOAD,
                                  D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_GENERIC_READ);
+        auto outBuf=make_buffer(device_.Get(),outBytes,D3D12_HEAP_TYPE_DEFAULT,
+                                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                                D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        auto readback=make_buffer(device_.Get(),outBytes,D3D12_HEAP_TYPE_READBACK,
+                                  D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_COPY_DEST);
+
+        upload(curBuf.Get(),cur.data(),yBytes);
+        upload(prevBuf.Get(),prev.data(),yBytes);
 
         check(allocator_->Reset(),"Allocator Reset");
         check(command_list_->Reset(allocator_.Get(),pso_.Get()),"CommandList Reset");
@@ -193,10 +201,10 @@ public:
             WaitForSingleObject(event_,INFINITE);
         }
 
-        const std::uint32_t* p=nullptr;
+        void* mapped=nullptr;
         D3D12_RANGE readRange{0,outBytes};
-        check(readback->Map(0,&readRange,reinterpret_cast<void**>(const_cast<std::uint32_t**>(&p))),
-              "Map readback");
+        check(readback->Map(0,&readRange,&mapped),"Map readback");
+        const auto* p=static_cast<const std::uint32_t*>(mapped);
         Bytes result(blockCount);
         for(std::size_t i=0;i<blockCount;++i)
             result[i]=static_cast<Byte>(p[i]);
