@@ -60,6 +60,17 @@ jobs:
         run: |
           ./aurora_limits_test limits_test.aum
 
+      - name: Build AUM corruption matrix test
+        run: |
+          g++ -O2 -std=c++20 -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraMediaContainer.cpp \
+            tests/cpp/test_aurora_corruption_matrix.cpp \
+            -Isrc/cpp/aurora_media -o aurora_corruption_matrix_test
+
+      - name: AUM corruption matrix
+        run: |
+          ./aurora_corruption_matrix_test corruption_matrix_out
+
       - name: Python/C++ binary interop
         env:
           PYTHONPATH: src/python/reference
