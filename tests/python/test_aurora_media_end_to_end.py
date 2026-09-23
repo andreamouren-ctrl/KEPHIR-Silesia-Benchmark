@@ -120,7 +120,8 @@ def main():
           "native_mux_demux":True,
           "external_multimedia_dependency_in_core":False
         }
-        Path("results/backend").mkdir(parents=True,exist_ok=True)\n        Path("results/backend/AURORA_MEDIA_V01_TEST_RESULTS.json").write_text(json.dumps(result,indent=2))
+        Path("results/backend").mkdir(parents=True,exist_ok=True)
+        Path("results/backend/AURORA_MEDIA_V01_TEST_RESULTS.json").write_text(json.dumps(result,indent=2))
         print(json.dumps(result,indent=2))
 
 if __name__=="__main__": main()
