@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <optional>
 #include <vector>
+#include "AuroraMediaLimits.h"
 
 namespace aurora::stream {
 
@@ -19,12 +20,15 @@ Packet decode(const std::vector<std::uint8_t>& wire);
 
 class IncrementalParser {
 public:
+    explicit IncrementalParser(std::size_t max_buffer_bytes = aurora::media::kDefaultLimits.max_stream_buffer_bytes)
+        : max_buffer_bytes_(max_buffer_bytes) {}
     void push(const std::uint8_t* data,std::size_t size);
     void push(const std::vector<std::uint8_t>& data) { push(data.data(),data.size()); }
     std::optional<Packet> pop();
     std::size_t buffered() const noexcept { return buffer_.size(); }
 private:
     std::vector<std::uint8_t> buffer_;
+    std::size_t max_buffer_bytes_{};
 };
 
 class OrderedReceiver {
