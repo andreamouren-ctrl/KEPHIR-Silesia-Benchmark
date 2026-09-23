@@ -59,7 +59,7 @@ def audio_lossy(raw,codec,label,args):
 def kvideo_front(raw,name,fpsn,fpsd,kind,exe):
     front=OUT/f"{name}_{kind}.front"; restored=OUT/f"{name}_{kind}.raw"
     if kind=="TEMP":
-        t=time.perf_counter(); vbase_encode(raw,front,W,H,fpsn,fpsd,GOP,"temporal"); fe=time.perf_counter()-t
+        t=time.perf_counter(); vbase_encode(raw,front,W,H,fpsn,fpsd,GOP,3); fe=time.perf_counter()-t
         t=time.perf_counter(); vbase_decode(front,restored); fd=time.perf_counter()-t
     else:
         t=time.perf_counter(); vmc_encode(raw,front,W,H,fpsn,fpsd,GOP,8,RADIUS); fe=time.perf_counter()-t
