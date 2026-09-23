@@ -1,67 +1,73 @@
 # Canonical Path Migration Status
 
-## Migrated and active
+## Status
 
-- C++20 container backend → `src/cpp/aurora_media/`
-- C++20 stream backend → `src/cpp/aurora_media/`
-- C++20 media session → `src/cpp/aurora_media/`
-- Python AUM reference → `src/python/reference/`
-- Python A/V pipeline reference → `src/python/reference/`
-- Python stream reference → `src/python/reference/`
-- C++/Python interoperability tests → `tests/`
-- native end-to-end backend tests → `tests/`
-- major codec benchmark canonical copy → `benchmarks/`
-- KSV-05 canonical research copy → `research/video/experiments/`
-- IP register → `docs/ip/`
-- validated KS/KSV result records → `results/`
-- scientific/technical master → `docs/research/`
-- checkpoint registry → `docs/architecture/`
-- canonical file map → `docs/architecture/`
-- workflow policy → `docs/architecture/`
+**COMPLETE for AURORA Media tracked source.**
 
-## Exact legacy duplicates removed
+The former `streaming/` source tree has been removed from the branch after migration to canonical locations.
 
-The following byte-identical duplicates were safely deleted from `streaming/` because canonical copies already exist:
+Git history remains the archive for pre-migration implementations.
 
-- `streaming/cpp/AuroraMediaSession.cpp`
-- `streaming/cpp/AuroraMediaSession.h`
-- `streaming/aurora_media_container_v01.py`
-- `streaming/aurora_stream_protocol_v01.py`
-- `streaming/KSV05_RESULTS.md`
-- `streaming/MAJOR_CODEC_BENCHMARK_RESULTS.md`
-- `streaming/IP_REGISTER.md`
+## Canonical locations
 
-## Still legacy-dependent
+- C++20 backend → `src/cpp/aurora_media/`
+- Python executable/reference implementation → `src/python/reference/`
+- C++/Python tests → `tests/`
+- audio experiments/lab → `research/audio/`
+- video experiments/diagnostics/lab → `research/video/`
+- KHEPRI/media integration research → `research/backend/`
+- reusable benchmarks → `benchmarks/`
+- measured results → `results/`
+- canonical engineering documentation → `docs/`
 
-Older KS/KSV experiment workflows and flat Python experimental imports.
+## What was migrated
 
-Some legacy C++ container/stream files differ from the canonical backend and are intentionally retained as historical versions rather than deleted blindly.
+- native AUM container backend;
+- AUS1 stream backend;
+- media session backend;
+- Python container/reference pipeline;
+- converter/reference orchestration;
+- codec bridge;
+- audio KS experiments;
+- video KSV experiments;
+- major codec benchmark;
+- KS/KSV measured result documents;
+- C++ tests;
+- Python interoperability/end-to-end tests;
+- IP register;
+- backend baseline documents.
 
-## Root general-KHEPRI files
+## Duplicate cleanup
 
-Root `exp*.py`, `make_exp*_source.py` and related workflow files belong to the wider general-purpose KHEPRI lineage.
+Byte-identical files that existed both in `streaming/` and canonical directories were deleted after SHA comparison.
 
-They remain temporarily because historical/reproducibility workflows reference those exact paths.
+Historical files that differed from their canonical descendants were also removed from the working tree only after confirming an evolved canonical replacement. Their exact historical versions remain available in Git history.
 
-A future root migration should be one coordinated change, not piecemeal renaming.
+## Workflow migration
 
-## Rule for new work
+Historical KS/KSV workflows now execute canonical scripts.
+
+Completed historical workflows are manual (`workflow_dispatch`) rather than broad automatic push jobs.
+
+They use `PYTHONPATH` to expose canonical research modules without reintroducing duplicate source files.
+
+Some historical scripts still use runtime output names such as `streaming/ks06_out`. Those paths exist only inside ephemeral CI workspaces and do not represent tracked legacy source.
+
+## General-purpose KHEPRI root research
+
+Root `exp*.py`, `make_exp*_source.py`, Silesia benchmark scripts and their workflows are intentionally retained.
+
+They belong to the wider general-purpose KHEPRI research lineage and are required for checkpoint reproducibility. They are not AURORA Media production modules.
+
+A future general-KHEPRI repository migration should be coordinated separately from the completed media migration.
+
+## Rule for all new work
 
 - production/backend C++ → `src/cpp/aurora_media/`
-- Python binary/reference model → `src/python/reference/`
+- Python reference → `src/python/reference/`
 - experiments → `research/`
 - benchmark harnesses → `benchmarks/`
 - measured results → `results/`
 - long-lived documentation → `docs/`
 
-`streaming/` is read-only legacy compatibility and must receive no new production code.
-
-## Remaining cleanup gate
-
-The legacy tree can be removed only after:
-
-1. all active KS/KSV workflow imports use canonical paths;
-2. research flat imports are package-safe;
-3. canonical backend/benchmark workflows pass after migration;
-4. no active workflow depends on duplicate legacy implementation files;
-5. one final tree audit reports no live dependency on `streaming/`.
+No second implementation tree may be introduced.
