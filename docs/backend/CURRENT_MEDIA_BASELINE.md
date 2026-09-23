@@ -85,3 +85,22 @@ This is not a general codec superiority claim.
 2. derive a cheap KASH reset-benefit estimator;
 3. extract real EXP-37A encode/decode into the in-process IKhepriBackend contract;
 4. continue motion/residual research for medium/high-motion video.
+
+
+## 4K streaming readiness
+
+Architecture now includes:
+- 3840x2160 tile planning;
+- 256x240 default tiles;
+- 135 tiles/frame at 4K;
+- bounded concurrent tile workers;
+- bounded in-flight scheduler/backpressure;
+- Streaming4K / Balanced / MaxCompression profiles.
+
+Current status:
+- architecture/memory scheduling: validated;
+- realtime 4K throughput: not yet validated;
+- native hot-path port remains required.
+
+See:
+`docs/backend/AURORA_4K_STREAMING_READINESS.md`
