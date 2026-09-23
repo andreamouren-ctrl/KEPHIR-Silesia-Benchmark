@@ -5,6 +5,8 @@ on:
 
 jobs:
   ks06:
+    env:
+      PYTHONPATH: research/audio/lab:research/audio/experiments:research/backend
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -31,4 +33,4 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: khepri-stream-ks06
-          path: research/audio/experiments/ks06_out/ks06_results.json
+          path: streaming/ks06_out/ks06_results.json
