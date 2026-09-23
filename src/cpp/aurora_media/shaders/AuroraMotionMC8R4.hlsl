@@ -36,7 +36,8 @@ void main(uint3 tid : SV_DispatchThreadID)
     [unroll]
     for (uint ci = 0u; ci < 25u; ++ci)
     {
-        uint2 rawMv = Candidates.Load2(ci * 8u);\n        int2 mv = int2(asint(rawMv.x), asint(rawMv.y));
+        uint2 rawMv = Candidates.Load2(ci * 8u);
+        int2 mv = int2(asint(rawMv.x), asint(rawMv.y));
         int sx = int(bx) + mv.x;
         int sy = int(by) + mv.y;
 
