@@ -11,7 +11,6 @@ import struct
 import zlib
 from pathlib import Path
 
-from kstream_video_baseline import frame_sizes, spatial_frame if False else frame_sizes
 from kstream_video_baseline import plane_spatial, plane_spatial_inv, split_frame, join_frame
 from kstream_video_mc import motion_residual, motion_inverse
 
