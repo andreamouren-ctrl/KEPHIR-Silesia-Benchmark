@@ -89,3 +89,5 @@ def main():
     print(json.dumps(result,indent=2))
 
 if __name__=="__main__": main()
+
+# KSV02_TRIGGER_2
