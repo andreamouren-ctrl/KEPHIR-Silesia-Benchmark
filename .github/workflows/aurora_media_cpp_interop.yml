@@ -6,15 +6,10 @@ on:
     branches:
       - "research/khepri-stream-codec"
     paths:
-      - "streaming/cpp/AuroraMediaContainer.h"
-      - "streaming/cpp/AuroraMediaContainer.cpp"
-      - "streaming/cpp/AuroraStreamProtocol.h"
-      - "streaming/cpp/AuroraStreamProtocol.cpp"
-      - "streaming/cpp/AuroraMediaSession.h"
-      - "streaming/cpp/AuroraMediaSession.cpp"
-      - "streaming/cpp/test_aurora_backend.cpp"
-      - "streaming/cpp/test_aurora_session.cpp"
-      - "streaming/test_cpp_python_interop.py"
+      - "src/cpp/aurora_media/**"
+      - "src/python/reference/aurora_media_container.py"
+      - "tests/cpp/**"
+      - "tests/python/test_cpp_python_binary_interop.py"
       - ".github/workflows/aurora_media_cpp_interop.yml"
 
 jobs:
@@ -27,22 +22,24 @@ jobs:
       - name: Build C++20 container and stream backend
         run: |
           g++ -O2 -std=c++20 -Wall -Wextra -Werror \
-            streaming/cpp/AuroraMediaContainer.cpp \
-            streaming/cpp/AuroraStreamProtocol.cpp \
-            streaming/cpp/test_aurora_backend.cpp \
-            -Istreaming/cpp -o aurora_media_cpp_test
+            src/cpp/aurora_media/AuroraMediaContainer.cpp \
+            src/cpp/aurora_media/AuroraStreamProtocol.cpp \
+            tests/cpp/test_aurora_media_container.cpp \
+            -Isrc/cpp/aurora_media -o aurora_media_cpp_test
 
       - name: Build C++20 media session backend
         run: |
           g++ -O2 -std=c++20 -Wall -Wextra -Werror \
-            streaming/cpp/AuroraMediaContainer.cpp \
-            streaming/cpp/AuroraMediaSession.cpp \
-            streaming/cpp/test_aurora_session.cpp \
-            -Istreaming/cpp -o aurora_media_session_test
+            src/cpp/aurora_media/AuroraMediaContainer.cpp \
+            src/cpp/aurora_media/AuroraMediaSession.cpp \
+            tests/cpp/test_aurora_media_session.cpp \
+            -Isrc/cpp/aurora_media -o aurora_media_session_test
 
       - name: Python/C++ binary interop
+        env:
+          PYTHONPATH: src/python/reference
         run: |
-          PYTHONPATH=streaming python3 streaming/test_cpp_python_interop.py \
+          python3 tests/python/test_cpp_python_binary_interop.py \
             --cpp-test ./aurora_media_cpp_test
 
       - name: C++20 media session
@@ -52,4 +49,4 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: aurora-media-cpp-interop
-          path: streaming/cpp_interop_out/interop_results.json
+          path: results/backend/cpp_interop/interop_results.json
