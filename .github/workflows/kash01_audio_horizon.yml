@@ -1,0 +1,40 @@
+name: KASH-01 Adaptive Audio Horizon
+on:
+  workflow_dispatch:
+  push:
+    branches: ["research/khepri-stream-codec"]
+    paths:
+      - "research/audio/experiments/kash01_adaptive_horizon.py"
+      - ".github/workflows/kash01_audio_horizon.yml"
+jobs:
+  kash01:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential ffmpeg curl python3-numpy
+      - name: Build EXP-37A
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          python3 make_exp37_source.py
+          g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 -pthread KEPHIR_2_EXP37_DUAL_MATCH.cpp -o kephir37
+      - name: Prepare audio
+        run: |
+          curl -L --fail --retry 4 -o sintel_audio.flac https://media.xiph.org/sintel/sintel_trailer-audio.flac
+          ffmpeg -hide_banner -loglevel error -y -i sintel_audio.flac -ac 2 -ar 48000 -sample_fmt s16 -f s16le sintel_audio.raw
+      - name: Run KASH-01
+        env:
+          PYTHONPATH: src/python/reference:research/audio/lab:research/audio/experiments:research/video/lab:research/video/experiments:research/backend
+        run: |
+          python3 research/audio/experiments/kash01_adaptive_horizon.py --audio sintel_audio.raw --kephir ./kephir37
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kash01-audio-horizon
+          path: results/audio/kash01/KASH01_RESULTS.json
