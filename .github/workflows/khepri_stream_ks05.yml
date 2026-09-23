@@ -2,13 +2,6 @@ name: KHEPRI Stream KS-05 Predictor Topology
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - "research/khepri-stream-codec"
-    paths:
-      - "streaming/ks05_predictor_topology_bench.py"
-      - "streaming/kstream_kmrl_lab.py"
-      - ".github/workflows/khepri_stream_ks05.yml"
 
 jobs:
   ks05:
@@ -33,14 +26,14 @@ jobs:
 
       - name: Prepare benchmark PCM
         run: |
-          curl -L --fail --retry 4             -o streaming/sintel_trailer_source.flac             https://media.xiph.org/sintel/sintel_trailer-audio.flac
-          ffmpeg -hide_banner -loglevel error -y             -i streaming/sintel_trailer_source.flac             -ac 2 -ar 48000 -sample_fmt s16 -f s16le             streaming/ks05_source.raw
+          curl -L --fail --retry 4             -o /tmp/sintel_trailer_source.flac             https://media.xiph.org/sintel/sintel_trailer-audio.flac
+          ffmpeg -hide_banner -loglevel error -y             -i /tmp/sintel_trailer_source.flac             -ac 2 -ar 48000 -sample_fmt s16 -f s16le             /tmp/ks05_source.raw
 
       - name: Run KS-05
         run: |
-          python3 streaming/ks05_predictor_topology_bench.py             --raw streaming/ks05_source.raw             --kephir ./kephir33
+          python3 research/audio/experiments/ks05_predictor_topology.py             --raw /tmp/ks05_source.raw             --kephir ./kephir33
 
       - uses: actions/upload-artifact@v4
         with:
           name: khepri-stream-ks05
-          path: streaming/ks05_out/ks05_results.json
+          path: research/audio/experiments/ks05_out/ks05_results.json
