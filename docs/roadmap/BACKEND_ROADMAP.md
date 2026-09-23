@@ -81,3 +81,9 @@ Run:
 - dark/noisy footage
 
 Do not optimize only for Akiyo/Foreman/Bus.
+
+
+## Promoted audio recovery baseline
+
+Validated v0.3 checkpoint: 2,000 ms independent audio recovery packets.
+This reduced full-AUM Sintel audio from 5,825,143 bytes at 200 ms to 5,546,958 bytes while preserving bounded recovery. Adaptive KASH remains a future research direction.
