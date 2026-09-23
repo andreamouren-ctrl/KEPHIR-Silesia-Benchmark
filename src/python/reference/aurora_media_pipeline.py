@@ -41,7 +41,7 @@ def us_from_video_frame(frame:int,fpsn:int,fpsd:int):
 
 def encode_av(audio:Path,video:Path,out:Path,kephir:Path,
               rate:int,channels:int,w:int,h:int,fpsn:int,fpsd:int,
-              audio_packet_ms:int=200,video_packet_frames:int=20,gop:int=10):
+              audio_packet_ms:int=2000,video_packet_frames:int=20,gop:int=10):
     apcm=audio.read_bytes()
     vyuv=video.read_bytes()
     afb=aframe_bytes(channels)
@@ -111,7 +111,7 @@ def main():
     e.add_argument("--rate",type=int,default=48000); e.add_argument("--channels",type=int,default=2)
     e.add_argument("--width",type=int,required=True); e.add_argument("--height",type=int,required=True)
     e.add_argument("--fps-num",type=int,required=True); e.add_argument("--fps-den",type=int,required=True)
-    e.add_argument("--audio-packet-ms",type=int,default=200); e.add_argument("--video-packet-frames",type=int,default=20)
+    e.add_argument("--audio-packet-ms",type=int,default=2000); e.add_argument("--video-packet-frames",type=int,default=20)
     d=sp.add_parser("decode")
     d.add_argument("--input",type=Path,required=True); d.add_argument("--audio-out",type=Path,required=True)
     d.add_argument("--video-out",type=Path,required=True); d.add_argument("--kephir",type=Path,default=Path("./kephir37"))
