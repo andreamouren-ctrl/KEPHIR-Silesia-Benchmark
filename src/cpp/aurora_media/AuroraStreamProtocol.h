@@ -3,6 +3,7 @@
 #include <optional>
 #include <vector>
 #include "AuroraMediaLimits.h"
+#include "AuroraMediaError.h"
 
 namespace aurora::stream {
 
