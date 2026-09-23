@@ -257,9 +257,6 @@ public:
         Bytes result(blockCount);
         for(std::size_t i=0;i<blockCount;++i) {
             result[i]=static_cast<Byte>(p[i] & 0xffu);
-            if(i==18) {
-                std::cerr<<"GPUDBG packed18="<<p[i]<<"\\n";
-            }
         }
         D3D12_RANGE noWrite{0,0};
         readback->Unmap(0,&noWrite);
