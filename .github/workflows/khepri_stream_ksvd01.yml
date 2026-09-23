@@ -1,0 +1,40 @@
+name: KHEPRI Stream KSV-D01 Matchability
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "research/khepri-stream-codec"
+    paths:
+      - "streaming/ksvd01_matchability.py"
+      - ".github/workflows/khepri_stream_ksvd01.yml"
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg curl python3-numpy
+
+      - name: Download Foreman and Bus QCIF
+        run: |
+          curl -L --fail --retry 4 -o foreman.y4m https://media.xiph.org/video/derf/y4m/foreman_qcif.y4m
+          curl -L --fail --retry 4 -o bus.y4m https://media.xiph.org/video/derf/y4m/bus_qcif_15fps.y4m
+          ffmpeg -hide_banner -loglevel error -y -i foreman.y4m -pix_fmt yuv420p -f rawvideo foreman.yuv
+          ffmpeg -hide_banner -loglevel error -y -i bus.y4m -pix_fmt yuv420p -f rawvideo bus.yuv
+
+      - name: Run KSV-D01
+        run: |
+          python3 streaming/ksvd01_matchability.py \
+            --clip foreman:foreman.yuv:30000:1001 \
+            --clip bus:bus.yuv:15:1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: khepri-stream-ksvd01
+          path: streaming/ksvd01_out/ksvd01_results.json
