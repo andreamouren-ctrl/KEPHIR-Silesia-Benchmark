@@ -88,6 +88,6 @@ void main(uint3 gid : SV_GroupID, uint3 gtid : SV_GroupThreadID)
             }
         }
 
-        MotionOut.Store((byBlock * BlocksX + bxBlock) * 4u, bestIndex);
+        MotionOut.Store((byBlock * BlocksX + bxBlock) * 4u, (bestCost << 8u) | bestIndex);
     }
 }
