@@ -111,6 +111,23 @@ jobs:
         run: |
           ./aurora_video_profiles_test
 
+      - name: Build native video residual tests
+        run: |
+          g++ -O2 -std=c++20 -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraVideoResidual.cpp \
+            tests/cpp/test_aurora_video_residual.cpp \
+            -Isrc/cpp/aurora_media -o aurora_video_residual_test
+
+          g++ -O2 -std=c++20 -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraVideoResidual.cpp \
+            tests/cpp/test_aurora_video_4k_tile_codec.cpp \
+            -Isrc/cpp/aurora_media -o aurora_video_4k_tile_codec_test
+
+      - name: Validate native video residual path
+        run: |
+          ./aurora_video_residual_test
+          ./aurora_video_4k_tile_codec_test
+
       - name: Python/C++ binary interop
         env:
           PYTHONPATH: src/python/reference
