@@ -2,141 +2,93 @@
 
 Date: 2026-09-23
 
-## Target
+## Current status
 
-Support lossless AURORA Video streaming at 3840x2160 with:
-- bounded memory;
-- deterministic decoding;
-- local recovery;
-- tile-level parallelism;
-- no requirement to buffer an entire long GOP;
-- transport-friendly packetization;
-- future native C++20 hot path.
+AURORA has now completed its first true native 3840x2160 smoke roundtrip.
 
-## What is already validated
+Validated:
+- bounded 4K tile planner;
+- bounded scheduler/backpressure;
+- native C++20 MC8R4;
+- native residual mapping;
+- KSV-09C mode decision;
+- real EXP-37A in-process memory backend;
+- lossless 4K reconstruction.
 
-### 1. Bounded 4K tile plan
+## First native 4K measurement
 
-Default Streaming4K geometry:
-- frame: 3840x2160
-- tile: 256x240
-- tiles/frame: 135
-- halo: 8 pixels
-- maximum concurrent active tiles: 8
+GitHub Actions run:
+- 35870413928
 
-The planner supports edge tiles for non-exact dimensions.
+Pipeline:
+3840x2160 YUV420p -> 256x240 tiles -> MC8R4 -> MOD8/ZZ_INTER -> KHEPRI EXP-37A in RAM -> inverse pipeline.
 
-CI validation:
-- PASS
+Measured on 2 processed inter frames:
+- overall serial throughput: **1.994 fps**
+- average: **501.47 ms/frame**
+- encode serial throughput: **2.261 fps**
+- decode serial throughput: **29.380 fps**
+- active worker scratch estimate: **3.19 MiB**
+- bit-exact roundtrip: PASS
 
-### 2. Bounded scheduler / backpressure
+The synthetic source was deliberately structured, so its 2.068% payload ratio is a smoke-test diagnostic only, not a real-media compression benchmark.
 
-The scheduler:
-- emits tile jobs per frame;
-- carries frame index and recovery-frame state;
-- caps in-flight jobs;
-- applies backpressure when the queue is full;
-- does not require unbounded frame accumulation.
+## What this means
 
-Validated test:
-- two 4K frames maximum in the queue;
-- 270 tile jobs maximum in the tested configuration;
-- active worker scratch budget remains below 16 MiB in the current estimate.
+Architecture and correctness are now proven at 4K.
 
-CI validation:
-- PASS
+Realtime encode is not yet proven.
 
-### 3. Streaming framing
+The dominant measured bottleneck is MC8R4 encode-side search, not decode and not memory.
 
-AUS1 already provides:
-- packet sequence;
-- incremental parsing;
-- CRC;
-- recovery/error signaling;
-- bounded parser memory.
+## Next optimization gates
 
-### 4. Container/session
+### Gate 1 — Parallel tile workers
+Run independent tiles concurrently using the existing bounded scheduler.
 
-AUM v0.1 and the C++20 media session already support:
-- indexed recovery points;
-- packet CRC;
-- deterministic seek;
-- bounded parser limits.
+### Gate 2 — Motion search acceleration
+Implement:
+- candidate pruning;
+- coarse-to-fine search;
+- SIMD SAD;
+- reuse of reference tile buffers;
+- reduced allocations/copies.
 
-## Video profiles
+### Gate 3 — Native packet path
+Connect native tile payloads directly into AUM/AUS1 packet output without staging.
 
-### Streaming4K
-
-Priority:
+### Gate 4 — Real 4K corpus
+Use natural 4K YUV clips and measure:
+- final AUM bytes;
+- encode/decode fps;
+- peak RSS;
 - latency;
-- bounded work;
-- parallel tile scheduling.
+- recovery behavior.
 
-Current policy:
-- KSV-09C operational router;
-- no AP256 extra trial;
-- 256x240 tiles;
-- 8 concurrent tiles;
-- 20-frame routing horizon;
-- 60-frame recovery interval target.
+### Gate 5 — 4K30
+Target sustained >=30 fps encode and decode.
 
-### Balanced
+### Gate 6 — 4K60
+Target sustained >=60 fps where hardware allows.
 
-Allows selected extra search while preserving tile scheduling.
+## Profiles
 
-### MaxCompression
+Streaming4K:
+- 256x240 tiles
+- 8 concurrent tiles
+- KSV-09C
+- no AP256 extra trial
 
-Enables AP256 high-motion candidate:
-- activation threshold: mean signed residual magnitude > 5.5;
-- current measured diagnostic gain: -0.0195% on the small research corpus.
+Balanced:
+- reduced concurrency
+- selected extra search
 
-This profile prioritizes size over encode cost.
+MaxCompression:
+- high-motion AP256 enabled
+- threshold 5.5
 
-## Compression baseline
+## Current conclusion
 
-Operational KSV-09C:
-- full AUM three-clip aggregate: 9,730,778 bytes;
-- approximately 6.05% smaller than FFV1 on the current diagnostic corpus;
-- 44.45% lower measured router wall time than the KSV-08 oracle;
-- +0.01795% size penalty versus KSV-08 oracle.
+AURORA is now **4K-capable in architecture and correctness**, but not yet realtime 4K encoder-ready.
 
-KSV-11 MaxCompression gating:
-- further -1,897 bytes on the diagnostic corpus;
-- activates AP256 on only 5 high-motion windows.
-
-## Important limitation
-
-The codec is **not yet validated as realtime 4K**.
-
-The architecture is now 4K-bounded, but the current media hot path still contains:
-- Python video frontends;
-- NumPy motion search;
-- file staging;
-- subprocess KHEPRI invocation;
-- non-native candidate orchestration.
-
-Therefore current QCIF timings cannot be extrapolated to 4K60.
-
-## Required gates before declaring 4K realtime ready
-
-1. Native C++20 motion/residual implementation.
-2. Native in-process KHEPRI encode/decode.
-3. Tile encoder/decoder connected to the scheduler.
-4. Parallel worker pool.
-5. 4K raw YUV420p smoke roundtrip.
-6. 4K30 sustained benchmark.
-7. 4K60 sustained benchmark.
-8. Memory peak measurement.
-9. End-to-end latency measurement.
-10. Packet-loss/recovery test at tile and frame boundaries.
-11. Broader 4K corpus.
-12. Quality is still bit-exact for the lossless profile.
-
-## Next implementation order
-
-1. port MC8R4 residual generation to C++20;
-2. port MOD8/ZZ_INTER mapping;
-3. wire KSV-09C predictor into native tile jobs;
-4. expose KHEPRI through the in-process buffer contract;
-5. add worker pool;
-6. run first 4K lossless smoke test.
+The next work should focus almost entirely on encode-side parallelism and motion-search efficiency.
