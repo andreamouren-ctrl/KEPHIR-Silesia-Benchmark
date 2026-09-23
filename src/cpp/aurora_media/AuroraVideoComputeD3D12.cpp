@@ -155,7 +155,7 @@ public:
         const std::uint32_t blocksX=w/8;
         const std::uint32_t blocksY=h/8;
         const std::size_t blockCount=static_cast<std::size_t>(blocksX)*blocksY;
-        const std::size_t outBytes=blockCount*sizeof(std::uint32_t);
+        const std::size_t outBytes=(blockCount+2)*sizeof(std::uint32_t);
 
         auto curUpload=make_buffer(device_.Get(),yBytes,D3D12_HEAP_TYPE_UPLOAD,
                                    D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_GENERIC_READ);
@@ -258,6 +258,8 @@ public:
         for(std::size_t i=0;i<blockCount;++i) {
             result[i]=static_cast<Byte>(p[i] & 0xffu);
         }
+        std::cerr<<"GPUDBG block=18 cand0_sad="<<p[blockCount]
+                 <<" cand9_sad="<<p[blockCount+1]<<"\\n";
         D3D12_RANGE noWrite{0,0};
         readback->Unmap(0,&noWrite);
         return result;
