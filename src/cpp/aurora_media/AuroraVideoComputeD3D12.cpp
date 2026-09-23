@@ -171,6 +171,31 @@ public:
         auto readback=make_buffer(device_.Get(),outBytes,D3D12_HEAP_TYPE_READBACK,
                                   D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_COPY_DEST);
 
+        D3D12_DESCRIPTOR_HEAP_DESC hd{};
+        hd.Type=D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+        hd.NumDescriptors=2;
+        hd.Flags=D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+        ComPtr<ID3D12DescriptorHeap> srvHeap;
+        check(device_->CreateDescriptorHeap(&hd,IID_PPV_ARGS(&srvHeap)),"CreateDescriptorHeap");
+
+        const auto inc=device_->GetDescriptorHandleIncrementSize(
+            D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        auto cpu0=srvHeap->GetCPUDescriptorHandleForHeapStart();
+
+        D3D12_SHADER_RESOURCE_VIEW_DESC sd{};
+        sd.Format=DXGI_FORMAT_R32_TYPELESS;
+        sd.ViewDimension=D3D12_SRV_DIMENSION_BUFFER;
+        sd.Shader4ComponentMapping=D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        sd.Buffer.FirstElement=0;
+        sd.Buffer.NumElements=static_cast<UINT>(yBytes/4);
+        sd.Buffer.StructureByteStride=0;
+        sd.Buffer.Flags=D3D12_BUFFER_SRV_FLAG_RAW;
+
+        device_->CreateShaderResourceView(curBuf.Get(),&sd,cpu0);
+        auto cpu1=cpu0;
+        cpu1.ptr+=inc;
+        device_->CreateShaderResourceView(prevBuf.Get(),&sd,cpu1);
+
         upload(curUpload.Get(),cur.data(),yBytes);
         upload(prevUpload.Get(),prev.data(),yBytes);
 
@@ -190,12 +215,17 @@ public:
         inputBarriers[1].Transition.pResource=prevBuf.Get();
         command_list_->ResourceBarrier(2,inputBarriers);
 
+        ID3D12DescriptorHeap* heaps[]{srvHeap.Get()};
+        command_list_->SetDescriptorHeaps(1,heaps);
         command_list_->SetComputeRootSignature(root_.Get());
 
         const std::array<std::uint32_t,4> constants{w,h,blocksX,blocksY};
         command_list_->SetComputeRoot32BitConstants(0,4,constants.data(),0);
-        command_list_->SetComputeRootShaderResourceView(1,curBuf->GetGPUVirtualAddress());
-        command_list_->SetComputeRootShaderResourceView(2,prevBuf->GetGPUVirtualAddress());
+        auto gpu0=srvHeap->GetGPUDescriptorHandleForHeapStart();
+        auto gpu1=gpu0;
+        gpu1.ptr+=inc;
+        command_list_->SetComputeRootDescriptorTable(1,gpu0);
+        command_list_->SetComputeRootDescriptorTable(2,gpu1);
         command_list_->SetComputeRootUnorderedAccessView(3,outBuf->GetGPUVirtualAddress());
 
         command_list_->Dispatch(blocksX,blocksY,1);
@@ -254,11 +284,18 @@ private:
         rp[0].Constants.Num32BitValues=4;
         rp[0].ShaderVisibility=D3D12_SHADER_VISIBILITY_ALL;
 
-        for(int i=1;i<=2;++i) {
-            rp[i].ParameterType=D3D12_ROOT_PARAMETER_TYPE_SRV;
-            rp[i].Descriptor.ShaderRegister=static_cast<UINT>(i-1);
-            rp[i].Descriptor.RegisterSpace=0;
-            rp[i].ShaderVisibility=D3D12_SHADER_VISIBILITY_ALL;
+        D3D12_DESCRIPTOR_RANGE ranges[2]{};
+        for(int i=0;i<2;++i) {
+            ranges[i].RangeType=D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+            ranges[i].NumDescriptors=1;
+            ranges[i].BaseShaderRegister=static_cast<UINT>(i);
+            ranges[i].RegisterSpace=0;
+            ranges[i].OffsetInDescriptorsFromTableStart=0;
+
+            rp[i+1].ParameterType=D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+            rp[i+1].DescriptorTable.NumDescriptorRanges=1;
+            rp[i+1].DescriptorTable.pDescriptorRanges=&ranges[i];
+            rp[i+1].ShaderVisibility=D3D12_SHADER_VISIBILITY_ALL;
         }
         rp[3].ParameterType=D3D12_ROOT_PARAMETER_TYPE_UAV;
         rp[3].Descriptor.ShaderRegister=0;
