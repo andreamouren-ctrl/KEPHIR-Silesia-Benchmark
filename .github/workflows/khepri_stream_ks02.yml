@@ -2,13 +2,6 @@ name: KHEPRI Stream KS-02 KMRL
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - "research/khepri-stream-codec"
-    paths:
-      - "streaming/kstream_kmrl_frontend.py"
-      - "streaming/ks02_kmrl_bench.py"
-      - ".github/workflows/khepri_stream_ks02.yml"
 
 jobs:
   kmrl:
@@ -27,9 +20,9 @@ jobs:
           g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY             -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 -DK2_DIST_TOPO_MODE=8             -pthread KEPHIR_2_EXP33_DISTANCE_TOPOLOGY.cpp -o kephir33
 
       - name: Run KS-02
-        run: python3 streaming/ks02_kmrl_bench.py
+        run: python3 research/audio/experiments/ks02_kmrl.py
 
       - uses: actions/upload-artifact@v4
         with:
           name: khepri-stream-ks02
-          path: streaming/ks02_out/ks02_results.json
+          path: research/audio/experiments/ks02_out/ks02_results.json
