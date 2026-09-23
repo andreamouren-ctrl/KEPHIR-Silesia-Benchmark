@@ -35,35 +35,6 @@ int main() {
         const auto cm=cpu->motion_map_mc8r4(cur,prev,w,h);
         const auto gm=gpu->motion_map_mc8r4(cur,prev,w,h);
 
-        {
-            const auto cand=AuroraVideoMotion::candidates(4);
-            const std::uint32_t blockIndex=18;
-            const std::uint32_t bx=(blockIndex%(w/8))*8;
-            const std::uint32_t by=(blockIndex/(w/8))*8;
-            std::uint64_t best=~0ull;
-            std::size_t bestIdx=0;
-            std::uint64_t cand0=0, cand9=0;
-            for(std::size_t ci=0;ci<cand.size();++ci) {
-                const auto [dx,dy]=cand[ci];
-                const int sx=static_cast<int>(bx)+dx;
-                const int sy=static_cast<int>(by)+dy;
-                if(sx<0||sy<0||sx+8>static_cast<int>(w)||sy+8>static_cast<int>(h)) continue;
-                std::uint64_t cost=0;
-                for(std::uint32_t yy=0;yy<8;++yy)
-                    for(std::uint32_t xx=0;xx<8;++xx) {
-                        const auto a=cur[static_cast<std::size_t>(by+yy)*w+bx+xx];
-                        const auto b=prev[static_cast<std::size_t>(sy+static_cast<int>(yy))*w+
-                                          static_cast<std::size_t>(sx+static_cast<int>(xx))];
-                        cost += static_cast<std::uint64_t>(a>b?a-b:b-a);
-                    }
-                if(ci==0) cand0=cost;
-                if(ci==9) cand9=cost;
-                if(cost<best) { best=cost; bestIdx=ci; }
-            }
-            std::cerr<<"CPUDBG block=18 idx="<<bestIdx<<" sad="<<best
-                     <<" cand0_sad="<<cand0<<" cand9_sad="<<cand9<<"\\n";
-        }
-
         if(cm.size()!=gm.size())
             throw std::runtime_error("motion map size mismatch");
 
