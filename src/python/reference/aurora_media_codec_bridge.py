@@ -19,7 +19,7 @@ import shutil, tempfile
 
 import kstream_kmrl_lab as lab
 from ks06_plane_sparsity import enc_tail16, dec_tail16
-import ksv08_threeway_router as ksv08
+import ksv09c_cached_motion_router as ksv09c
 
 def _audio_front_encode(raw:Path,front:Path,channels:int,rate:int,block_ms:int=20):
     oe,od=lab.enc_fullplanes,lab.dec_fullplanes
@@ -72,12 +72,12 @@ def encode_video_packet(raw_yuv:bytes,exe:Path,w:int,h:int,fpsn:int,fpsd:int,
     with tempfile.TemporaryDirectory(prefix="auv1_") as td:
         t=Path(td); raw=t/"packet.yuv"; arc=t/"packet.k5gr"
         raw.write_bytes(raw_yuv)
-        ksv08.encode_file(raw,arc,exe,w,h,fpsn,fpsd,gop,route_span)
+        ksv09c.encode_file(raw,arc,exe,w,h,fpsn,fpsd,gop,route_span)
         return arc.read_bytes()
 
 def decode_video_packet(payload:bytes,exe:Path)->bytes:
     with tempfile.TemporaryDirectory(prefix="auv1d_") as td:
         t=Path(td); arc=t/"packet.k5gr"; raw=t/"packet.yuv"
         arc.write_bytes(payload)
-        ksv08.decode_file(arc,raw,exe)
+        ksv09c.decode_router(arc,raw,exe)
         return raw.read_bytes()
