@@ -11,8 +11,8 @@ container or codec core.
 """
 from __future__ import annotations
 from pathlib import Path
-from aurora_media_container_v01 import AuroraDemuxer,PKT_KEY,PKT_RECOVERY
-from aurora_media_codec_v01 import decode_audio_packet,decode_video_packet
+from aurora_media_container import AuroraDemuxer,PKT_KEY,PKT_RECOVERY
+from aurora_media_codec_bridge import decode_audio_packet,decode_video_packet
 
 class AuroraPlayerCore:
     def __init__(self,path:Path,kephir:Path):
