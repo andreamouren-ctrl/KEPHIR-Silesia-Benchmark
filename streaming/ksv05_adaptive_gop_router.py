@@ -111,7 +111,7 @@ def decode_file(src,dst,exe):
 def main():
     ap=argparse.ArgumentParser()
     ap.add_argument("--kephir",type=Path,default=Path("./kephir37"))
-    ap.add_argument("--clip",action="append",required=True)
+    ap.add_argument("--clip",action="append",required=True)\n    ap.add_argument("--route-span",type=int,default=10)
     a=ap.parse_args()
     out=Path("streaming/ksv05_out"); out.mkdir(parents=True,exist_ok=True)
     rows=[]
@@ -119,7 +119,7 @@ def main():
         name,p,w,h,fpsn,fpsd,gop=spec.split(":")
         src=Path(p).resolve(); w=int(w);h=int(h);fpsn=int(fpsn);fpsd=int(fpsd);gop=int(gop)
         arc=out/f"{name}.k5gr"; dec=out/f"{name}.dec.yuv"
-        counts,et=encode_file(src,arc,a.kephir,w,h,fpsn,fpsd,gop)
+        encode_file.route_span=a.route_span\n        counts,et=encode_file(src,arc,a.kephir,w,h,fpsn,fpsd,gop)
         dt=decode_file(arc,dec,a.kephir)
         ok=sha(src)==sha(dec)
         if not ok: raise SystemExit("SHA FAIL "+name)
@@ -131,7 +131,7 @@ def main():
                          encode_seconds=et,decode_seconds=dt,
                          encode_realtime_x=duration/et,decode_realtime_x=duration/dt,sha_ok=True))
         print(rows[-1],flush=True)
-    result={"experiment":"KSV-05 adaptive GOP router","rows":rows}
+    result={"experiment":"KSV-05 adaptive GOP router","route_span":a.route_span,"rows":rows}
     (out/"ksv05_results.json").write_text(json.dumps(result,indent=2))
     print(json.dumps(result,indent=2))
 
