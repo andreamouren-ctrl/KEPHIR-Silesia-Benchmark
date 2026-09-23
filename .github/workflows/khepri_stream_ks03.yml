@@ -7,6 +7,8 @@ on:
       - "research/khepri-stream-codec"
     paths:
       - "streaming/ks03_real_audio_bench.py"
+      - "streaming/kstream_pcm_frontend.py"
+      - "streaming/kstream_kmrl_frontend.py"
       - ".github/workflows/khepri_stream_ks03.yml"
 
 jobs:
