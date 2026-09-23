@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 from pathlib import Path
 import argparse, subprocess, json
-from aurora_media_container_v01 import *
+from aurora_media_container import *
 
 def main():
     ap=argparse.ArgumentParser()
     ap.add_argument("--cpp-test",type=Path,required=True)
-    ap.add_argument("--work",type=Path,default=Path("streaming/cpp_interop_out"))
+    ap.add_argument("--work",type=Path,default=Path("results/backend/cpp_interop"))
     a=ap.parse_args()
     a.work.mkdir(parents=True,exist_ok=True)
     py=a.work/"python_fixture.aum"
