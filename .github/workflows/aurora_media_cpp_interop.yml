@@ -91,6 +91,16 @@ jobs:
         run: |
           ./aurora_video_4k_plan_test
 
+      - name: Build 4K stream scheduler test
+        run: |
+          g++ -O2 -std=c++20 -Wall -Wextra -Werror \
+            tests/cpp/test_aurora_video_4k_scheduler.cpp \
+            -Isrc/cpp/aurora_media -o aurora_video_4k_scheduler_test
+
+      - name: Validate 4K stream scheduler
+        run: |
+          ./aurora_video_4k_scheduler_test
+
       - name: Python/C++ binary interop
         env:
           PYTHONPATH: src/python/reference
