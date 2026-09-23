@@ -15,7 +15,7 @@ void append(std::vector<std::uint8_t>& b,T v){
 }
 template<class T>
 T read(const std::vector<std::uint8_t>& b,std::size_t& p){
-    if(p+sizeof(T)>b.size()) throw std::runtime_error("truncated stream packet");
+    if(p+sizeof(T)>b.size()) throw aurora::media::AuroraMediaError(aurora::media::ErrorCode::TruncatedInput,"truncated stream packet");
     std::uint64_t v=0; for(std::size_t i=0;i<sizeof(T);++i)v|=std::uint64_t(b[p++])<<(8*i);
     return static_cast<T>(v);
 }
@@ -31,29 +31,29 @@ std::vector<std::uint8_t> encode(const Packet& p){
 }
 
 Packet decode(const std::vector<std::uint8_t>& b){
-    if(b.size()<header_size) throw std::runtime_error("truncated stream packet");
-    std::size_t p=0; for(auto m:magic) if(read<std::uint8_t>(b,p)!=m) throw std::runtime_error("bad stream magic");
-    if(read<std::uint8_t>(b,p)!=version) throw std::runtime_error("bad stream version");
+    if(b.size()<header_size) throw aurora::media::AuroraMediaError(aurora::media::ErrorCode::TruncatedInput,"truncated stream packet");
+    std::size_t p=0; for(auto m:magic) if(read<std::uint8_t>(b,p)!=m) throw aurora::media::AuroraMediaError(aurora::media::ErrorCode::CorruptHeader,"bad stream magic");
+    if(read<std::uint8_t>(b,p)!=version) throw aurora::media::AuroraMediaError(aurora::media::ErrorCode::UnsupportedVersion,"bad stream version");
     Packet out; out.track_id=read<std::uint8_t>(b,p);out.flags=read<std::uint8_t>(b,p);(void)read<std::uint8_t>(b,p);
     out.sequence=read<std::uint32_t>(b,p);out.pts=read<std::uint64_t>(b,p);out.duration=read<std::uint64_t>(b,p);
     const auto sz=read<std::uint32_t>(b,p);const auto crc=read<std::uint32_t>(b,p);(void)read<std::uint32_t>(b,p);
-    if(sz>aurora::media::kDefaultLimits.max_packet_bytes) throw std::runtime_error("stream packet size limit");
-    if(b.size()!=header_size+sz) throw std::runtime_error("stream size mismatch");
+    if(sz>aurora::media::kDefaultLimits.max_packet_bytes) throw aurora::media::AuroraMediaError(aurora::media::ErrorCode::ResourceLimit,"stream packet size limit");
+    if(b.size()!=header_size+sz) throw aurora::media::AuroraMediaError(aurora::media::ErrorCode::CorruptPacket,"stream size mismatch");
     out.payload.assign(b.begin()+static_cast<std::ptrdiff_t>(p),b.end());
-    if(aurora::media::crc32(out.payload.data(),out.payload.size())!=crc) throw std::runtime_error("stream CRC");
+    if(aurora::media::crc32(out.payload.data(),out.payload.size())!=crc) throw aurora::media::AuroraMediaError(aurora::media::ErrorCode::CrcMismatch,"stream CRC");
     return out;
 }
 
 void IncrementalParser::push(const std::uint8_t* data,std::size_t n){
     if(n>max_buffer_bytes_ || buffer_.size()>max_buffer_bytes_-n)
-        throw std::runtime_error("stream buffer limit");
+        throw aurora::media::AuroraMediaError(aurora::media::ErrorCode::ResourceLimit,"stream buffer limit");
     buffer_.insert(buffer_.end(),data,data+n);
 }
 std::optional<Packet> IncrementalParser::pop(){
     if(buffer_.size()<header_size) return std::nullopt;
     std::size_t p=28; // size field offset in AUS1 v1
     std::uint32_t sz=0;for(int i=0;i<4;++i)sz|=std::uint32_t(buffer_[p+i])<<(8*i);
-    if(sz>aurora::media::kDefaultLimits.max_packet_bytes) throw std::runtime_error("stream packet size limit");
+    if(sz>aurora::media::kDefaultLimits.max_packet_bytes) throw aurora::media::AuroraMediaError(aurora::media::ErrorCode::ResourceLimit,"stream packet size limit");
     const std::size_t total=header_size+sz;
     if(buffer_.size()<total) return std::nullopt;
     std::vector<std::uint8_t> one(buffer_.begin(),buffer_.begin()+static_cast<std::ptrdiff_t>(total));
@@ -62,7 +62,7 @@ std::optional<Packet> IncrementalParser::pop(){
 }
 Packet OrderedReceiver::accept(const std::vector<std::uint8_t>& wire){
     auto p=decode(wire);
-    if(p.sequence!=next_) throw std::runtime_error("stream sequence gap");
+    if(p.sequence!=next_) throw aurora::media::AuroraMediaError(aurora::media::ErrorCode::SequenceGap,"stream sequence gap");
     ++next_; return p;
 }
 
