@@ -1,0 +1,43 @@
+name: AURORA Native 4K Smoke Benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["research/khepri-stream-codec"]
+    paths:
+      - "benchmarks/major_codecs/aurora_native_4k_smoke.cpp"
+      - "src/cpp/aurora_media/AuroraVideoMotion.*"
+      - "src/cpp/aurora_media/AuroraVideoResidual.*"
+      - "src/cpp/aurora_media/AuroraKhepriExp37MemoryAdapter.*"
+      - "src/cpp/aurora_media/AuroraVideoTilePlanner.h"
+      - "src/cpp/aurora_media/AuroraVideoProfiles.h"
+      - ".github/workflows/aurora_native_4k_smoke.yml"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+      - name: Generate EXP-37A source
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          python3 make_exp37_source.py
+      - name: Build native 4K smoke benchmark
+        run: |
+          g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY             -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3             -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 -pthread             src/cpp/aurora_media/AuroraKhepriExp37MemoryAdapter.cpp             src/cpp/aurora_media/AuroraVideoMotion.cpp             src/cpp/aurora_media/AuroraVideoResidual.cpp             benchmarks/major_codecs/aurora_native_4k_smoke.cpp             -Isrc/cpp/aurora_media -o aurora_native_4k_smoke
+      - name: Run native 4K smoke benchmark
+        run: |
+          ./aurora_native_4k_smoke 3 | tee native_4k_smoke.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-native-4k-smoke
+          path: native_4k_smoke.txt
