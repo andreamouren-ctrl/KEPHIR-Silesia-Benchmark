@@ -6,13 +6,10 @@ on:
     branches:
       - "research/khepri-stream-codec"
     paths:
-      - "streaming/aurora_media_container_v01.py"
-      - "streaming/aurora_media_codec_v01.py"
-      - "streaming/aurora_media_av_v01.py"
-      - "streaming/aurora_converter_v01.py"
-      - "streaming/aurora_player_core_v01.py"
-      - "streaming/aurora_stream_protocol_v01.py"
-      - "streaming/test_aurora_media_v01.py"
+      - "src/python/reference/**"
+      - "research/audio/**"
+      - "research/video/**"
+      - "tests/python/test_aurora_media_end_to_end.py"
       - ".github/workflows/aurora_media_v01.yml"
 
 jobs:
@@ -35,17 +32,30 @@ jobs:
           python3 make_exp31_source.py
           python3 make_exp33_source.py
           python3 make_exp37_source.py
-          g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY             -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 -DK2_DIST_TOPO_MODE=8             -DK2_DUAL_MATCH_MODE=1 -pthread KEPHIR_2_EXP37_DUAL_MATCH.cpp -o kephir37
+          g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY \
+            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 -DK2_DIST_TOPO_MODE=8 \
+            -DK2_DUAL_MATCH_MODE=1 -pthread KEPHIR_2_EXP37_DUAL_MATCH.cpp -o kephir37
 
-      - name: Compile Python modules
+      - name: Compile canonical Python modules
+        env:
+          PYTHONPATH: src/python/reference:research/audio/lab:research/audio/experiments:research/video/lab:research/video/experiments:research/backend
         run: |
-          python3 -m py_compile             streaming/aurora_media_container_v01.py             streaming/aurora_media_codec_v01.py             streaming/aurora_media_av_v01.py             streaming/aurora_converter_v01.py             streaming/aurora_player_core_v01.py             streaming/aurora_stream_protocol_v01.py             streaming/test_aurora_media_v01.py
+          python3 -m py_compile \
+            src/python/reference/aurora_media_container.py \
+            src/python/reference/aurora_media_codec_bridge.py \
+            src/python/reference/aurora_media_pipeline.py \
+            src/python/reference/aurora_media_converter.py \
+            src/python/reference/aurora_media_session_reference.py \
+            src/python/reference/aurora_stream_protocol.py \
+            tests/python/test_aurora_media_end_to_end.py
 
-      - name: Run end-to-end native AURORA Media test
+      - name: Run canonical end-to-end backend test
+        env:
+          PYTHONPATH: src/python/reference:research/audio/lab:research/audio/experiments:research/video/lab:research/video/experiments:research/backend
         run: |
-          PYTHONPATH=streaming python3 streaming/test_aurora_media_v01.py --kephir ./kephir37
+          python3 tests/python/test_aurora_media_end_to_end.py --kephir ./kephir37
 
       - uses: actions/upload-artifact@v4
         with:
           name: aurora-media-v01-test-results
-          path: streaming/AURORA_MEDIA_V01_TEST_RESULTS.json
+          path: results/backend/AURORA_MEDIA_V01_TEST_RESULTS.json
