@@ -2,15 +2,11 @@ name: KHEPRI Stream KSV-05 Routing Span Sweep
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - "research/khepri-stream-codec"
-    paths:
-      - "streaming/ksv05_adaptive_gop_router.py"
-      - ".github/workflows/khepri_stream_ksv05_span.yml"
 
 jobs:
   span:
+    env:
+      PYTHONPATH: research/video/lab:research/video/experiments:research/video/diagnostics:research/audio/lab:research/audio/experiments:research/backend:src/python/reference
     runs-on: ubuntu-latest
     timeout-minutes: 150
     strategy:
@@ -42,7 +38,7 @@ jobs:
           ffmpeg -hide_banner -loglevel error -y -i bus.y4m -pix_fmt yuv420p -f rawvideo bus.yuv
       - name: Run span
         run: |
-          python3 streaming/ksv05_adaptive_gop_router.py             --kephir ./kephir37             --route-span ${{ matrix.route_span }}             --clip akiyo:akiyo.yuv:176:144:30000:1001:10             --clip foreman:foreman.yuv:176:144:30000:1001:10             --clip bus:bus.yuv:176:144:15:1:10
+          python3 research/video/experiments/ksv05_adaptive_gop_router.py             --kephir ./kephir37             --route-span ${{ matrix.route_span }}             --clip akiyo:akiyo.yuv:176:144:30000:1001:10             --clip foreman:foreman.yuv:176:144:30000:1001:10             --clip bus:bus.yuv:176:144:15:1:10
       - uses: actions/upload-artifact@v4
         with:
           name: khepri-stream-ksv05-span-${{ matrix.route_span }}
