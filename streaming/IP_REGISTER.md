@@ -24,6 +24,9 @@ The following are explicitly treated as known/background:
 - reversible stereo decorrelation / mid-side style transforms;
 - Golomb/Rice-style residual coding;
 - generic bit-plane coding;
+- generic residual sign/magnitude separation;
+- fixed byte-plane transposition of sample/residual words;
+- generic raster/sample reordering before dictionary compression;
 - generic spatial and temporal prediction in video;
 - generic motion-compensated prediction;
 - generic transform + quantization coding.
@@ -32,7 +35,10 @@ Prior-art anchors already identified include:
 - US8050915B2 / US8032368B2: block switching and adaptive linear prediction for lossless audio;
 - EP1859531A4: predictor + residual + entropy coding and inter-channel correlation for lossless audio;
 - US6356213B1: cascaded/adaptive prediction for lossless encoding;
-- RFC 9639 (FLAC): fixed/linear predictors and residual coding.
+- RFC 9639 (FLAC): fixed/linear predictors, folded residuals and Rice residual coding;
+- US8386271B2: residual decomposition including bit-plane coding;
+- EP2487798A1: sample-bit alignment/reformatting to improve dictionary compression of audio/image data;
+- US6668093B2: reordering raster data to improve dictionary-based compression.
 
 These references are not exhaustive.
 
@@ -80,6 +86,28 @@ A novelty/inventive-step search must specifically investigate:
 - plane-wise residual serialization designed for a specific dictionary-distance model.
 
 Until that search is complete, documentation must say “candidate IP” or “proprietary research mechanism”, never “patented” or “patentable”.
+
+### Prior-art narrowing after KS-04
+
+KS-04 showed that 256-position magnitude planes materially improve EXP-33H. However, the prior-art search also found earlier disclosures of bit-plane residual decomposition, sample-bit alignment for dictionary coding, and raster reordering for dictionary coding. Therefore **fixed KMRL plane serialization by itself is not treated as the core invention**.
+
+The candidate IP is narrowed to a more KHEPRI-specific mechanism:
+
+## Candidate IP family KS-TA — Topology-Adaptive Residual Arrangement
+
+Working name: **KHEPRI Topology-Adaptive Residual Permutation (KTARP)**.
+
+For each reversible residual tile/plane, the encoder evaluates a bounded family of reversible arrangements and selects an arrangement using a cost function derived from the *actual favored distance topology of the downstream KHEPRI backend*, including neighborhoods around 16 and 256. The arrangement identifier is transmitted so decoding remains deterministic.
+
+The research distinction to test is not generic reordering. It is the closed-loop coupling of:
+
+1. a media residual field;
+2. a finite reversible permutation family;
+3. a compressor-specific distance-affinity objective;
+4. the exact distance neighborhoods modeled by the downstream KHEPRI parser/coder;
+5. chunk-local deterministic selection compatible with streaming recovery.
+
+KS-05 must compare fixed FULL256 against topology-adaptive arrangements. If no measurable improvement occurs, KS-TA is not promoted.
 
 ## Disclosure discipline
 
