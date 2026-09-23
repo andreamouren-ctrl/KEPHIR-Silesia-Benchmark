@@ -170,3 +170,30 @@ Do not interpret current timing as the final expected AURORA speed.
    - adaptive state horizon for audio;
    - stronger motion/residual representation for video;
    - removal of Python/subprocess overhead for speed.
+
+
+## KSV-08 promoted full-stack update
+
+Validation:
+- AURORA end-to-end after KSV-08 promotion: PASS
+- Full-stack benchmark run: 35850141176
+
+Final AUM video sizes:
+- Akiyo: **2,131,998 bytes**
+- Foreman: **5,755,488 bytes**
+- Bus: **1,841,546 bytes**
+- Aggregate: **9,729,032 bytes**
+
+Previous full-AUM KSV-05 aggregate:
+- 9,787,973 bytes
+
+Improvement:
+- **58,941 bytes**
+- **-0.602%**
+
+FFV1 aggregate remains:
+- 10,357,351 bytes
+
+Current AURORA full-AUM aggregate is approximately **6.07% smaller than FFV1** on this three-clip diagnostic corpus.
+
+The improvement survives complete AUM packetization, CRC and indexing, so KSV-08 is promoted as the active video codec bridge baseline.
