@@ -2447,7 +2447,7 @@ Long-lived engineering documentation:
 docs/
 ```
 
-The historical `streaming/` tree is compatibility-only and must not receive new production code.
+The former `streaming/` implementation tree has been fully migrated and removed from the tracked repository. Historical versions remain available through Git history.
 
 ## 79. Naming rule
 
