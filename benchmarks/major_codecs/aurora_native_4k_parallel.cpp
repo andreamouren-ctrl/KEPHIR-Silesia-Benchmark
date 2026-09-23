@@ -156,7 +156,7 @@ static RunResult run_once(std::uint32_t workers,
         std::chrono::duration<double>(dec1-dec0).count(),
         std::chrono::duration<double>(wall1-wall0).count(),
         packed_bytes.load(std::memory_order_relaxed),
-        reconstructed==cur
+        reconstructed.size()==cur.size() && std::equal(reconstructed.begin(),reconstructed.end(),cur.begin())
     };
 }
 
