@@ -71,6 +71,16 @@ jobs:
         run: |
           ./aurora_corruption_matrix_test corruption_matrix_out
 
+      - name: Build in-process KHEPRI contract test
+        run: |
+          g++ -O2 -std=c++20 -Wall -Wextra -Werror \
+            tests/cpp/test_aurora_khepri_backend.cpp \
+            -Isrc/cpp/aurora_media -o aurora_khepri_contract_test
+
+      - name: In-process KHEPRI contract
+        run: |
+          ./aurora_khepri_contract_test
+
       - name: Python/C++ binary interop
         env:
           PYTHONPATH: src/python/reference
