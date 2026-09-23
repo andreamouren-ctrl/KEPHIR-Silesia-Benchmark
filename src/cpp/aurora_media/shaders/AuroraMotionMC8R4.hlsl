@@ -21,6 +21,8 @@ static const int2 MotionCandidates[25] = {
     int2(-4,-4), int2(4,-4), int2(-4,4), int2(4,4)
 };
 
+groupshared uint CandidateCost[32];
+
 uint LoadByte(ByteAddressBuffer b, uint index)
 {
     uint word = b.Load(index & ~3u);
@@ -28,52 +30,64 @@ uint LoadByte(ByteAddressBuffer b, uint index)
     return (word >> shift) & 0xffu;
 }
 
-[numthreads(8, 8, 1)]
-void main(uint3 tid : SV_DispatchThreadID)
+[numthreads(32, 1, 1)]
+void main(uint3 gid : SV_GroupID, uint3 gtid : SV_GroupThreadID)
 {
-    uint bxBlock = tid.x;
-    uint byBlock = tid.y;
+    uint bxBlock = gid.x;
+    uint byBlock = gid.y;
+    uint ci = gtid.x;
+
     if (bxBlock >= BlocksX || byBlock >= BlocksY)
         return;
 
-    uint bx = bxBlock * 8u;
-    uint by = byBlock * 8u;
+    uint cost = 0xffffffffu;
 
-    uint bestIndex = 0u;
-    uint bestCost = 0xffffffffu;
-    bool found = false;
-
-    [loop]
-    for (uint ci = 0u; ci < 25u; ++ci)
+    if (ci < 25u)
     {
+        uint bx = bxBlock * 8u;
+        uint by = byBlock * 8u;
         int2 mv = MotionCandidates[ci];
         int sx = int(bx) + mv.x;
         int sy = int(by) + mv.y;
 
-        if (sx < 0 || sy < 0 ||
-            sx + 8 > int(Width) || sy + 8 > int(Height))
-            continue;
-
-        uint cost = 0u;
-        [unroll]
-        for (uint yy = 0u; yy < 8u; ++yy)
+        if (sx >= 0 && sy >= 0 &&
+            sx + 8 <= int(Width) && sy + 8 <= int(Height))
         {
+            cost = 0u;
             [unroll]
-            for (uint xx = 0u; xx < 8u; ++xx)
+            for (uint yy = 0u; yy < 8u; ++yy)
             {
-                uint a = LoadByte(CurrentY, (by + yy) * Width + (bx + xx));
-                uint b = LoadByte(PreviousY, uint(sy + int(yy)) * Width + uint(sx + int(xx)));
-                cost += (a > b) ? (a - b) : (b - a);
+                [unroll]
+                for (uint xx = 0u; xx < 8u; ++xx)
+                {
+                    uint a = LoadByte(CurrentY, (by + yy) * Width + (bx + xx));
+                    uint b = LoadByte(PreviousY,
+                        uint(sy + int(yy)) * Width + uint(sx + int(xx)));
+                    cost += (a > b) ? (a - b) : (b - a);
+                }
             }
-        }
-
-        if (!found || cost < bestCost || (cost == bestCost && ci < bestIndex))
-        {
-            found = true;
-            bestCost = cost;
-            bestIndex = ci;
         }
     }
 
-    MotionOut.Store((byBlock * BlocksX + bxBlock) * 4u, (bestCost << 8u) | bestIndex);
+    CandidateCost[ci] = cost;
+    GroupMemoryBarrierWithGroupSync();
+
+    if (ci == 0u)
+    {
+        uint bestIndex = 0u;
+        uint bestCost = 0xffffffffu;
+
+        [unroll]
+        for (uint i = 0u; i < 25u; ++i)
+        {
+            uint c = CandidateCost[i];
+            if (c < bestCost)
+            {
+                bestCost = c;
+                bestIndex = i;
+            }
+        }
+
+        MotionOut.Store((byBlock * BlocksX + bxBlock) * 4u, bestIndex);
+    }
 }
