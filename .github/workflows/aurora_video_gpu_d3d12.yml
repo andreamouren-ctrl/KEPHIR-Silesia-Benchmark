@@ -10,6 +10,7 @@ on:
       - "src/cpp/aurora_media/shaders/**"
       - "tests/cpp/test_aurora_video_gpu_d3d12.cpp"
       - "tests/cpp/test_aurora_video_gpu_interframe_e2e_d3d12.cpp"
+      - "tests/cpp/benchmark_aurora_video_cpu_d3d12.cpp"
       - ".github/workflows/aurora_video_gpu_d3d12.yml"
 
 jobs:
@@ -89,6 +90,23 @@ jobs:
       - name: Run D3D12 inter-frame end-to-end lossless gate
         shell: cmd
         run: aurora_video_gpu_interframe_e2e_test.exe
+
+      - name: Build CPU vs D3D12 pipeline benchmark
+        shell: cmd
+        run: >
+          cl /nologo /EHsc /std:c++20 /O2
+          /DAURORA_SHADER_DIR=L\"src/cpp/aurora_media/shaders\"
+          src/cpp/aurora_media/AuroraVideoMotion.cpp
+          src/cpp/aurora_media/AuroraVideoCompute.cpp
+          src/cpp/aurora_media/AuroraVideoComputeD3D12.cpp
+          tests/cpp/benchmark_aurora_video_cpu_d3d12.cpp
+          /Isrc/cpp/aurora_media
+          /Fe:aurora_video_cpu_d3d12_benchmark.exe
+          d3d12.lib dxgi.lib d3dcompiler.lib
+
+      - name: Run CPU vs D3D12 pipeline benchmark
+        shell: cmd
+        run: aurora_video_cpu_d3d12_benchmark.exe
 
 # GPU equivalence gate
 
