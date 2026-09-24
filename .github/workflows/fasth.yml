@@ -3,8 +3,8 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "make_fasth_source.py"
-      - "fasth_ab.py"
+      - "research/generators/speed/make_fasth_source.py"
+      - "research/speed/fasth_ab.py"
       - ".github/workflows/fasth.yml"
 jobs:
   bench:
@@ -19,17 +19,17 @@ jobs:
       - name: Build
         run: |
           cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
-          python3 make_exp26_source.py
-          python3 make_exp27_source.py
-          python3 make_exp31_source.py
-          python3 make_exp33_source.py
-          python3 make_exp37_source.py
-          python3 make_exp38_source.py
-          python3 make_exp39_source.py
-          K2_CHAIN_DEPTH_VALUE=24 K2_LAZY_DEPTH_VALUE=12 K2_PRED_MASK_VALUE=255 python3 make_speed1_source.py
-          python3 make_fastd_source.py
+          python3 research/generators/general/make_exp26_source.py
+          python3 research/generators/general/make_exp27_source.py
+          python3 research/generators/general/make_exp31_source.py
+          python3 research/generators/general/make_exp33_source.py
+          python3 research/generators/general/make_exp37_source.py
+          python3 research/generators/general/make_exp38_source.py
+          python3 research/generators/general/make_exp39_source.py
+          K2_CHAIN_DEPTH_VALUE=24 K2_LAZY_DEPTH_VALUE=12 K2_PRED_MASK_VALUE=255 python3 research/generators/speed/make_speed1_source.py
+          python3 research/generators/speed/make_fastd_source.py
           cp KEPHIR_SPEED_D_SOURCE.cpp FASTD.cpp
-          python3 make_fasth_source.py
+          python3 research/generators/speed/make_fasth_source.py
           for X in d h; do SRC=FASTD.cpp; [ "$X" = h ] && SRC=KEPHIR_FAST_H.cpp; g++ -O3 -march=native -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=0 -DK2_PSG_MODE=0 -DK2_DIST_TOPO_MODE=0 -DK2_DUAL_MATCH_MODE=0 -DK2_FUSED_MATCH_MODE=0 -DK2_FUSED2_MODE=0 -pthread $SRC -o fast_$X; done
       - name: Silesia
         run: |
@@ -37,4 +37,4 @@ jobs:
           mkdir silesia
           unzip -q silesia.zip -d silesia
       - name: A-B
-        run: python3 fasth_ab.py
+        run: python3 research/speed/fasth_ab.py
