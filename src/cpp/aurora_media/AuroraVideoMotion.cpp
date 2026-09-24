@@ -82,6 +82,42 @@ MotionResidual AuroraVideoMotion::encode_mc8r4(ByteView cur,ByteView prev,
     return encode_mc8r4_limited(cur,prev,w,h,25);
 }
 
+double AuroraVideoMotion::sparse_luma_mad(ByteView cur,ByteView prev,
+                                        std::uint32_t w,std::uint32_t h,
+                                        std::uint32_t sample_step) {
+    if(w==0 || h==0 || sample_step==0)
+        throw AuroraMediaError(ErrorCode::InvalidArgument,"sparse MAD invalid geometry");
+    const auto fs=frame_size(w,h);
+    if(cur.size()!=fs || prev.size()!=fs)
+        throw AuroraMediaError(ErrorCode::InvalidArgument,"sparse MAD frame size mismatch");
+
+    std::uint64_t sum=0;
+    std::uint64_t count=0;
+    for(std::uint32_t y=0;y<h;y+=sample_step) {
+        const auto row=static_cast<std::size_t>(y)*w;
+        for(std::uint32_t x=0;x<w;x+=sample_step) {
+            sum += static_cast<std::uint64_t>(
+                std::abs(static_cast<int>(cur[row+x])-static_cast<int>(prev[row+x])));
+            ++count;
+        }
+    }
+    return count ? static_cast<double>(sum)/static_cast<double>(count) : 0.0;
+}
+
+MotionResidual AuroraVideoMotion::encode_mc8r4_adaptive(ByteView cur,ByteView prev,
+                                                        std::uint32_t w,std::uint32_t h,
+                                                        double low_motion_threshold,
+                                                        std::size_t low_motion_candidates) {
+    if(low_motion_threshold<0.0)
+        throw AuroraMediaError(ErrorCode::InvalidArgument,"adaptive threshold must be non-negative");
+    if(low_motion_candidates==0 || low_motion_candidates>25)
+        throw AuroraMediaError(ErrorCode::InvalidArgument,"adaptive candidate count must be 1..25");
+
+    const auto activity=sparse_luma_mad(cur,prev,w,h,8);
+    const auto limit=activity<=low_motion_threshold ? low_motion_candidates : 25u;
+    return encode_mc8r4_limited(cur,prev,w,h,limit);
+}
+
 MotionResidual AuroraVideoMotion::encode_mc8r4_limited(ByteView cur,ByteView prev,
                                                        std::uint32_t w,std::uint32_t h,
                                                        std::size_t max_candidates) {

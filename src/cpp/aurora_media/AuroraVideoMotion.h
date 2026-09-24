@@ -32,6 +32,19 @@ public:
                                                std::uint32_t height,
                                                std::size_t max_candidates);
 
+    static double sparse_luma_mad(ByteView current_yuv420,
+                                  ByteView previous_yuv420,
+                                  std::uint32_t width,
+                                  std::uint32_t height,
+                                  std::uint32_t sample_step = 8);
+
+    static MotionResidual encode_mc8r4_adaptive(ByteView current_yuv420,
+                                                ByteView previous_yuv420,
+                                                std::uint32_t width,
+                                                std::uint32_t height,
+                                                double low_motion_threshold = 4.0,
+                                                std::size_t low_motion_candidates = 9);
+
     static Bytes decode_mc8r4(ByteView motion_map,
                              ByteView residual_yuv420,
                              ByteView previous_yuv420,
