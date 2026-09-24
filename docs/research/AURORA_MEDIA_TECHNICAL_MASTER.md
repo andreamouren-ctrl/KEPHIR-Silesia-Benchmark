@@ -2,7 +2,7 @@
 
 **Project:** AURORA Media  
 **Compression engine:** KHEPRI  
-**Repository branch:** `research/khepri-stream-codec`  
+**Repository branch:** `project/aurora-media`  
 **Document role:** canonical technical/scientific reconstruction of the audio-video codec research and backend work  
 **Status:** living engineering document  
 **Date:** 2026-09-23
@@ -2400,16 +2400,16 @@ Potentially distinctive areas worth prior-art review include the interaction amo
 ## 77. Canonical branch roles
 
 ```text
-main
-    general KHEPRI/Silesia research lineage
+project/aurora-compressor
+    AURORA Compressor / KHEPRI general-purpose, Silesia, EXP and FAST research
 
-research/khepri-stream-codec
+project/aurora-media
     AURORA Media audio/video backend, container, stream and media research
 ```
 
-Do not merge experimental media code into `main` merely for convenience.
+Do not mix media product code into `project/aurora-compressor` merely for convenience.
 
-Do not copy general-purpose experimental files into the media production source tree.
+The media branch retains only the minimal KHEPRI build kit under `engine/khepri/`; broader general-purpose EXP/FAST/Silesia research belongs to `project/aurora-compressor`.
 
 ## 78. Canonical source locations
 
