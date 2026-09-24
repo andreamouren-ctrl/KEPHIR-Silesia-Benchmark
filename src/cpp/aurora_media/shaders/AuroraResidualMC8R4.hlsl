@@ -9,7 +9,7 @@ cbuffer Params : register(b0)
 Buffer<uint> Current : register(t0);
 Buffer<uint> Previous : register(t1);
 Buffer<uint> MotionMap : register(t2);
-RWStructuredBuffer<uint> ResidualOut : register(u0);
+RWByteAddressBuffer ResidualOut : register(u0);
 
 static const int2 MotionCandidates[25] = {
     int2(0,0),
@@ -22,12 +22,8 @@ static const int2 MotionCandidates[25] = {
     int2(-4,-4), int2(4,-4), int2(-4,4), int2(4,4)
 };
 
-[numthreads(256,1,1)]
-void main(uint3 tid : SV_DispatchThreadID)
+uint residual_at(uint index)
 {
-    uint index=tid.x;
-    if(index>=FrameBytes) return;
-
     uint yBytes=Width*Height;
     uint chromaWidth=Width/2u;
     uint chromaHeight=Height/2u;
@@ -80,5 +76,17 @@ void main(uint3 tid : SV_DispatchThreadID)
     uint b=Previous[prevIndex];
     uint residual=(a-b)&255u;
 
-    ResidualOut[index]=residual;
+    return residual;
+}
+
+[numthreads(256,1,1)]
+void main(uint3 tid : SV_DispatchThreadID)
+{
+    uint base=tid.x*4u;
+    if(base>=FrameBytes) return;
+    uint packed=residual_at(base);
+    if(base+1u<FrameBytes) packed|=residual_at(base+1u)<<8u;
+    if(base+2u<FrameBytes) packed|=residual_at(base+2u)<<16u;
+    if(base+3u<FrameBytes) packed|=residual_at(base+3u)<<24u;
+    ResidualOut.Store(base,packed);
 }

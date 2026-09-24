@@ -9,7 +9,7 @@ cbuffer Params : register(b0)
 Buffer<uint> Previous : register(t0);
 Buffer<uint> Residual : register(t1);
 Buffer<uint> MotionMap : register(t2);
-RWStructuredBuffer<uint> ReconstructedOut : register(u0);
+RWByteAddressBuffer ReconstructedOut : register(u0);
 
 static const int2 MotionCandidates[25] = {
     int2(0,0),
@@ -22,12 +22,8 @@ static const int2 MotionCandidates[25] = {
     int2(-4,-4), int2(4,-4), int2(-4,4), int2(4,4)
 };
 
-[numthreads(256,1,1)]
-void main(uint3 tid : SV_DispatchThreadID)
+uint reconstruct_at(uint index)
 {
-    uint index=tid.x;
-    if(index>=FrameBytes) return;
-
     uint yBytes=Width*Height;
     uint chromaWidth=Width/2u;
     uint chromaHeight=Height/2u;
@@ -76,5 +72,17 @@ void main(uint3 tid : SV_DispatchThreadID)
 
     uint prevIndex=planeOffset+uint(int(y)+dy)*stride+uint(int(x)+dx);
     uint reconstructed=(Previous[prevIndex]+Residual[index])&255u;
-    ReconstructedOut[index]=reconstructed;
+    return reconstructed;
+}
+
+[numthreads(256,1,1)]
+void main(uint3 tid : SV_DispatchThreadID)
+{
+    uint base=tid.x*4u;
+    if(base>=FrameBytes) return;
+    uint packed=reconstruct_at(base);
+    if(base+1u<FrameBytes) packed|=reconstruct_at(base+1u)<<8u;
+    if(base+2u<FrameBytes) packed|=reconstruct_at(base+2u)<<16u;
+    if(base+3u<FrameBytes) packed|=reconstruct_at(base+3u)<<24u;
+    ReconstructedOut.Store(base,packed);
 }

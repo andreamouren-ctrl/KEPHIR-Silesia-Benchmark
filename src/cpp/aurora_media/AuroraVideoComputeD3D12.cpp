@@ -83,6 +83,28 @@ void upload(ID3D12Resource* r,const void* src,std::size_t n) {
 }
 
 class D3D12VideoMotionCompute final : public IVideoMotionCompute {
+    struct ThreeInputCache {
+        std::size_t frame_bytes{};
+        std::size_t block_count{};
+        std::array<ComPtr<ID3D12Resource>,3> upload;
+        std::array<ComPtr<ID3D12Resource>,3> input;
+        ComPtr<ID3D12Resource> output;
+        ComPtr<ID3D12Resource> readback;
+        ComPtr<ID3D12DescriptorHeap> heap;
+        bool has_completed_work{};
+    };
+
+    struct MotionCache {
+        std::size_t y_bytes{};
+        std::size_t out_bytes{};
+        std::array<ComPtr<ID3D12Resource>,2> upload;
+        std::array<ComPtr<ID3D12Resource>,2> input;
+        ComPtr<ID3D12Resource> output;
+        ComPtr<ID3D12Resource> readback;
+        ComPtr<ID3D12DescriptorHeap> heap;
+        bool has_completed_work{};
+    };
+
 public:
     explicit D3D12VideoMotionCompute(bool forceWarp) {
         UINT flags=0;
@@ -163,87 +185,68 @@ public:
         const std::size_t blockCount=static_cast<std::size_t>(blocksX)*blocksY;
         const std::size_t outBytes=blockCount*sizeof(std::uint32_t);
 
-        auto curUpload=make_buffer(device_.Get(),yBytes,D3D12_HEAP_TYPE_UPLOAD,
-                                   D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_GENERIC_READ);
-        auto prevUpload=make_buffer(device_.Get(),yBytes,D3D12_HEAP_TYPE_UPLOAD,
-                                    D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_GENERIC_READ);
-        auto curBuf=make_buffer(device_.Get(),yBytes,D3D12_HEAP_TYPE_DEFAULT,
-                                D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_COPY_DEST);
-        auto prevBuf=make_buffer(device_.Get(),yBytes,D3D12_HEAP_TYPE_DEFAULT,
-                                 D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_COPY_DEST);
-        auto outBuf=make_buffer(device_.Get(),outBytes,D3D12_HEAP_TYPE_DEFAULT,
-                                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                                D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        auto readback=make_buffer(device_.Get(),outBytes,D3D12_HEAP_TYPE_READBACK,
-                                  D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_COPY_DEST);
-
-        D3D12_DESCRIPTOR_HEAP_DESC hd{};
-        hd.Type=D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-        hd.NumDescriptors=2;
-        hd.Flags=D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-        ComPtr<ID3D12DescriptorHeap> srvHeap;
-        check(device_->CreateDescriptorHeap(&hd,IID_PPV_ARGS(&srvHeap)),"CreateDescriptorHeap");
-
-        const auto inc=device_->GetDescriptorHandleIncrementSize(
-            D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-        auto cpu0=srvHeap->GetCPUDescriptorHandleForHeapStart();
-
-        D3D12_SHADER_RESOURCE_VIEW_DESC sd{};
-        sd.Format=DXGI_FORMAT_R8_UINT;
-        sd.ViewDimension=D3D12_SRV_DIMENSION_BUFFER;
-        sd.Shader4ComponentMapping=D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-        sd.Buffer.FirstElement=0;
-        sd.Buffer.NumElements=static_cast<UINT>(yBytes);
-        sd.Buffer.StructureByteStride=0;
-        sd.Buffer.Flags=D3D12_BUFFER_SRV_FLAG_NONE;
-
-        device_->CreateShaderResourceView(curBuf.Get(),&sd,cpu0);
-        auto cpu1=cpu0;
-        cpu1.ptr+=inc;
-        device_->CreateShaderResourceView(prevBuf.Get(),&sd,cpu1);
-
-        upload(curUpload.Get(),cur.data(),yBytes);
-        upload(prevUpload.Get(),prev.data(),yBytes);
+        ensure_motion_cache(yBytes,outBytes);
+        auto& cache=motion_cache_;
+        const auto inc=device_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        upload(cache.upload[0].Get(),cur.data(),yBytes);
+        upload(cache.upload[1].Get(),prev.data(),yBytes);
 
         check(allocator_->Reset(),"Allocator Reset");
         check(command_list_->Reset(allocator_.Get(),pso_.Get()),"CommandList Reset");
 
-        command_list_->CopyBufferRegion(curBuf.Get(),0,curUpload.Get(),0,yBytes);
-        command_list_->CopyBufferRegion(prevBuf.Get(),0,prevUpload.Get(),0,yBytes);
-
         D3D12_RESOURCE_BARRIER inputBarriers[2]{};
-        inputBarriers[0].Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        inputBarriers[0].Transition.pResource=curBuf.Get();
-        inputBarriers[0].Transition.StateBefore=D3D12_RESOURCE_STATE_COPY_DEST;
-        inputBarriers[0].Transition.StateAfter=D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        inputBarriers[0].Transition.Subresource=D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-        inputBarriers[1]=inputBarriers[0];
-        inputBarriers[1].Transition.pResource=prevBuf.Get();
+        for(int i=0;i<2;++i) {
+            inputBarriers[i].Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            inputBarriers[i].Transition.pResource=cache.input[i].Get();
+            inputBarriers[i].Transition.StateBefore=cache.has_completed_work
+                ? D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+                : D3D12_RESOURCE_STATE_COPY_DEST;
+            inputBarriers[i].Transition.StateAfter=D3D12_RESOURCE_STATE_COPY_DEST;
+            inputBarriers[i].Transition.Subresource=D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        }
+        if(cache.has_completed_work)
+            command_list_->ResourceBarrier(2,inputBarriers);
+        command_list_->CopyBufferRegion(cache.input[0].Get(),0,cache.upload[0].Get(),0,yBytes);
+        command_list_->CopyBufferRegion(cache.input[1].Get(),0,cache.upload[1].Get(),0,yBytes);
+        for(int i=0;i<2;++i) {
+            inputBarriers[i].Transition.StateBefore=D3D12_RESOURCE_STATE_COPY_DEST;
+            inputBarriers[i].Transition.StateAfter=D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        }
         command_list_->ResourceBarrier(2,inputBarriers);
 
-        ID3D12DescriptorHeap* heaps[]{srvHeap.Get()};
+        if(cache.has_completed_work) {
+            D3D12_RESOURCE_BARRIER outputReset{};
+            outputReset.Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            outputReset.Transition.pResource=cache.output.Get();
+            outputReset.Transition.StateBefore=D3D12_RESOURCE_STATE_COPY_SOURCE;
+            outputReset.Transition.StateAfter=D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+            outputReset.Transition.Subresource=D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+            command_list_->ResourceBarrier(1,&outputReset);
+        }
+
+        ID3D12DescriptorHeap* heaps[]{cache.heap.Get()};
         command_list_->SetDescriptorHeaps(1,heaps);
         command_list_->SetComputeRootSignature(root_.Get());
 
         const std::array<std::uint32_t,4> constants{w,h,blocksX,blocksY};
         command_list_->SetComputeRoot32BitConstants(0,4,constants.data(),0);
-        auto gpu0=srvHeap->GetGPUDescriptorHandleForHeapStart();
+        auto gpu0=cache.heap->GetGPUDescriptorHandleForHeapStart();
         auto gpu1=gpu0;
         gpu1.ptr+=inc;
         command_list_->SetComputeRootDescriptorTable(1,gpu0);
         command_list_->SetComputeRootDescriptorTable(2,gpu1);
-        command_list_->SetComputeRootUnorderedAccessView(3,outBuf->GetGPUVirtualAddress());
+        command_list_->SetComputeRootUnorderedAccessView(3,cache.output->GetGPUVirtualAddress());
 
         command_list_->Dispatch(blocksX,blocksY,1);
 
         D3D12_RESOURCE_BARRIER barrier{};
         barrier.Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        barrier.Transition.pResource=outBuf.Get();
+        barrier.Transition.pResource=cache.output.Get();
         barrier.Transition.StateBefore=D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         barrier.Transition.StateAfter=D3D12_RESOURCE_STATE_COPY_SOURCE;
         barrier.Transition.Subresource=D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
         command_list_->ResourceBarrier(1,&barrier);
-        command_list_->CopyBufferRegion(readback.Get(),0,outBuf.Get(),0,outBytes);
+        command_list_->CopyBufferRegion(cache.readback.Get(),0,cache.output.Get(),0,outBytes);
         check(command_list_->Close(),"CommandList Close");
 
         ID3D12CommandList* lists[]{command_list_.Get()};
@@ -258,14 +261,15 @@ public:
 
         void* mapped=nullptr;
         D3D12_RANGE readRange{0,outBytes};
-        check(readback->Map(0,&readRange,&mapped),"Map readback");
+        check(cache.readback->Map(0,&readRange,&mapped),"Map readback");
         const auto* p=static_cast<const std::uint32_t*>(mapped);
         Bytes result(blockCount);
         for(std::size_t i=0;i<blockCount;++i) {
             result[i]=static_cast<Byte>(p[i] & 0xffu);
         }
         D3D12_RANGE noWrite{0,0};
-        readback->Unmap(0,&noWrite);
+        cache.readback->Unmap(0,&noWrite);
+        cache.has_completed_work=true;
         return result;
     }
 
@@ -282,101 +286,74 @@ public:
         if(cur.size()!=frameBytes||prev.size()!=frameBytes||motion.size()!=blockCount)
             throw AuroraMediaError(ErrorCode::InvalidArgument,"D3D12 residual input size mismatch");
 
-        auto make_upload=[&](const void* src,std::size_t bytes) {
-            auto r=make_buffer(device_.Get(),bytes,D3D12_HEAP_TYPE_UPLOAD,
-                               D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_GENERIC_READ);
-            upload(r.Get(),src,bytes);
-            return r;
-        };
-        auto make_gpu_input=[&](std::size_t bytes) {
-            return make_buffer(device_.Get(),bytes,D3D12_HEAP_TYPE_DEFAULT,
-                               D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_COPY_DEST);
-        };
-
-        auto curUpload=make_upload(cur.data(),frameBytes);
-        auto prevUpload=make_upload(prev.data(),frameBytes);
-        auto motionUpload=make_upload(motion.data(),blockCount);
-
-        auto curBuf=make_gpu_input(frameBytes);
-        auto prevBuf=make_gpu_input(frameBytes);
-        auto motionBuf=make_gpu_input(blockCount);
-
-        const std::size_t outBytes=frameBytes*sizeof(std::uint32_t);
-        auto outBuf=make_buffer(device_.Get(),outBytes,D3D12_HEAP_TYPE_DEFAULT,
-                                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                                D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        auto readback=make_buffer(device_.Get(),outBytes,D3D12_HEAP_TYPE_READBACK,
-                                  D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_COPY_DEST);
-
-        D3D12_DESCRIPTOR_HEAP_DESC hd{};
-        hd.Type=D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-        hd.NumDescriptors=3;
-        hd.Flags=D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-        ComPtr<ID3D12DescriptorHeap> heap;
-        check(device_->CreateDescriptorHeap(&hd,IID_PPV_ARGS(&heap)),"Residual CreateDescriptorHeap");
+        ensure_three_input_cache(residual_cache_,frameBytes,blockCount);
+        auto& cache=residual_cache_;
+        const std::size_t outBytes=frameBytes;
+        upload(cache.upload[0].Get(),cur.data(),frameBytes);
+        upload(cache.upload[1].Get(),prev.data(),frameBytes);
+        upload(cache.upload[2].Get(),motion.data(),blockCount);
         const auto inc=device_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-
-        auto create_r8_srv=[&](ID3D12Resource* resource,std::size_t elements,
-                               D3D12_CPU_DESCRIPTOR_HANDLE handle) {
-            D3D12_SHADER_RESOURCE_VIEW_DESC sd{};
-            sd.Format=DXGI_FORMAT_R8_UINT;
-            sd.ViewDimension=D3D12_SRV_DIMENSION_BUFFER;
-            sd.Shader4ComponentMapping=D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-            sd.Buffer.FirstElement=0;
-            sd.Buffer.NumElements=static_cast<UINT>(elements);
-            device_->CreateShaderResourceView(resource,&sd,handle);
-        };
-
-        auto cpu=heap->GetCPUDescriptorHandleForHeapStart();
-        create_r8_srv(curBuf.Get(),frameBytes,cpu);
-        cpu.ptr+=inc;
-        create_r8_srv(prevBuf.Get(),frameBytes,cpu);
-        cpu.ptr+=inc;
-        create_r8_srv(motionBuf.Get(),blockCount,cpu);
 
         check(residual_allocator_->Reset(),"Residual Allocator Reset");
         check(residual_command_list_->Reset(residual_allocator_.Get(),residual_pso_.Get()),
               "Residual CommandList Reset");
         auto* list=residual_command_list_.Get();
 
-        list->CopyBufferRegion(curBuf.Get(),0,curUpload.Get(),0,frameBytes);
-        list->CopyBufferRegion(prevBuf.Get(),0,prevUpload.Get(),0,frameBytes);
-        list->CopyBufferRegion(motionBuf.Get(),0,motionUpload.Get(),0,blockCount);
-
         D3D12_RESOURCE_BARRIER barriers[3]{};
-        ID3D12Resource* inputs[3]{curBuf.Get(),prevBuf.Get(),motionBuf.Get()};
+        ID3D12Resource* inputs[3]{cache.input[0].Get(),cache.input[1].Get(),cache.input[2].Get()};
         for(int i=0;i<3;++i) {
             barriers[i].Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
             barriers[i].Transition.pResource=inputs[i];
-            barriers[i].Transition.StateBefore=D3D12_RESOURCE_STATE_COPY_DEST;
-            barriers[i].Transition.StateAfter=D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+            barriers[i].Transition.StateBefore=cache.has_completed_work
+                ? D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+                : D3D12_RESOURCE_STATE_COPY_DEST;
+            barriers[i].Transition.StateAfter=D3D12_RESOURCE_STATE_COPY_DEST;
             barriers[i].Transition.Subresource=D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        }
+        if(cache.has_completed_work)
+            list->ResourceBarrier(3,barriers);
+        list->CopyBufferRegion(cache.input[0].Get(),0,cache.upload[0].Get(),0,frameBytes);
+        list->CopyBufferRegion(cache.input[1].Get(),0,cache.upload[1].Get(),0,frameBytes);
+        list->CopyBufferRegion(cache.input[2].Get(),0,cache.upload[2].Get(),0,blockCount);
+        for(int i=0;i<3;++i) {
+            barriers[i].Transition.StateAfter=D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+            barriers[i].Transition.StateBefore=D3D12_RESOURCE_STATE_COPY_DEST;
         }
         list->ResourceBarrier(3,barriers);
 
-        ID3D12DescriptorHeap* heaps[]{heap.Get()};
+        if(cache.has_completed_work) {
+            D3D12_RESOURCE_BARRIER outputReset{};
+            outputReset.Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            outputReset.Transition.pResource=cache.output.Get();
+            outputReset.Transition.StateBefore=D3D12_RESOURCE_STATE_COPY_SOURCE;
+            outputReset.Transition.StateAfter=D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+            outputReset.Transition.Subresource=D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+            list->ResourceBarrier(1,&outputReset);
+        }
+
+        ID3D12DescriptorHeap* heaps[]{cache.heap.Get()};
         list->SetDescriptorHeaps(1,heaps);
         list->SetComputeRootSignature(residual_root_.Get());
         const std::array<std::uint32_t,4> constants{
             w,h,static_cast<std::uint32_t>(frameBytes),w/8
         };
         list->SetComputeRoot32BitConstants(0,4,constants.data(),0);
-        auto gpu=heap->GetGPUDescriptorHandleForHeapStart();
+        auto gpu=cache.heap->GetGPUDescriptorHandleForHeapStart();
         for(int i=0;i<3;++i) {
             list->SetComputeRootDescriptorTable(i+1,gpu);
             gpu.ptr+=inc;
         }
-        list->SetComputeRootUnorderedAccessView(4,outBuf->GetGPUVirtualAddress());
-        list->Dispatch(static_cast<UINT>((frameBytes+255)/256),1,1);
+        list->SetComputeRootUnorderedAccessView(4,cache.output->GetGPUVirtualAddress());
+        list->Dispatch(static_cast<UINT>((((frameBytes+3)/4)+255)/256),1,1);
 
         D3D12_RESOURCE_BARRIER outBarrier{};
         outBarrier.Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        outBarrier.Transition.pResource=outBuf.Get();
+        outBarrier.Transition.pResource=cache.output.Get();
         outBarrier.Transition.StateBefore=D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         outBarrier.Transition.StateAfter=D3D12_RESOURCE_STATE_COPY_SOURCE;
         outBarrier.Transition.Subresource=D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
         list->ResourceBarrier(1,&outBarrier);
-        list->CopyBufferRegion(readback.Get(),0,outBuf.Get(),0,outBytes);
+        list->CopyBufferRegion(cache.readback.Get(),0,cache.output.Get(),0,outBytes);
         check(list->Close(),"Residual CommandList Close");
 
         ID3D12CommandList* lists[]{list};
@@ -390,13 +367,12 @@ public:
 
         void* mapped=nullptr;
         D3D12_RANGE rr{0,outBytes};
-        check(readback->Map(0,&rr,&mapped),"Residual Map readback");
-        const auto* u=static_cast<const std::uint32_t*>(mapped);
-        Bytes result(frameBytes);
-        for(std::size_t i=0;i<frameBytes;++i)
-            result[i]=static_cast<Byte>(u[i]&0xffu);
+        check(cache.readback->Map(0,&rr,&mapped),"Residual Map readback");
+        const auto* u=static_cast<const Byte*>(mapped);
+        Bytes result(u,u+frameBytes);
         D3D12_RANGE nw{0,0};
-        readback->Unmap(0,&nw);
+        cache.readback->Unmap(0,&nw);
+        cache.has_completed_work=true;
         return result;
     }
 
@@ -414,101 +390,74 @@ public:
         if(prev.size()!=frameBytes||residual.size()!=frameBytes||motion.size()!=blockCount)
             throw AuroraMediaError(ErrorCode::InvalidArgument,"D3D12 reconstruct input size mismatch");
 
-        auto make_upload=[&](const void* src,std::size_t bytes) {
-            auto r=make_buffer(device_.Get(),bytes,D3D12_HEAP_TYPE_UPLOAD,
-                               D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_GENERIC_READ);
-            upload(r.Get(),src,bytes);
-            return r;
-        };
-        auto make_gpu_input=[&](std::size_t bytes) {
-            return make_buffer(device_.Get(),bytes,D3D12_HEAP_TYPE_DEFAULT,
-                               D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_COPY_DEST);
-        };
-
-        auto prevUpload=make_upload(prev.data(),frameBytes);
-        auto residualUpload=make_upload(residual.data(),frameBytes);
-        auto motionUpload=make_upload(motion.data(),blockCount);
-
-        auto prevBuf=make_gpu_input(frameBytes);
-        auto residualBuf=make_gpu_input(frameBytes);
-        auto motionBuf=make_gpu_input(blockCount);
-
-        const std::size_t outBytes=frameBytes*sizeof(std::uint32_t);
-        auto outBuf=make_buffer(device_.Get(),outBytes,D3D12_HEAP_TYPE_DEFAULT,
-                                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                                D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        auto readback=make_buffer(device_.Get(),outBytes,D3D12_HEAP_TYPE_READBACK,
-                                  D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_COPY_DEST);
-
-        D3D12_DESCRIPTOR_HEAP_DESC hd{};
-        hd.Type=D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-        hd.NumDescriptors=3;
-        hd.Flags=D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-        ComPtr<ID3D12DescriptorHeap> heap;
-        check(device_->CreateDescriptorHeap(&hd,IID_PPV_ARGS(&heap)),"Reconstruct CreateDescriptorHeap");
+        ensure_three_input_cache(reconstruct_cache_,frameBytes,blockCount);
+        auto& cache=reconstruct_cache_;
+        const std::size_t outBytes=frameBytes;
+        upload(cache.upload[0].Get(),prev.data(),frameBytes);
+        upload(cache.upload[1].Get(),residual.data(),frameBytes);
+        upload(cache.upload[2].Get(),motion.data(),blockCount);
         const auto inc=device_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-
-        auto create_r8_srv=[&](ID3D12Resource* resource,std::size_t elements,
-                               D3D12_CPU_DESCRIPTOR_HANDLE handle) {
-            D3D12_SHADER_RESOURCE_VIEW_DESC sd{};
-            sd.Format=DXGI_FORMAT_R8_UINT;
-            sd.ViewDimension=D3D12_SRV_DIMENSION_BUFFER;
-            sd.Shader4ComponentMapping=D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-            sd.Buffer.FirstElement=0;
-            sd.Buffer.NumElements=static_cast<UINT>(elements);
-            device_->CreateShaderResourceView(resource,&sd,handle);
-        };
-
-        auto cpu=heap->GetCPUDescriptorHandleForHeapStart();
-        create_r8_srv(prevBuf.Get(),frameBytes,cpu);
-        cpu.ptr+=inc;
-        create_r8_srv(residualBuf.Get(),frameBytes,cpu);
-        cpu.ptr+=inc;
-        create_r8_srv(motionBuf.Get(),blockCount,cpu);
 
         check(reconstruct_allocator_->Reset(),"Reconstruct Allocator Reset");
         check(reconstruct_command_list_->Reset(reconstruct_allocator_.Get(),reconstruct_pso_.Get()),
               "Reconstruct CommandList Reset");
         auto* list=reconstruct_command_list_.Get();
 
-        list->CopyBufferRegion(prevBuf.Get(),0,prevUpload.Get(),0,frameBytes);
-        list->CopyBufferRegion(residualBuf.Get(),0,residualUpload.Get(),0,frameBytes);
-        list->CopyBufferRegion(motionBuf.Get(),0,motionUpload.Get(),0,blockCount);
-
         D3D12_RESOURCE_BARRIER barriers[3]{};
-        ID3D12Resource* inputs[3]{prevBuf.Get(),residualBuf.Get(),motionBuf.Get()};
+        ID3D12Resource* inputs[3]{cache.input[0].Get(),cache.input[1].Get(),cache.input[2].Get()};
         for(int i=0;i<3;++i) {
             barriers[i].Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
             barriers[i].Transition.pResource=inputs[i];
+            barriers[i].Transition.StateBefore=cache.has_completed_work
+                ? D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+                : D3D12_RESOURCE_STATE_COPY_DEST;
+            barriers[i].Transition.StateAfter=D3D12_RESOURCE_STATE_COPY_DEST;
+            barriers[i].Transition.Subresource=D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        }
+        if(cache.has_completed_work)
+            list->ResourceBarrier(3,barriers);
+        list->CopyBufferRegion(cache.input[0].Get(),0,cache.upload[0].Get(),0,frameBytes);
+        list->CopyBufferRegion(cache.input[1].Get(),0,cache.upload[1].Get(),0,frameBytes);
+        list->CopyBufferRegion(cache.input[2].Get(),0,cache.upload[2].Get(),0,blockCount);
+        for(int i=0;i<3;++i) {
             barriers[i].Transition.StateBefore=D3D12_RESOURCE_STATE_COPY_DEST;
             barriers[i].Transition.StateAfter=D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-            barriers[i].Transition.Subresource=D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
         }
         list->ResourceBarrier(3,barriers);
 
-        ID3D12DescriptorHeap* heaps[]{heap.Get()};
+        if(cache.has_completed_work) {
+            D3D12_RESOURCE_BARRIER outputReset{};
+            outputReset.Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            outputReset.Transition.pResource=cache.output.Get();
+            outputReset.Transition.StateBefore=D3D12_RESOURCE_STATE_COPY_SOURCE;
+            outputReset.Transition.StateAfter=D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+            outputReset.Transition.Subresource=D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+            list->ResourceBarrier(1,&outputReset);
+        }
+
+        ID3D12DescriptorHeap* heaps[]{cache.heap.Get()};
         list->SetDescriptorHeaps(1,heaps);
         list->SetComputeRootSignature(reconstruct_root_.Get());
         const std::array<std::uint32_t,4> constants{
             w,h,static_cast<std::uint32_t>(frameBytes),w/8
         };
         list->SetComputeRoot32BitConstants(0,4,constants.data(),0);
-        auto gpu=heap->GetGPUDescriptorHandleForHeapStart();
+        auto gpu=cache.heap->GetGPUDescriptorHandleForHeapStart();
         for(int i=0;i<3;++i) {
             list->SetComputeRootDescriptorTable(i+1,gpu);
             gpu.ptr+=inc;
         }
-        list->SetComputeRootUnorderedAccessView(4,outBuf->GetGPUVirtualAddress());
-        list->Dispatch(static_cast<UINT>((frameBytes+255)/256),1,1);
+        list->SetComputeRootUnorderedAccessView(4,cache.output->GetGPUVirtualAddress());
+        list->Dispatch(static_cast<UINT>((((frameBytes+3)/4)+255)/256),1,1);
 
         D3D12_RESOURCE_BARRIER outBarrier{};
         outBarrier.Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        outBarrier.Transition.pResource=outBuf.Get();
+        outBarrier.Transition.pResource=cache.output.Get();
         outBarrier.Transition.StateBefore=D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         outBarrier.Transition.StateAfter=D3D12_RESOURCE_STATE_COPY_SOURCE;
         outBarrier.Transition.Subresource=D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
         list->ResourceBarrier(1,&outBarrier);
-        list->CopyBufferRegion(readback.Get(),0,outBuf.Get(),0,outBytes);
+        list->CopyBufferRegion(cache.readback.Get(),0,cache.output.Get(),0,outBytes);
         check(list->Close(),"Reconstruct CommandList Close");
 
         ID3D12CommandList* lists[]{list};
@@ -522,17 +471,92 @@ public:
 
         void* mapped=nullptr;
         D3D12_RANGE rr{0,outBytes};
-        check(readback->Map(0,&rr,&mapped),"Reconstruct Map readback");
-        const auto* u=static_cast<const std::uint32_t*>(mapped);
-        Bytes result(frameBytes);
-        for(std::size_t i=0;i<frameBytes;++i)
-            result[i]=static_cast<Byte>(u[i]&0xffu);
+        check(cache.readback->Map(0,&rr,&mapped),"Reconstruct Map readback");
+        const auto* u=static_cast<const Byte*>(mapped);
+        Bytes result(u,u+frameBytes);
         D3D12_RANGE nw{0,0};
-        readback->Unmap(0,&nw);
+        cache.readback->Unmap(0,&nw);
+        cache.has_completed_work=true;
         return result;
     }
 
 private:
+    void ensure_motion_cache(std::size_t y_bytes,std::size_t out_bytes) {
+        if(motion_cache_.y_bytes==y_bytes && motion_cache_.out_bytes==out_bytes && motion_cache_.heap)
+            return;
+        motion_cache_={};
+        motion_cache_.y_bytes=y_bytes;
+        motion_cache_.out_bytes=out_bytes;
+        for(std::size_t i=0;i<2;++i) {
+            motion_cache_.upload[i]=make_buffer(device_.Get(),y_bytes,D3D12_HEAP_TYPE_UPLOAD,
+                                                 D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_GENERIC_READ);
+            motion_cache_.input[i]=make_buffer(device_.Get(),y_bytes,D3D12_HEAP_TYPE_DEFAULT,
+                                                D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_COPY_DEST);
+        }
+        motion_cache_.output=make_buffer(device_.Get(),out_bytes,D3D12_HEAP_TYPE_DEFAULT,
+                                         D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                                         D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        motion_cache_.readback=make_buffer(device_.Get(),out_bytes,D3D12_HEAP_TYPE_READBACK,
+                                           D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_COPY_DEST);
+        D3D12_DESCRIPTOR_HEAP_DESC hd{};
+        hd.Type=D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+        hd.NumDescriptors=2;
+        hd.Flags=D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+        check(device_->CreateDescriptorHeap(&hd,IID_PPV_ARGS(&motion_cache_.heap)),"Motion cached descriptor heap");
+        const auto inc=device_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        auto handle=motion_cache_.heap->GetCPUDescriptorHandleForHeapStart();
+        for(std::size_t i=0;i<2;++i) {
+            D3D12_SHADER_RESOURCE_VIEW_DESC sd{};
+            sd.Format=DXGI_FORMAT_R8_UINT;
+            sd.ViewDimension=D3D12_SRV_DIMENSION_BUFFER;
+            sd.Shader4ComponentMapping=D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            sd.Buffer.NumElements=static_cast<UINT>(y_bytes);
+            device_->CreateShaderResourceView(motion_cache_.input[i].Get(),&sd,handle);
+            handle.ptr+=inc;
+        }
+    }
+
+    void ensure_three_input_cache(ThreeInputCache& cache,
+                                  std::size_t frame_bytes,
+                                  std::size_t block_count) {
+        if(cache.frame_bytes==frame_bytes && cache.block_count==block_count && cache.heap)
+            return;
+
+        cache={};
+        cache.frame_bytes=frame_bytes;
+        cache.block_count=block_count;
+        const std::array<std::size_t,3> sizes{frame_bytes,frame_bytes,block_count};
+        for(std::size_t i=0;i<sizes.size();++i) {
+            cache.upload[i]=make_buffer(device_.Get(),sizes[i],D3D12_HEAP_TYPE_UPLOAD,
+                                        D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_GENERIC_READ);
+            cache.input[i]=make_buffer(device_.Get(),sizes[i],D3D12_HEAP_TYPE_DEFAULT,
+                                       D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_COPY_DEST);
+        }
+        cache.output=make_buffer(device_.Get(),frame_bytes,D3D12_HEAP_TYPE_DEFAULT,
+                                 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        cache.readback=make_buffer(device_.Get(),frame_bytes,D3D12_HEAP_TYPE_READBACK,
+                                   D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_COPY_DEST);
+
+        D3D12_DESCRIPTOR_HEAP_DESC hd{};
+        hd.Type=D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+        hd.NumDescriptors=3;
+        hd.Flags=D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+        check(device_->CreateDescriptorHeap(&hd,IID_PPV_ARGS(&cache.heap)),"Cached CreateDescriptorHeap");
+        const auto inc=device_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        auto handle=cache.heap->GetCPUDescriptorHandleForHeapStart();
+        for(std::size_t i=0;i<sizes.size();++i) {
+            D3D12_SHADER_RESOURCE_VIEW_DESC sd{};
+            sd.Format=DXGI_FORMAT_R8_UINT;
+            sd.ViewDimension=D3D12_SRV_DIMENSION_BUFFER;
+            sd.Shader4ComponentMapping=D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            sd.Buffer.FirstElement=0;
+            sd.Buffer.NumElements=static_cast<UINT>(sizes[i]);
+            device_->CreateShaderResourceView(cache.input[i].Get(),&sd,handle);
+            handle.ptr+=inc;
+        }
+    }
+
     void create_three_input_pipeline(
         const wchar_t* shader_name,
         ComPtr<ID3D12RootSignature>& root,
@@ -686,6 +710,10 @@ private:
     ComPtr<ID3D12PipelineState> reconstruct_pso_;
     ComPtr<ID3D12CommandAllocator> reconstruct_allocator_;
     ComPtr<ID3D12GraphicsCommandList> reconstruct_command_list_;
+
+    MotionCache motion_cache_;
+    ThreeInputCache residual_cache_;
+    ThreeInputCache reconstruct_cache_;
 
     ComPtr<ID3D12Fence> fence_;
     HANDLE event_{};
