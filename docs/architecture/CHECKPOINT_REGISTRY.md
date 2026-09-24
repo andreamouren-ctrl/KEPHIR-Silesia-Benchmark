@@ -1,6 +1,6 @@
 # KHEPRI / AURORA Media — Checkpoint Registry
 
-**Branch:** `research/khepri-stream-codec`  
+**Branch:** `project/aurora-media`  
 **Purpose:** canonical registry of promoted, retained and rejected checkpoints.
 
 ## Status vocabulary
