@@ -17,7 +17,7 @@ jobs:
           sudo apt-get install -y build-essential unzip
       - name: Rebuild EXP-24 source and compile four modes
         run: |
-          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          cat engine/source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
           test "$(wc -c < KEPHIR_2_EXP23_BASE.cpp)" -eq 38695
           python3 research/generators/general/make_exp24_source.py
           for M in 0 1 2 3; do
