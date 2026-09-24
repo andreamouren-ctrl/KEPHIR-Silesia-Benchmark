@@ -9,7 +9,7 @@ cbuffer Params : register(b0)
 Buffer<uint> Current : register(t0);
 Buffer<uint> Previous : register(t1);
 Buffer<uint> MotionMap : register(t2);
-RWByteAddressBuffer ResidualOut : register(u0);
+RWStructuredBuffer<uint> ResidualOut : register(u0);
 
 static const int2 MotionCandidates[25] = {
     int2(0,0),
@@ -80,11 +80,5 @@ void main(uint3 tid : SV_DispatchThreadID)
     uint b=Previous[prevIndex];
     uint residual=(a-b)&255u;
 
-    uint byteAddress=index&~3u;
-    uint shift=(index&3u)*8u;
-    uint mask=255u<<shift;
-
-    uint original;
-    ResidualOut.InterlockedAnd(byteAddress,~mask,original);
-    ResidualOut.InterlockedOr(byteAddress,residual<<shift,original);
+    ResidualOut[index]=residual;
 }
