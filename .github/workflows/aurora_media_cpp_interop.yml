@@ -190,6 +190,16 @@ jobs:
         run: |
           ./aurora_media_session_test session_test.aum
 
+      - name: Build A/V sync clock test
+        run: |
+          g++ -O2 -std=c++20 -Wall -Wextra -Werror \
+            tests/cpp/test_aurora_av_sync.cpp \
+            -Isrc/cpp/aurora_media -o aurora_av_sync_test
+
+      - name: Validate A/V sync clock
+        run: |
+          ./aurora_av_sync_test
+
       - uses: actions/upload-artifact@v4
         with:
           name: aurora-media-cpp-interop
