@@ -1,6 +1,6 @@
-# AURORA Compressor / KEPHIR
+# AURORA Compressor / KHEPRI
 
-Questa branch contiene esclusivamente il progetto di compressione file general-purpose basato su KEPHIR.
+Questa branch contiene esclusivamente il progetto di compressione file general-purpose basato su KHEPRI.
 
 ## Branch canonica
 
@@ -8,33 +8,43 @@ Questa branch contiene esclusivamente il progetto di compressione file general-p
 
 Il progetto codec audio-video è separato nella branch `project/aurora-media`.
 
+## Documentazione principale
+
+- `docs/research/AURORA_COMPRESSOR_TECHNICAL_MASTER.md` — master tecnico/scientifico completo.
+- `docs/architecture/CHECKPOINT_REGISTRY.md` — checkpoint promossi, retained e rejected.
+- `docs/architecture/PROJECT_STRUCTURE.md` — struttura canonica.
+- `docs/architecture/FILE_CATALOG.md` — catalogo delle aree.
+- `docs/architecture/WORKFLOW_POLICY.md` — regole CI e riproducibilità.
+- `docs/INDEX.md` — indice della documentazione.
+
 ## Struttura
 
 ```text
 engine/
-└── source_parts/              sorgente KEPHIR ricostruibile
+└── source_parts/
 
 research/
-├── experiments/               esperimenti cronologici EXP
-├── validation/                validazione checkpoint promossi
-├── oracles/                   oracle / upper-bound research
-├── routers/                   structural/adaptive routers
-├── diagnostics/               profiling e diagnostica
+├── experiments/
+├── validation/
+├── oracles/
+├── routers/
+├── diagnostics/
 ├── generators/
-│   ├── general/               generatori make_exp*
-│   └── speed/                 generatori make_fast* / make_speed*
-└── speed/                     FAST/SPEED benchmark e A/B
+│   ├── general/
+│   └── speed/
+└── speed/
 
 benchmarks/
-├── silesia/                   benchmark canonico Silesia
-└── competitors/               confronto con compressori esterni
+├── silesia/
+└── competitors/
 
 docs/
-└── architecture/              struttura e catalogazione
+├── architecture/
+└── research/
 
-.github/workflows/             CI e riproducibilità
+.github/workflows/
 ```
 
 ## Regola di separazione
 
-AURORA Compressor e AURORA Media condividono la tecnologia KEPHIR e la storia scientifica, ma codice, benchmark, workflow e documentazione specifici dei due prodotti rimangono separati nelle rispettive branch.
+AURORA Compressor e AURORA Media condividono la tecnologia KHEPRI e la storia scientifica, ma codice, benchmark, workflow e documentazione specifici dei due prodotti rimangono separati nelle rispettive branch.
