@@ -138,16 +138,15 @@ for corpus,cpath in CORPORA.items():
             run(["7z","a","-bd","-y",f"-mx={mx}","-m0=lzma2",str(arc),str(p)])
             ct=time.perf_counter()-t
             size=arc.stat().st_size
-            edir=OUT/f"x_{corpus}_{idx}_{mx}"
-            if edir.exists():shutil.rmtree(edir)
-            edir.mkdir()
+            dec=OUT/f"{corpus}_{idx}_7z_mx{mx}.dec"
+            if dec.exists(): dec.unlink()
             t=time.perf_counter()
-            run(["7z","x","-bd","-y",f"-o{edir}",str(arc)])
+            with open(dec,"wb") as o:
+                run(["7z","x","-so",str(arc)],stdout=o)
             dt=time.perf_counter()-t
-            extracted=list(edir.rglob(p.name))
-            if len(extracted)!=1 or sha256_file(p)!=sha256_file(extracted[0]):
+            if sha256_file(p)!=sha256_file(dec):
                 raise SystemExit(f"SHA FAIL {codec} {p}")
-            shutil.rmtree(edir)
+            dec.unlink()
             raw=p.stat().st_size
             rows.append(dict(corpus=corpus,codec=codec,type="LZMA2 + range coding in 7z container",
                              profile=profile,file=p.name,raw=raw,size=size,ratio_pct=100.0*size/raw,
