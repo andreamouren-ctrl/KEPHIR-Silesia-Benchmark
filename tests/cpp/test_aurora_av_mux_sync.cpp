@@ -47,13 +47,13 @@ int main(int argc,char** argv) {
                 if(apts<=vpts) {
                     const auto anext=audio_pts((ai+1)*audio_packet_samples,sample_rate,ts);
                     mux.write_packet(1,apts,anext-apts,
-                                     {static_cast<Byte>(ai&0xffu)},kPacketRecovery);
+                                     std::vector<std::uint8_t>{static_cast<std::uint8_t>(ai&0xffu)},kPacketRecovery);
                     ++ai;
                 } else {
                     const auto vnext=video_pts(vi+1,fps_num,fps_den,ts);
                     const bool recovery=(vi%video_recovery_interval)==0;
                     mux.write_packet(2,vpts,vnext-vpts,
-                                     {static_cast<Byte>(vi&0xffu)},
+                                     std::vector<std::uint8_t>{static_cast<std::uint8_t>(vi&0xffu)},
                                      recovery ? (kPacketKey|kPacketRecovery) : 0);
                     ++vi;
                 }
