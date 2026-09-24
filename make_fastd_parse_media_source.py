@@ -1,5 +1,5 @@
 from pathlib import Path
-import os
+import os, re
 
 src=Path("KEPHIR_SPEED_D_SOURCE.cpp")
 s=src.read_text()
@@ -17,11 +17,11 @@ if mode not in limits:
 
 limit=limits[mode]
 if limit is not None:
-    old='''        if(take && p+1<n){'''
-    if s.count(old)!=1:
-        raise SystemExit(f"LAZY_BLOCK_PATTERN_COUNT={s.count(old)}")
-    new=f'''        if(take && bestL<{limit} && p+1<n){{'''
-    s=s.replace(old,new,1)
+    pat=r'if\s*\(\s*take\s*&&\s*p\s*\+\s*1\s*<\s*n\s*\)\s*\{'
+    repl=f'if(take && bestL<{limit} && p+1<n){{'
+    s,n=re.subn(pat,repl,s,count=1)
+    if n!=1:
+        raise SystemExit(f"LAZY_BLOCK_PATTERN_COUNT={n}")
 
 Path("KEPHIR_SPEED_PARSE_MEDIA_SOURCE.cpp").write_text(s)
 print("FAST_D_PARSE_MEDIA_PATCH_OK",mode,limit,len(s))
