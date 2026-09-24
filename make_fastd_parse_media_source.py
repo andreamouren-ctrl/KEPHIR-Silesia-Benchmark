@@ -17,11 +17,16 @@ if mode not in limits:
 
 limit=limits[mode]
 if limit is not None:
-    pat=r'if\s*\(\s*take\s*&&\s*p\s*\+\s*1\s*<\s*n\s*\)\s*\{'
-    repl=f'if(take && bestL<{limit} && p+1<n){{'
+    pat=r'auto\s*\[\s*nL\s*,\s*nD\s*\]\s*=\s*findbest\s*\(\s*p\s*\+\s*1\s*,\s*localLazyDepth\s*\)\s*;'
+    repl=(
+        'pair<int,int> k2LazyCandidate={0,0}; '
+        f'if(bestL<{limit}) k2LazyCandidate=findbest(p+1,localLazyDepth); '
+        'auto [nL,nD]=k2LazyCandidate;'
+    )
     s,n=re.subn(pat,repl,s,count=1)
     if n!=1:
-        raise SystemExit(f"LAZY_BLOCK_PATTERN_COUNT={n}")
+        raise SystemExit(f"LAZY_FINDBEST_PATTERN_COUNT={n}")
+
 
 Path("KEPHIR_SPEED_PARSE_MEDIA_SOURCE.cpp").write_text(s)
 print("FAST_D_PARSE_MEDIA_PATCH_OK",mode,limit,len(s))
