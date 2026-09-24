@@ -127,6 +127,12 @@ public:
                                                IID_PPV_ARGS(&allocator_)),"CreateCommandAllocator");
 
         create_pipeline();
+        create_three_input_pipeline(L"AuroraResidualMC8R4.hlsl",
+                                    residual_root_,residual_pso_,
+                                    residual_allocator_,residual_command_list_);
+        create_three_input_pipeline(L"AuroraReconstructMC8R4.hlsl",
+                                    reconstruct_root_,reconstruct_pso_,
+                                    reconstruct_allocator_,reconstruct_command_list_);
 
         check(device_->CreateFence(0,D3D12_FENCE_FLAG_NONE,IID_PPV_ARGS(&fence_)),"CreateFence");
         event_=CreateEventW(nullptr,FALSE,FALSE,nullptr);
@@ -328,67 +334,10 @@ public:
         cpu.ptr+=inc;
         create_r8_srv(motionBuf.Get(),blockCount,cpu);
 
-        D3D12_ROOT_PARAMETER rp[5]{};
-        rp[0].ParameterType=D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-        rp[0].Constants.ShaderRegister=0;
-        rp[0].Constants.Num32BitValues=4;
-        rp[0].ShaderVisibility=D3D12_SHADER_VISIBILITY_ALL;
-
-        D3D12_DESCRIPTOR_RANGE ranges[3]{};
-        for(int i=0;i<3;++i) {
-            ranges[i].RangeType=D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-            ranges[i].NumDescriptors=1;
-            ranges[i].BaseShaderRegister=static_cast<UINT>(i);
-            ranges[i].OffsetInDescriptorsFromTableStart=0;
-            rp[i+1].ParameterType=D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-            rp[i+1].DescriptorTable.NumDescriptorRanges=1;
-            rp[i+1].DescriptorTable.pDescriptorRanges=&ranges[i];
-            rp[i+1].ShaderVisibility=D3D12_SHADER_VISIBILITY_ALL;
-        }
-        rp[4].ParameterType=D3D12_ROOT_PARAMETER_TYPE_UAV;
-        rp[4].Descriptor.ShaderRegister=0;
-        rp[4].ShaderVisibility=D3D12_SHADER_VISIBILITY_ALL;
-
-        D3D12_ROOT_SIGNATURE_DESC rsd{};
-        rsd.NumParameters=5;
-        rsd.pParameters=rp;
-
-        ComPtr<ID3DBlob> rsBlob,rsErr;
-        check(D3D12SerializeRootSignature(&rsd,D3D_ROOT_SIGNATURE_VERSION_1,
-                                          &rsBlob,&rsErr),"Residual SerializeRootSignature");
-        ComPtr<ID3D12RootSignature> root;
-        check(device_->CreateRootSignature(0,rsBlob->GetBufferPointer(),rsBlob->GetBufferSize(),
-                                           IID_PPV_ARGS(&root)),"Residual CreateRootSignature");
-
-        std::wstring rpPath=AURORA_SHADER_DIR;
-        if(!rpPath.empty()&&rpPath.back()!=L'/'&&rpPath.back()!=L'\\') rpPath+=L"\\";
-        rpPath+=L"AuroraResidualMC8R4.hlsl";
-
-        ComPtr<ID3DBlob> shader,errors;
-        const auto hr=D3DCompileFromFile(rpPath.c_str(),nullptr,D3D_COMPILE_STANDARD_FILE_INCLUDE,
-                                         "main","cs_5_1",D3DCOMPILE_OPTIMIZATION_LEVEL3,0,
-                                         &shader,&errors);
-        if(FAILED(hr)) {
-            std::string msg="Residual D3DCompileFromFile";
-            if(errors) msg+=": "+std::string(static_cast<const char*>(errors->GetBufferPointer()),
-                                             errors->GetBufferSize());
-            throw AuroraMediaError(ErrorCode::InternalInvariant,msg);
-        }
-
-        D3D12_COMPUTE_PIPELINE_STATE_DESC pd{};
-        pd.pRootSignature=root.Get();
-        pd.CS={shader->GetBufferPointer(),shader->GetBufferSize()};
-        ComPtr<ID3D12PipelineState> pso;
-        check(device_->CreateComputePipelineState(&pd,IID_PPV_ARGS(&pso)),
-              "Residual CreateComputePipelineState");
-
-        ComPtr<ID3D12CommandAllocator> allocator;
-        check(device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COMPUTE,
-                                               IID_PPV_ARGS(&allocator)),"Residual CreateCommandAllocator");
-        ComPtr<ID3D12GraphicsCommandList> list;
-        check(device_->CreateCommandList(0,D3D12_COMMAND_LIST_TYPE_COMPUTE,
-                                         allocator.Get(),pso.Get(),IID_PPV_ARGS(&list)),
-              "Residual CreateCommandList");
+        check(residual_allocator_->Reset(),"Residual Allocator Reset");
+        check(residual_command_list_->Reset(residual_allocator_.Get(),residual_pso_.Get()),
+              "Residual CommandList Reset");
+        auto* list=residual_command_list_.Get();
 
         list->CopyBufferRegion(curBuf.Get(),0,curUpload.Get(),0,frameBytes);
         list->CopyBufferRegion(prevBuf.Get(),0,prevUpload.Get(),0,frameBytes);
@@ -517,67 +466,10 @@ public:
         cpu.ptr+=inc;
         create_r8_srv(motionBuf.Get(),blockCount,cpu);
 
-        D3D12_ROOT_PARAMETER rp[5]{};
-        rp[0].ParameterType=D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-        rp[0].Constants.ShaderRegister=0;
-        rp[0].Constants.Num32BitValues=4;
-        rp[0].ShaderVisibility=D3D12_SHADER_VISIBILITY_ALL;
-
-        D3D12_DESCRIPTOR_RANGE ranges[3]{};
-        for(int i=0;i<3;++i) {
-            ranges[i].RangeType=D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-            ranges[i].NumDescriptors=1;
-            ranges[i].BaseShaderRegister=static_cast<UINT>(i);
-            ranges[i].OffsetInDescriptorsFromTableStart=0;
-            rp[i+1].ParameterType=D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-            rp[i+1].DescriptorTable.NumDescriptorRanges=1;
-            rp[i+1].DescriptorTable.pDescriptorRanges=&ranges[i];
-            rp[i+1].ShaderVisibility=D3D12_SHADER_VISIBILITY_ALL;
-        }
-        rp[4].ParameterType=D3D12_ROOT_PARAMETER_TYPE_UAV;
-        rp[4].Descriptor.ShaderRegister=0;
-        rp[4].ShaderVisibility=D3D12_SHADER_VISIBILITY_ALL;
-
-        D3D12_ROOT_SIGNATURE_DESC rsd{};
-        rsd.NumParameters=5;
-        rsd.pParameters=rp;
-
-        ComPtr<ID3DBlob> rsBlob,rsErr;
-        check(D3D12SerializeRootSignature(&rsd,D3D_ROOT_SIGNATURE_VERSION_1,
-                                          &rsBlob,&rsErr),"Reconstruct SerializeRootSignature");
-        ComPtr<ID3D12RootSignature> root;
-        check(device_->CreateRootSignature(0,rsBlob->GetBufferPointer(),rsBlob->GetBufferSize(),
-                                           IID_PPV_ARGS(&root)),"Reconstruct CreateRootSignature");
-
-        std::wstring shaderPath=AURORA_SHADER_DIR;
-        if(!shaderPath.empty()&&shaderPath.back()!=L'/'&&shaderPath.back()!=L'\\') shaderPath+=L"\\";
-        shaderPath+=L"AuroraReconstructMC8R4.hlsl";
-
-        ComPtr<ID3DBlob> shader,errors;
-        const auto hr=D3DCompileFromFile(shaderPath.c_str(),nullptr,D3D_COMPILE_STANDARD_FILE_INCLUDE,
-                                         "main","cs_5_1",D3DCOMPILE_OPTIMIZATION_LEVEL3,0,
-                                         &shader,&errors);
-        if(FAILED(hr)) {
-            std::string msg="Reconstruct D3DCompileFromFile";
-            if(errors) msg+=": "+std::string(static_cast<const char*>(errors->GetBufferPointer()),
-                                             errors->GetBufferSize());
-            throw AuroraMediaError(ErrorCode::InternalInvariant,msg);
-        }
-
-        D3D12_COMPUTE_PIPELINE_STATE_DESC pd{};
-        pd.pRootSignature=root.Get();
-        pd.CS={shader->GetBufferPointer(),shader->GetBufferSize()};
-        ComPtr<ID3D12PipelineState> pso;
-        check(device_->CreateComputePipelineState(&pd,IID_PPV_ARGS(&pso)),
-              "Reconstruct CreateComputePipelineState");
-
-        ComPtr<ID3D12CommandAllocator> allocator;
-        check(device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COMPUTE,
-                                               IID_PPV_ARGS(&allocator)),"Reconstruct CreateCommandAllocator");
-        ComPtr<ID3D12GraphicsCommandList> list;
-        check(device_->CreateCommandList(0,D3D12_COMMAND_LIST_TYPE_COMPUTE,
-                                         allocator.Get(),pso.Get(),IID_PPV_ARGS(&list)),
-              "Reconstruct CreateCommandList");
+        check(reconstruct_allocator_->Reset(),"Reconstruct Allocator Reset");
+        check(reconstruct_command_list_->Reset(reconstruct_allocator_.Get(),reconstruct_pso_.Get()),
+              "Reconstruct CommandList Reset");
+        auto* list=reconstruct_command_list_.Get();
 
         list->CopyBufferRegion(prevBuf.Get(),0,prevUpload.Get(),0,frameBytes);
         list->CopyBufferRegion(residualBuf.Get(),0,residualUpload.Get(),0,frameBytes);
@@ -641,6 +533,80 @@ public:
     }
 
 private:
+    void create_three_input_pipeline(
+        const wchar_t* shader_name,
+        ComPtr<ID3D12RootSignature>& root,
+        ComPtr<ID3D12PipelineState>& pso,
+        ComPtr<ID3D12CommandAllocator>& allocator,
+        ComPtr<ID3D12GraphicsCommandList>& command_list) {
+        D3D12_ROOT_PARAMETER rp[5]{};
+        rp[0].ParameterType=D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+        rp[0].Constants.ShaderRegister=0;
+        rp[0].Constants.Num32BitValues=4;
+        rp[0].ShaderVisibility=D3D12_SHADER_VISIBILITY_ALL;
+
+        D3D12_DESCRIPTOR_RANGE ranges[3]{};
+        for(int i=0;i<3;++i) {
+            ranges[i].RangeType=D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+            ranges[i].NumDescriptors=1;
+            ranges[i].BaseShaderRegister=static_cast<UINT>(i);
+            ranges[i].OffsetInDescriptorsFromTableStart=0;
+            rp[i+1].ParameterType=D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+            rp[i+1].DescriptorTable.NumDescriptorRanges=1;
+            rp[i+1].DescriptorTable.pDescriptorRanges=&ranges[i];
+            rp[i+1].ShaderVisibility=D3D12_SHADER_VISIBILITY_ALL;
+        }
+        rp[4].ParameterType=D3D12_ROOT_PARAMETER_TYPE_UAV;
+        rp[4].Descriptor.ShaderRegister=0;
+        rp[4].ShaderVisibility=D3D12_SHADER_VISIBILITY_ALL;
+
+        D3D12_ROOT_SIGNATURE_DESC rsd{};
+        rsd.NumParameters=5;
+        rsd.pParameters=rp;
+
+        ComPtr<ID3DBlob> rsBlob,rsErr;
+        check(D3D12SerializeRootSignature(&rsd,D3D_ROOT_SIGNATURE_VERSION_1,
+                                          &rsBlob,&rsErr),
+              "Aux SerializeRootSignature");
+        check(device_->CreateRootSignature(0,rsBlob->GetBufferPointer(),rsBlob->GetBufferSize(),
+                                           IID_PPV_ARGS(&root)),
+              "Aux CreateRootSignature");
+
+        std::wstring shaderPath=AURORA_SHADER_DIR;
+        if(!shaderPath.empty()&&shaderPath.back()!=L'/'&&shaderPath.back()!=L'\\')
+            shaderPath+=L"\\";
+        shaderPath+=shader_name;
+
+        ComPtr<ID3DBlob> shader,errors;
+        const auto hr=D3DCompileFromFile(shaderPath.c_str(),nullptr,
+                                         D3D_COMPILE_STANDARD_FILE_INCLUDE,
+                                         "main","cs_5_1",
+                                         D3DCOMPILE_OPTIMIZATION_LEVEL3,0,
+                                         &shader,&errors);
+        if(FAILED(hr)) {
+            std::string msg="Aux D3DCompileFromFile";
+            if(errors) msg+=": "+std::string(
+                static_cast<const char*>(errors->GetBufferPointer()),
+                errors->GetBufferSize());
+            throw AuroraMediaError(ErrorCode::InternalInvariant,msg);
+        }
+
+        D3D12_COMPUTE_PIPELINE_STATE_DESC pd{};
+        pd.pRootSignature=root.Get();
+        pd.CS={shader->GetBufferPointer(),shader->GetBufferSize()};
+        check(device_->CreateComputePipelineState(&pd,IID_PPV_ARGS(&pso)),
+              "Aux CreateComputePipelineState");
+
+        check(device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COMPUTE,
+                                               IID_PPV_ARGS(&allocator)),
+              "Aux CreateCommandAllocator");
+        check(device_->CreateCommandList(0,D3D12_COMMAND_LIST_TYPE_COMPUTE,
+                                         allocator.Get(),pso.Get(),
+                                         IID_PPV_ARGS(&command_list)),
+              "Aux CreateCommandList");
+        check(command_list->Close(),"Aux Initial CommandList Close");
+    }
+
     void create_pipeline() {
         D3D12_ROOT_PARAMETER rp[4]{};
         rp[0].ParameterType=D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
@@ -710,6 +676,17 @@ private:
     ComPtr<ID3D12GraphicsCommandList> command_list_;
     ComPtr<ID3D12RootSignature> root_;
     ComPtr<ID3D12PipelineState> pso_;
+
+    ComPtr<ID3D12RootSignature> residual_root_;
+    ComPtr<ID3D12PipelineState> residual_pso_;
+    ComPtr<ID3D12CommandAllocator> residual_allocator_;
+    ComPtr<ID3D12GraphicsCommandList> residual_command_list_;
+
+    ComPtr<ID3D12RootSignature> reconstruct_root_;
+    ComPtr<ID3D12PipelineState> reconstruct_pso_;
+    ComPtr<ID3D12CommandAllocator> reconstruct_allocator_;
+    ComPtr<ID3D12GraphicsCommandList> reconstruct_command_list_;
+
     ComPtr<ID3D12Fence> fence_;
     HANDLE event_{};
     std::uint64_t fence_value_{};
