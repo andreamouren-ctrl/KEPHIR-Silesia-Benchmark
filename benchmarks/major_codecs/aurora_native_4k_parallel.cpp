@@ -23,6 +23,12 @@ struct EncodedTile {
     Bytes packed;
 };
 
+struct WorkerScratch {
+    Bytes current_tile;
+    Bytes previous_tile;
+    AuroraKhepriExp37MemoryAdapter khepri;
+};
+
 static Bytes make_frame(std::uint32_t w,std::uint32_t h,std::uint32_t frame_idx) {
     const std::size_t ys=static_cast<std::size_t>(w)*h;
     const std::size_t us=static_cast<std::size_t>(w/2)*(h/2);
@@ -42,14 +48,15 @@ static Bytes make_frame(std::uint32_t w,std::uint32_t h,std::uint32_t frame_idx)
     return b;
 }
 
-static Bytes extract_tile(ByteView frame,std::uint32_t fw,std::uint32_t fh,const VideoTile& t) {
+static void extract_tile_into(ByteView frame,std::uint32_t fw,std::uint32_t fh,
+                              const VideoTile& t,Bytes& out) {
     const std::size_t ys=static_cast<std::size_t>(fw)*fh;
     const auto cw=fw/2, ch=fh/2;
     const std::size_t us=static_cast<std::size_t>(cw)*ch;
     const std::size_t tys=static_cast<std::size_t>(t.width)*t.height;
     const auto tcw=t.width/2, tch=t.height/2;
     const std::size_t tus=static_cast<std::size_t>(tcw)*tch;
-    Bytes out(tys+2*tus);
+    out.resize(tys+2*tus);
     for(std::uint32_t y=0;y<t.height;++y) {
         const auto src=static_cast<std::size_t>(t.y+y)*fw+t.x;
         const auto dst=static_cast<std::size_t>(y)*t.width;
@@ -64,7 +71,6 @@ static Bytes extract_tile(ByteView frame,std::uint32_t fw,std::uint32_t fh,const
         std::copy_n(frame.begin()+static_cast<std::ptrdiff_t>(ys+us+src),tcw,
                     out.begin()+static_cast<std::ptrdiff_t>(tys+tus+dst));
     }
-    return out;
 }
 
 static void paste_tile(Bytes& frame,std::uint32_t fw,std::uint32_t fh,
@@ -94,22 +100,24 @@ static void paste_tile(Bytes& frame,std::uint32_t fw,std::uint32_t fh,
 
 static EncodedTile encode_one(ByteView cur,ByteView prev,
                               std::uint32_t fw,std::uint32_t fh,const VideoTile& tile,
-                              AuroraKhepriExp37MemoryAdapter& k) {
-    auto c=extract_tile(cur,fw,fh,tile);
-    auto p=extract_tile(prev,fw,fh,tile);
-    auto mr=AuroraVideoMotion::encode_mc8r4_adaptive(c,p,tile.width,tile.height,4.0,9);
+                              WorkerScratch& scratch) {
+    extract_tile_into(cur,fw,fh,tile,scratch.current_tile);
+    extract_tile_into(prev,fw,fh,tile,scratch.previous_tile);
+    auto mr=AuroraVideoMotion::encode_mc8r4_adaptive(
+        scratch.current_tile,scratch.previous_tile,tile.width,tile.height,4.0,9);
     const auto mode=AuroraVideoResidual::choose_mode(mr.residual_yuv420);
     auto mapped=AuroraVideoResidual::map(mr.residual_yuv420,mode);
-    auto packed=k.encode(mapped);
+    auto packed=scratch.khepri.encode(mapped);
     return EncodedTile{tile,std::move(mr.motion_map),mode,std::move(packed)};
 }
 
 static Bytes decode_one(const EncodedTile& et,ByteView prev,std::uint32_t fw,std::uint32_t fh,
-                        AuroraKhepriExp37MemoryAdapter& k) {
-    auto p=extract_tile(prev,fw,fh,et.tile);
-    auto mapped=k.decode(et.packed);
+                        WorkerScratch& scratch) {
+    extract_tile_into(prev,fw,fh,et.tile,scratch.previous_tile);
+    auto mapped=scratch.khepri.decode(et.packed);
     auto residual=AuroraVideoResidual::unmap(mapped,et.mode);
-    return AuroraVideoMotion::decode_mc8r4(et.motion,residual,p,et.tile.width,et.tile.height);
+    return AuroraVideoMotion::decode_mc8r4(
+        et.motion,residual,scratch.previous_tile,et.tile.width,et.tile.height);
 }
 
 template<class Fn>
@@ -132,20 +140,28 @@ static void parallel_for(std::size_t count,std::uint32_t workers,Fn fn) {
 static void run_case(const char* label,std::uint32_t workers,
                      ByteView cur,ByteView prev,const VideoTilePlan& plan) {
     std::vector<EncodedTile> encoded(plan.tiles.size());
-    std::vector<AuroraKhepriExp37MemoryAdapter> encode_khepri(workers);
-    std::vector<AuroraKhepriExp37MemoryAdapter> decode_khepri(workers);
+    std::vector<WorkerScratch> encode_workers(workers);
+    std::vector<WorkerScratch> decode_workers(workers);
+    const auto max_tile_bytes=
+        static_cast<std::size_t>(plan.tile_width)*plan.tile_height*3/2;
+    for(auto& w:encode_workers) {
+        w.current_tile.reserve(max_tile_bytes);
+        w.previous_tile.reserve(max_tile_bytes);
+    }
+    for(auto& w:decode_workers)
+        w.previous_tile.reserve(max_tile_bytes);
 
     const auto e0=Clock::now();
     parallel_for(plan.tiles.size(),workers,[&](std::size_t i,std::uint32_t worker){
         encoded[i]=encode_one(cur,prev,plan.frame_width,plan.frame_height,plan.tiles[i],
-                              encode_khepri[worker]);
+                              encode_workers[worker]);
     });
     const auto e1=Clock::now();
 
     std::vector<Bytes> decoded(plan.tiles.size());
     parallel_for(plan.tiles.size(),workers,[&](std::size_t i,std::uint32_t worker){
         decoded[i]=decode_one(encoded[i],prev,plan.frame_width,plan.frame_height,
-                              decode_khepri[worker]);
+                              decode_workers[worker]);
     });
     const auto d1=Clock::now();
 
