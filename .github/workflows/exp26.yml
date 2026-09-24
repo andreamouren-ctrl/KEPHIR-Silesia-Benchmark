@@ -3,8 +3,8 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "make_exp26_source.py"
-      - "exp26_band_sweep.py"
+      - "research/generators/general/make_exp26_source.py"
+      - "research/experiments/exp26_band_sweep.py"
       - ".github/workflows/exp26.yml"
 jobs:
   sweep:
@@ -19,7 +19,7 @@ jobs:
       - name: Build EXP-26 modes
         run: |
           cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
-          python3 make_exp26_source.py
+          python3 research/generators/general/make_exp26_source.py
           for M in 2 7 8 9; do
             g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY -DK2_ADAPT_MODE=$M -pthread KEPHIR_2_EXP26_BANDS.cpp -o kephir26_$M
           done
@@ -30,7 +30,7 @@ jobs:
           mkdir silesia
           unzip -q silesia.zip -d silesia
       - name: Run EXP-26 sweep
-        run: python3 exp26_band_sweep.py
+        run: python3 research/experiments/exp26_band_sweep.py
       - uses: actions/upload-artifact@v4
         with:
           name: exp26-band-results

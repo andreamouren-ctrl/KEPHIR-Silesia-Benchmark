@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "exp24_adaptive_sweep.py"
+      - "research/experiments/exp24_adaptive_sweep.py"
       - ".github/workflows/exp24.yml"
 jobs:
   sweep:
@@ -19,7 +19,7 @@ jobs:
         run: |
           cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
           test "$(wc -c < KEPHIR_2_EXP23_BASE.cpp)" -eq 38695
-          python3 make_exp24_source.py
+          python3 research/generators/general/make_exp24_source.py
           for M in 0 1 2 3; do
             g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY -DK2_ADAPT_MODE=$M -pthread KEPHIR_2_EXP24_ADAPTIVE.cpp -o kephir24_$M
           done
@@ -30,7 +30,7 @@ jobs:
           mkdir silesia
           unzip -q silesia.zip -d silesia
       - name: Run adaptive sweep
-        run: python3 exp24_adaptive_sweep.py
+        run: python3 research/experiments/exp24_adaptive_sweep.py
       - uses: actions/upload-artifact@v4
         with:
           name: exp24-adaptive-results

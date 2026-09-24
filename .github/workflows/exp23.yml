@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "exp23_sweep.py"
+      - "research/experiments/exp23_sweep.py"
       - ".github/workflows/exp23.yml"
 jobs:
   sweep:
@@ -27,7 +27,7 @@ jobs:
           mkdir silesia
           unzip -q silesia.zip -d silesia
       - name: Run EXP-23 sweep
-        run: python3 exp23_sweep.py
+        run: python3 research/experiments/exp23_sweep.py
       - uses: actions/upload-artifact@v4
         with:
           name: exp23-sweep-results

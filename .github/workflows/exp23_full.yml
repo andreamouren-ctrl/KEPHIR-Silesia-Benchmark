@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "exp23_full.py"
+      - "research/experiments/exp23_full.py"
       - ".github/workflows/exp23_full.yml"
 jobs:
   full:
@@ -27,7 +27,7 @@ jobs:
           mkdir silesia
           unzip -q silesia.zip -d silesia
       - name: Run EXP-23 full
-        run: python3 exp23_full.py
+        run: python3 research/experiments/exp23_full.py
       - uses: actions/upload-artifact@v4
         with:
           name: exp23-full-results

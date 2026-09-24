@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "exp24b_validate.py"
+      - "research/validation/exp24b_validate.py"
       - ".github/workflows/exp24b_validate.yml"
 jobs:
   validate:
@@ -18,7 +18,7 @@ jobs:
       - name: Build EXP-24B
         run: |
           cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
-          python3 make_exp24_source.py
+          python3 research/generators/general/make_exp24_source.py
           g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY -DK2_ADAPT_MODE=2 -pthread KEPHIR_2_EXP24_ADAPTIVE.cpp -o kephir24_2
       - name: Silesia
         run: |
@@ -27,7 +27,7 @@ jobs:
           mkdir silesia
           unzip -q silesia.zip -d silesia
       - name: Validate
-        run: python3 exp24b_validate.py
+        run: python3 research/validation/exp24b_validate.py
       - uses: actions/upload-artifact@v4
         with:
           name: exp24b-validation

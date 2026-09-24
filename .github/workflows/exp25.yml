@@ -3,8 +3,8 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "make_exp25_source.py"
-      - "exp25_continuous_sweep.py"
+      - "research/generators/general/make_exp25_source.py"
+      - "research/experiments/exp25_continuous_sweep.py"
       - ".github/workflows/exp25.yml"
 jobs:
   sweep:
@@ -20,7 +20,7 @@ jobs:
         run: |
           cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
           test "$(wc -c < KEPHIR_2_EXP23_BASE.cpp)" -eq 38695
-          python3 make_exp25_source.py
+          python3 research/generators/general/make_exp25_source.py
           for M in 2 4 5 6; do
             g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY -DK2_ADAPT_MODE=$M -pthread KEPHIR_2_EXP25_CONTINUOUS.cpp -o kephir25_$M
           done
@@ -31,7 +31,7 @@ jobs:
           mkdir silesia
           unzip -q silesia.zip -d silesia
       - name: Run EXP-25 sweep
-        run: python3 exp25_continuous_sweep.py
+        run: python3 research/experiments/exp25_continuous_sweep.py
       - uses: actions/upload-artifact@v4
         with:
           name: exp25-continuous-results
