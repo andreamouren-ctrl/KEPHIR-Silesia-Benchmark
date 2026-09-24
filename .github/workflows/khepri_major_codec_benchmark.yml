@@ -2,6 +2,10 @@ name: AURORA KHEPRI Major Codec Benchmark
 
 on:
   workflow_dispatch:
+  push:
+    branches: ["research/khepri-stream-codec"]
+    paths:
+      - ".github/workflows/khepri_major_codec_benchmark.yml"
 
 jobs:
   bench:
