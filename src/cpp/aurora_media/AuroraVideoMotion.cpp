@@ -129,7 +129,8 @@ MotionResidual AuroraVideoMotion::encode_mc8r4_limited(ByteView cur,ByteView pre
     if(cur.size()!=fs || prev.size()!=fs)
         throw AuroraMediaError(ErrorCode::InvalidArgument,"MC8R4 frame size mismatch");
 
-    auto cand=candidates(radius);
+    static const auto cached_candidates=candidates(radius);
+    auto cand=cached_candidates;
     if(max_candidates==0)
         throw AuroraMediaError(ErrorCode::InvalidArgument,"MC8R4 candidate limit must be positive");
     if(max_candidates<cand.size()) cand.resize(max_candidates);
@@ -211,7 +212,7 @@ MotionResidual AuroraVideoMotion::encode_mc8r4_shortlist(ByteView cur,ByteView p
     if(cur.size()!=fs || prev.size()!=fs)
         throw AuroraMediaError(ErrorCode::InvalidArgument,"MC8R4 frame size mismatch");
 
-    const auto cand=candidates(radius);
+    static const auto cand=candidates(radius);
     const auto ys=y_size(w,h);
     const auto us=uv_size(w,h);
     const auto cw=w/2;
@@ -315,7 +316,7 @@ Bytes AuroraVideoMotion::decode_mc8r4(ByteView motion,ByteView residual,ByteView
     if(prev.size()!=fs || residual.size()!=fs || motion.size()!=blocks)
         throw AuroraMediaError(ErrorCode::InvalidArgument,"MC8R4 decode size mismatch");
 
-    const auto cand=candidates(radius);
+    static const auto cand=candidates(radius);
     const auto ys=y_size(w,h);
     const auto us=uv_size(w,h);
     const auto cw=w/2;
