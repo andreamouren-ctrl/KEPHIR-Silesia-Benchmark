@@ -6,6 +6,7 @@ on:
     branches: ["research/khepri-stream-codec"]
     paths:
       - ".github/workflows/khepri_major_codec_benchmark.yml"
+      - "benchmarks/major_codecs/benchmark_major_codecs.py"
 
 jobs:
   bench:

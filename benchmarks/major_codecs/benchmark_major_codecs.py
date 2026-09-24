@@ -3,7 +3,7 @@ import argparse, hashlib, json, os, shutil, subprocess, time
 from pathlib import Path
 
 import kstream_kmrl_lab as lab
-from ks06_plane_sparsity_bench import enc_tail16, dec_tail16
+from ks06_plane_sparsity import enc_tail16, dec_tail16
 from kstream_video_baseline import encode_file as vbase_encode, decode_file as vbase_decode
 from kstream_video_mc import encode_file as vmc_encode, decode_file as vmc_decode
 
