@@ -1,4 +1,4 @@
-name: KEPHIR FAST Parser Hotpath Inspect
+name: KEPHIR FAST-AA Persistent Parser Scratch
 on:
   workflow_dispatch:
   pull_request:
@@ -7,18 +7,18 @@ on:
       - ".github/workflows/khepri_fast_parser_hotpath_inspect.yml"
 
 jobs:
-  inspect:
+  bench:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
       - name: Install
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential binutils unzip
+          sudo apt-get install -y build-essential unzip
 
-      - name: Rebuild exact FAST-D source
+      - name: Rebuild FAST-D and apply one FAST-AA parser patch
         run: |
           cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
           python3 make_exp26_source.py
@@ -30,36 +30,62 @@ jobs:
           python3 make_exp39_source.py
           K2_CHAIN_DEPTH_VALUE=24 K2_LAZY_DEPTH_VALUE=12 K2_PRED_MASK_VALUE=255 python3 make_speed1_source.py
           python3 make_fastd_source.py
-
-      - name: Print real parse hot path
-        run: |
           python3 - <<'PY'
           from pathlib import Path
-          s=Path("KEPHIR_SPEED_D_SOURCE.cpp").read_text()
-          start=s.index("static vector<Tok> parse(")
-          brace=s.index("{",start)
-          depth=0
-          end=None
-          for i in range(brace,len(s)):
-              if s[i]=="{": depth+=1
-              elif s[i]=="}":
-                  depth-=1
-                  if depth==0:
-                      end=i+1
-                      break
-          body=s[start:end]
-          Path("fastd_parse_extract.cpp.txt").write_text(body)
-          print("===== FAST-D parse() =====")
-          for n,line in enumerate(body.splitlines(),1):
-              print(f"{n:04d}: {line}")
+          p=Path("KEPHIR_SPEED_D_SOURCE.cpp")
+          s=p.read_text()
+
+          old='''    static constexpr uint32_t NIL=0xFFFFFFFFu;
+              vector<uint32_t> links((size_t)HS+(size_t)n,NIL);
+              uint32_t* head=links.data();
+              uint32_t* prev=links.data()+HS;'''
+          new='''    static constexpr uint32_t NIL=0xFFFFFFFFu;
+              // FAST-AA: persistent per-worker parser scratch.
+              // Preserve the exact hash-chain semantics while avoiding HS+n
+              // allocation/fill on every independently parsed chunk.
+              thread_local vector<uint32_t> k2_head;
+              thread_local vector<uint32_t> k2_stamp;
+              thread_local vector<uint32_t> k2_prev;
+              thread_local uint32_t k2_epoch=0;
+              if(k2_head.size()<(size_t)HS) k2_head.resize((size_t)HS);
+              if(k2_stamp.size()<(size_t)HS) k2_stamp.resize((size_t)HS,0);
+              if(k2_prev.size()<(size_t)n) k2_prev.resize((size_t)n);
+              ++k2_epoch;
+              if(k2_epoch==0){
+                  fill(k2_stamp.begin(),k2_stamp.end(),0);
+                  k2_epoch=1;
+              }
+              uint32_t* head=k2_head.data();
+              uint32_t* stamp=k2_stamp.data();
+              uint32_t* prev=k2_prev.data();
+              auto gethead=[&](uint32_t h)->uint32_t{
+                  return stamp[h]==k2_epoch ? head[h] : NIL;
+              };'''
+          if old not in s: raise SystemExit("FAST_AA_ALLOC_PATTERN_NOT_FOUND")
+          s=s.replace(old,new,1)
+
+          old='''    auto insert=[&](int p){ if(p+MINL<=n){uint32_t s=slot(h4(p)); prev[(uint32_t)p]=head[s]; head[s]=(uint32_t)p;} };'''
+          new='''    auto insert=[&](int p){ if(p+MINL<=n){uint32_t s=slot(h4(p)); prev[(uint32_t)p]=gethead(s); head[s]=(uint32_t)p; stamp[s]=k2_epoch;} };'''
+          if old not in s: raise SystemExit("FAST_AA_INSERT_PATTERN_NOT_FOUND")
+          s=s.replace(old,new,1)
+
+          old='''        uint32_t s=slot(hp), q=head[s]; int depth=0;'''
+          new='''        uint32_t s=slot(hp), q=gethead(s); int depth=0;'''
+          if old not in s: raise SystemExit("FAST_AA_FINDBEST_HEAD_NOT_FOUND")
+          s=s.replace(old,new,1)
+
+          old='''        uint32_t ss=slot(hp), q=head[ss]; int depth=0;'''
+          new='''        uint32_t ss=slot(hp), q=gethead(ss); int depth=0;'''
+          if old in s:
+              s=s.replace(old,new,1)
+
+          Path("KEPHIR_FAST_AA.cpp").write_text(s)
+          print("FAST_AA_PATCH_OK")
           PY
 
-      - name: Build gprof binary
-        run: |
-          g++ -O3 -march=native -pg -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY \
-            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=0 -DK2_PSG_MODE=0 -DK2_DIST_TOPO_MODE=0 \
-            -DK2_DUAL_MATCH_MODE=0 -DK2_FUSED_MATCH_MODE=0 -DK2_FUSED2_MODE=0 \
-            -pthread KEPHIR_SPEED_D_SOURCE.cpp -o kephir_fastd_profile
+          CXXFLAGS="-O3 -march=native -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=0 -DK2_PSG_MODE=0 -DK2_DIST_TOPO_MODE=0 -DK2_DUAL_MATCH_MODE=0 -DK2_FUSED_MATCH_MODE=0 -DK2_FUSED2_MODE=0 -pthread"
+          g++ $CXXFLAGS KEPHIR_SPEED_D_SOURCE.cpp -o fast_d
+          g++ $CXXFLAGS KEPHIR_FAST_AA.cpp -o fast_aa
 
       - name: Get Silesia
         run: |
@@ -68,17 +94,66 @@ jobs:
           mkdir silesia
           unzip -q silesia.zip -d silesia
 
-      - name: Profile mozilla
+      - name: Same-run Silesia benchmark and SHA
         run: |
-          rm -f gmon.out
-          ./kephir_fastd_profile cp silesia/mozilla mozilla.aur 1 6.55 9.42 1.20
-          gprof ./kephir_fastd_profile gmon.out > fastd_hotpath_gprof.txt
-          echo "===== FLAT PROFILE TOP ====="
-          sed -n '1,120p' fastd_hotpath_gprof.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess,time,json,hashlib,shutil,statistics
+
+          root=Path("silesia")
+          out=Path("fastaa_out")
+          out.mkdir(exist_ok=True)
+          files=["dickens","mozilla","mr","nci","ooffice","osdb","reymont","samba","sao","webster","x-ray","xml"]
+          profiles=[("FAST_D","./fast_d"),("FAST_AA","./fast_aa")]
+          rows=[]
+
+          for tag,exe in profiles:
+              tr=ts=0
+              tc=td=0.0
+              for fn in files:
+                  src=root/fn
+                  raw=src.stat().st_size
+                  arc=out/f"{tag}_{fn}.aur"
+                  dec=out/f"d_{tag}_{fn}"
+                  cts=[]; dts=[]
+                  for _ in range(3):
+                      if arc.exists(): arc.unlink()
+                      t=time.perf_counter()
+                      subprocess.run([exe,"cp",str(src),str(arc),"6","6.55","9.42","1.20"],
+                                     check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                      cts.append(time.perf_counter()-t)
+                  size=arc.stat().st_size
+                  for _ in range(3):
+                      if dec.exists(): shutil.rmtree(dec)
+                      t=time.perf_counter()
+                      subprocess.run([exe,"dp",str(arc),str(dec),"6"],
+                                     check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                      dts.append(time.perf_counter()-t)
+                  got=hashlib.sha256((dec/fn).read_bytes()).digest()
+                  exp=hashlib.sha256(src.read_bytes()).digest()
+                  if got!=exp: raise SystemExit("SHA FAIL "+tag+" "+fn)
+                  tr+=raw; ts+=size
+                  tc+=statistics.median(cts)
+                  td+=statistics.median(dts)
+              rows.append(dict(profile=tag,raw=tr,size=ts,ratio=100*ts/tr,
+                               comp_MBps=(tr/1e6)/tc,dec_MBps=(tr/1e6)/td,sha=True))
+
+          if rows[0]["size"]!=rows[1]["size"]:
+              raise SystemExit(f"FAST-AA changed archive size: {rows[0]['size']} != {rows[1]['size']}")
+
+          base,new=rows
+          summary={
+              "rows":rows,
+              "encode_gain_pct":100.0*(new["comp_MBps"]/base["comp_MBps"]-1.0),
+              "decode_gain_pct":100.0*(new["dec_MBps"]/base["dec_MBps"]-1.0),
+              "size_delta":new["size"]-base["size"]
+          }
+          print("SUMMARY")
+          print(json.dumps(summary,indent=2),flush=True)
+          Path("fastaa_results.json").write_text(json.dumps(summary,indent=2))
+          PY
 
       - uses: actions/upload-artifact@v4
         with:
-          name: fastd-parser-hotpath-inspect
-          path: |
-            fastd_parse_extract.cpp.txt
-            fastd_hotpath_gprof.txt
+          name: fastaa-results
+          path: fastaa_results.json
