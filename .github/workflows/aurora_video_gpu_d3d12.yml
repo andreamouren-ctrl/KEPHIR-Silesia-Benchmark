@@ -55,6 +55,23 @@ jobs:
         shell: cmd
         run: aurora_video_gpu_residual_test.exe
 
+      - name: Build D3D12 reconstruction equivalence test
+        shell: cmd
+        run: >
+          cl /nologo /EHsc /std:c++20 /O2
+          /DAURORA_SHADER_DIR=L\"src/cpp/aurora_media/shaders\"
+          src/cpp/aurora_media/AuroraVideoMotion.cpp
+          src/cpp/aurora_media/AuroraVideoCompute.cpp
+          src/cpp/aurora_media/AuroraVideoComputeD3D12.cpp
+          tests/cpp/test_aurora_video_gpu_reconstruct_d3d12.cpp
+          /Isrc/cpp/aurora_media
+          /Fe:aurora_video_gpu_reconstruct_test.exe
+          d3d12.lib dxgi.lib d3dcompiler.lib
+
+      - name: Run CPU vs D3D12 reconstruction equivalence
+        shell: cmd
+        run: aurora_video_gpu_reconstruct_test.exe
+
 # GPU equivalence gate
 
 # probe rerun gpu
