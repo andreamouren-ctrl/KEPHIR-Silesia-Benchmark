@@ -9,7 +9,7 @@ FILES=["dickens","mozilla","mr","nci","ooffice","osdb","reymont","samba","sao","
 TEXT_TOKENS=[
     b" the ",b" and ",b"ing",b"tion",b" of ",b" to ",b" in ",b" that ",
     b" is ",b" for ",b"ed ",b"er ",b"re ",b"en ",b"on ",b"at ",
-    b"\\n",b"</",b"/>",b"http",b"www.",b"="",b"<!--",b"-->",
+    b"\\n",b"</",b"/>",b"http",b"www.",b'="',b"<!--",b"-->",
     b"data",b"this",b"with",b"from",b"have",b"not ",b" as ",b" by "
 ]
 TEXT_TOKENS_SORTED=sorted(enumerate(TEXT_TOKENS,1),key=lambda kv:len(kv[1]),reverse=True)
