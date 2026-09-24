@@ -200,6 +200,18 @@ jobs:
         run: |
           ./aurora_av_sync_test
 
+      - name: Build AUM A/V mux sync test
+        run: |
+          g++ -O2 -std=c++20 -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraMediaContainer.cpp \
+            src/cpp/aurora_media/AuroraMediaSession.cpp \
+            tests/cpp/test_aurora_av_mux_sync.cpp \
+            -Isrc/cpp/aurora_media -o aurora_av_mux_sync_test
+
+      - name: Validate AUM A/V mux sync
+        run: |
+          ./aurora_av_mux_sync_test av_mux_sync_10min.aum
+
       - uses: actions/upload-artifact@v4
         with:
           name: aurora-media-cpp-interop
