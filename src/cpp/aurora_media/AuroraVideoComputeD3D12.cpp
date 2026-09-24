@@ -263,6 +263,194 @@ public:
         return result;
     }
 
+
+    Bytes residual_yuv420_mc8r4(ByteView cur,ByteView prev,
+                                ByteView motion,
+                                std::uint32_t w,std::uint32_t h) override {
+        if(w==0||h==0||(w%8)!=0||(h%8)!=0||(w%2)!=0||(h%2)!=0)
+            throw AuroraMediaError(ErrorCode::InvalidArgument,"D3D12 residual invalid dimensions");
+
+        const std::size_t yBytes=static_cast<std::size_t>(w)*h;
+        const std::size_t frameBytes=yBytes+(yBytes/2);
+        const std::size_t blockCount=static_cast<std::size_t>(w/8)*(h/8);
+        if(cur.size()!=frameBytes||prev.size()!=frameBytes||motion.size()!=blockCount)
+            throw AuroraMediaError(ErrorCode::InvalidArgument,"D3D12 residual input size mismatch");
+
+        auto make_upload=[&](const void* src,std::size_t bytes) {
+            auto r=make_buffer(device_.Get(),bytes,D3D12_HEAP_TYPE_UPLOAD,
+                               D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_GENERIC_READ);
+            upload(r.Get(),src,bytes);
+            return r;
+        };
+        auto make_gpu_input=[&](std::size_t bytes) {
+            return make_buffer(device_.Get(),bytes,D3D12_HEAP_TYPE_DEFAULT,
+                               D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_COPY_DEST);
+        };
+
+        auto curUpload=make_upload(cur.data(),frameBytes);
+        auto prevUpload=make_upload(prev.data(),frameBytes);
+        auto motionUpload=make_upload(motion.data(),blockCount);
+
+        auto curBuf=make_gpu_input(frameBytes);
+        auto prevBuf=make_gpu_input(frameBytes);
+        auto motionBuf=make_gpu_input(blockCount);
+
+        const std::size_t outBytes=frameBytes*sizeof(std::uint32_t);
+        auto outBuf=make_buffer(device_.Get(),outBytes,D3D12_HEAP_TYPE_DEFAULT,
+                                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                                D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        auto readback=make_buffer(device_.Get(),outBytes,D3D12_HEAP_TYPE_READBACK,
+                                  D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_COPY_DEST);
+
+        D3D12_DESCRIPTOR_HEAP_DESC hd{};
+        hd.Type=D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+        hd.NumDescriptors=3;
+        hd.Flags=D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+        ComPtr<ID3D12DescriptorHeap> heap;
+        check(device_->CreateDescriptorHeap(&hd,IID_PPV_ARGS(&heap)),"Residual CreateDescriptorHeap");
+        const auto inc=device_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+        auto create_r8_srv=[&](ID3D12Resource* resource,std::size_t elements,
+                               D3D12_CPU_DESCRIPTOR_HANDLE handle) {
+            D3D12_SHADER_RESOURCE_VIEW_DESC sd{};
+            sd.Format=DXGI_FORMAT_R8_UINT;
+            sd.ViewDimension=D3D12_SRV_DIMENSION_BUFFER;
+            sd.Shader4ComponentMapping=D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            sd.Buffer.FirstElement=0;
+            sd.Buffer.NumElements=static_cast<UINT>(elements);
+            device_->CreateShaderResourceView(resource,&sd,handle);
+        };
+
+        auto cpu=heap->GetCPUDescriptorHandleForHeapStart();
+        create_r8_srv(curBuf.Get(),frameBytes,cpu);
+        cpu.ptr+=inc;
+        create_r8_srv(prevBuf.Get(),frameBytes,cpu);
+        cpu.ptr+=inc;
+        create_r8_srv(motionBuf.Get(),blockCount,cpu);
+
+        D3D12_ROOT_PARAMETER rp[5]{};
+        rp[0].ParameterType=D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+        rp[0].Constants.ShaderRegister=0;
+        rp[0].Constants.Num32BitValues=4;
+        rp[0].ShaderVisibility=D3D12_SHADER_VISIBILITY_ALL;
+
+        D3D12_DESCRIPTOR_RANGE ranges[3]{};
+        for(int i=0;i<3;++i) {
+            ranges[i].RangeType=D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+            ranges[i].NumDescriptors=1;
+            ranges[i].BaseShaderRegister=static_cast<UINT>(i);
+            ranges[i].OffsetInDescriptorsFromTableStart=0;
+            rp[i+1].ParameterType=D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+            rp[i+1].DescriptorTable.NumDescriptorRanges=1;
+            rp[i+1].DescriptorTable.pDescriptorRanges=&ranges[i];
+            rp[i+1].ShaderVisibility=D3D12_SHADER_VISIBILITY_ALL;
+        }
+        rp[4].ParameterType=D3D12_ROOT_PARAMETER_TYPE_UAV;
+        rp[4].Descriptor.ShaderRegister=0;
+        rp[4].ShaderVisibility=D3D12_SHADER_VISIBILITY_ALL;
+
+        D3D12_ROOT_SIGNATURE_DESC rsd{};
+        rsd.NumParameters=5;
+        rsd.pParameters=rp;
+
+        ComPtr<ID3DBlob> rsBlob,rsErr;
+        check(D3D12SerializeRootSignature(&rsd,D3D_ROOT_SIGNATURE_VERSION_1,
+                                          &rsBlob,&rsErr),"Residual SerializeRootSignature");
+        ComPtr<ID3D12RootSignature> root;
+        check(device_->CreateRootSignature(0,rsBlob->GetBufferPointer(),rsBlob->GetBufferSize(),
+                                           IID_PPV_ARGS(&root)),"Residual CreateRootSignature");
+
+        std::wstring rpPath=AURORA_SHADER_DIR;
+        if(!rpPath.empty()&&rpPath.back()!=L'/'&&rpPath.back()!=L'\\') rpPath+=L"\\";
+        rpPath+=L"AuroraResidualMC8R4.hlsl";
+
+        ComPtr<ID3DBlob> shader,errors;
+        const auto hr=D3DCompileFromFile(rpPath.c_str(),nullptr,D3D_COMPILE_STANDARD_FILE_INCLUDE,
+                                         "main","cs_5_1",D3DCOMPILE_OPTIMIZATION_LEVEL3,0,
+                                         &shader,&errors);
+        if(FAILED(hr)) {
+            std::string msg="Residual D3DCompileFromFile";
+            if(errors) msg+=": "+std::string(static_cast<const char*>(errors->GetBufferPointer()),
+                                             errors->GetBufferSize());
+            throw AuroraMediaError(ErrorCode::InternalInvariant,msg);
+        }
+
+        D3D12_COMPUTE_PIPELINE_STATE_DESC pd{};
+        pd.pRootSignature=root.Get();
+        pd.CS={shader->GetBufferPointer(),shader->GetBufferSize()};
+        ComPtr<ID3D12PipelineState> pso;
+        check(device_->CreateComputePipelineState(&pd,IID_PPV_ARGS(&pso)),
+              "Residual CreateComputePipelineState");
+
+        ComPtr<ID3D12CommandAllocator> allocator;
+        check(device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COMPUTE,
+                                               IID_PPV_ARGS(&allocator)),"Residual CreateCommandAllocator");
+        ComPtr<ID3D12GraphicsCommandList> list;
+        check(device_->CreateCommandList(0,D3D12_COMMAND_LIST_TYPE_COMPUTE,
+                                         allocator.Get(),pso.Get(),IID_PPV_ARGS(&list)),
+              "Residual CreateCommandList");
+
+        list->CopyBufferRegion(curBuf.Get(),0,curUpload.Get(),0,frameBytes);
+        list->CopyBufferRegion(prevBuf.Get(),0,prevUpload.Get(),0,frameBytes);
+        list->CopyBufferRegion(motionBuf.Get(),0,motionUpload.Get(),0,blockCount);
+
+        D3D12_RESOURCE_BARRIER barriers[3]{};
+        ID3D12Resource* inputs[3]{curBuf.Get(),prevBuf.Get(),motionBuf.Get()};
+        for(int i=0;i<3;++i) {
+            barriers[i].Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barriers[i].Transition.pResource=inputs[i];
+            barriers[i].Transition.StateBefore=D3D12_RESOURCE_STATE_COPY_DEST;
+            barriers[i].Transition.StateAfter=D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+            barriers[i].Transition.Subresource=D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        }
+        list->ResourceBarrier(3,barriers);
+
+        ID3D12DescriptorHeap* heaps[]{heap.Get()};
+        list->SetDescriptorHeaps(1,heaps);
+        list->SetComputeRootSignature(root.Get());
+        const std::array<std::uint32_t,4> constants{
+            w,h,static_cast<std::uint32_t>(frameBytes),w/8
+        };
+        list->SetComputeRoot32BitConstants(0,4,constants.data(),0);
+        auto gpu=heap->GetGPUDescriptorHandleForHeapStart();
+        for(int i=0;i<3;++i) {
+            list->SetComputeRootDescriptorTable(i+1,gpu);
+            gpu.ptr+=inc;
+        }
+        list->SetComputeRootUnorderedAccessView(4,outBuf->GetGPUVirtualAddress());
+        list->Dispatch(static_cast<UINT>((frameBytes+255)/256),1,1);
+
+        D3D12_RESOURCE_BARRIER outBarrier{};
+        outBarrier.Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        outBarrier.Transition.pResource=outBuf.Get();
+        outBarrier.Transition.StateBefore=D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        outBarrier.Transition.StateAfter=D3D12_RESOURCE_STATE_COPY_SOURCE;
+        outBarrier.Transition.Subresource=D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        list->ResourceBarrier(1,&outBarrier);
+        list->CopyBufferRegion(readback.Get(),0,outBuf.Get(),0,outBytes);
+        check(list->Close(),"Residual CommandList Close");
+
+        ID3D12CommandList* lists[]{list.Get()};
+        queue_->ExecuteCommandLists(1,lists);
+        const auto fv=++fence_value_;
+        check(queue_->Signal(fence_.Get(),fv),"Residual Queue Signal");
+        if(fence_->GetCompletedValue()<fv) {
+            check(fence_->SetEventOnCompletion(fv,event_),"Residual SetEventOnCompletion");
+            WaitForSingleObject(event_,INFINITE);
+        }
+
+        void* mapped=nullptr;
+        D3D12_RANGE rr{0,outBytes};
+        check(readback->Map(0,&rr,&mapped),"Residual Map readback");
+        const auto* u=static_cast<const std::uint32_t*>(mapped);
+        Bytes result(frameBytes);
+        for(std::size_t i=0;i<frameBytes;++i)
+            result[i]=static_cast<Byte>(u[i]&0xffu);
+        D3D12_RANGE nw{0,0};
+        readback->Unmap(0,&nw);
+        return result;
+    }
+
 private:
     void create_pipeline() {
         D3D12_ROOT_PARAMETER rp[4]{};
