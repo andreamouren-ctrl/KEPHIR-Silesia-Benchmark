@@ -7,6 +7,7 @@ on:
     paths:
       - "benchmarks/major_codecs/aurora_backend_plugin.cpp"
       - "benchmarks/major_codecs/aurora_video_backend_router_real.cpp"
+      - "src/cpp/aurora_media/AuroraVideoMotion.cpp"
       - ".github/workflows/aurora_video_backend_router_real.yml"
 
 jobs:
