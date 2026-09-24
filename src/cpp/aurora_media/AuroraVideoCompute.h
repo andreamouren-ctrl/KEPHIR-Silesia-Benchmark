@@ -36,6 +36,12 @@ public:
                                         ByteView motion_map,
                                         std::uint32_t width,
                                         std::uint32_t height) = 0;
+
+    virtual Bytes reconstruct_yuv420_mc8r4(ByteView previous_yuv420,
+                                          ByteView residual_yuv420,
+                                          ByteView motion_map,
+                                          std::uint32_t width,
+                                          std::uint32_t height) = 0;
 };
 
 std::unique_ptr<IVideoMotionCompute> make_cpu_video_motion_compute();
