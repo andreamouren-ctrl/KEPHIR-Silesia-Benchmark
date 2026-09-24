@@ -3,8 +3,8 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "speed3_sweep.py"
-      - "make_speed3_source.py"
+      - "research/speed/speed3_sweep.py"
+      - "research/generators/speed/make_speed3_source.py"
       - ".github/workflows/speed3.yml"
 jobs:
   sweep:
@@ -18,28 +18,28 @@ jobs:
           sudo apt-get install -y build-essential unzip
       - name: Build base
         run: |
-          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
-          python3 make_exp26_source.py
-          python3 make_exp27_source.py
-          python3 make_exp31_source.py
-          python3 make_exp33_source.py
-          python3 make_exp37_source.py
-          python3 make_exp38_source.py
-          python3 make_exp39_source.py
+          cat engine/source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 research/generators/general/make_exp26_source.py
+          python3 research/generators/general/make_exp27_source.py
+          python3 research/generators/general/make_exp31_source.py
+          python3 research/generators/general/make_exp33_source.py
+          python3 research/generators/general/make_exp37_source.py
+          python3 research/generators/general/make_exp38_source.py
+          python3 research/generators/general/make_exp39_source.py
       - name: Build FAST-C
         env: {CHAIN: "8", LAZY: "4", PRED: "255"}
         run: |
-          python3 make_speed3_source.py
+          python3 research/generators/speed/make_speed3_source.py
           g++ -O3 -march=native -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=0 -DK2_PSG_MODE=0 -DK2_DIST_TOPO_MODE=0 -DK2_DUAL_MATCH_MODE=0 -DK2_FUSED_MATCH_MODE=0 -DK2_FUSED2_MODE=0 -pthread KEPHIR_SPEED3.cpp -o fast_c
       - name: Build FAST-D
         env: {CHAIN: "4", LAZY: "2", PRED: "255"}
         run: |
-          python3 make_speed3_source.py
+          python3 research/generators/speed/make_speed3_source.py
           g++ -O3 -march=native -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=0 -DK2_PSG_MODE=0 -DK2_DIST_TOPO_MODE=0 -DK2_DUAL_MATCH_MODE=0 -DK2_FUSED_MATCH_MODE=0 -DK2_FUSED2_MODE=0 -pthread KEPHIR_SPEED3.cpp -o fast_d
       - name: Build FAST-E
         env: {CHAIN: "2", LAZY: "1", PRED: "255"}
         run: |
-          python3 make_speed3_source.py
+          python3 research/generators/speed/make_speed3_source.py
           g++ -O3 -march=native -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=0 -DK2_PSG_MODE=0 -DK2_DIST_TOPO_MODE=0 -DK2_DUAL_MATCH_MODE=0 -DK2_FUSED_MATCH_MODE=0 -DK2_FUSED2_MODE=0 -pthread KEPHIR_SPEED3.cpp -o fast_e
       - name: Silesia
         run: |
@@ -48,7 +48,7 @@ jobs:
           mkdir silesia
           unzip -q silesia.zip -d silesia
       - name: Run
-        run: python3 speed3_sweep.py
+        run: python3 research/speed/speed3_sweep.py
       - uses: actions/upload-artifact@v4
         with:
           name: speed3-results

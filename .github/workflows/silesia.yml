@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "bench_silesia.py"
-      - "source_parts/**"
+      - "benchmarks/silesia/bench_silesia.py"
+      - "engine/source_parts/**"
       - ".github/workflows/silesia.yml"
 
 jobs:
@@ -23,7 +23,7 @@ jobs:
 
       - name: Rebuild KEPHIR EXP-22 source
         run: |
-          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP22_LAZY19.cpp
+          cat engine/source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP22_LAZY19.cpp
           test "$(wc -c < KEPHIR_2_EXP22_LAZY19.cpp)" -eq 38695
 
       - name: Download official Silesia corpus
@@ -70,7 +70,7 @@ jobs:
           g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY -pthread KEPHIR_2_EXP22_LAZY19.cpp -o kephir22
 
       - name: Run benchmark
-        run: python3 bench_silesia.py
+        run: python3 benchmarks/silesia/bench_silesia.py
 
       - name: Upload results
         uses: actions/upload-artifact@v4

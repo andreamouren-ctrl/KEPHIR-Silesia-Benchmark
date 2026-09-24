@@ -3,8 +3,8 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "make_speed1_source.py"
-      - "speed1_sweep.py"
+      - "research/generators/speed/make_speed1_source.py"
+      - "research/speed/speed1_sweep.py"
       - ".github/workflows/speed1.yml"
 jobs:
   sweep:
@@ -18,21 +18,21 @@ jobs:
           sudo apt-get install -y build-essential unzip
       - name: Build base
         run: |
-          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
-          python3 make_exp26_source.py
-          python3 make_exp27_source.py
-          python3 make_exp31_source.py
-          python3 make_exp33_source.py
-          python3 make_exp37_source.py
-          python3 make_exp38_source.py
-          python3 make_exp39_source.py
+          cat engine/source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 research/generators/general/make_exp26_source.py
+          python3 research/generators/general/make_exp27_source.py
+          python3 research/generators/general/make_exp31_source.py
+          python3 research/generators/general/make_exp33_source.py
+          python3 research/generators/general/make_exp37_source.py
+          python3 research/generators/general/make_exp38_source.py
+          python3 research/generators/general/make_exp39_source.py
       - name: Build FAST-A
         env:
           K2_CHAIN_DEPTH_VALUE: "24"
           K2_LAZY_DEPTH_VALUE: "12"
           K2_PRED_MASK_VALUE: "255"
         run: |
-          python3 make_speed1_source.py
+          python3 research/generators/speed/make_speed1_source.py
           grep -n -E "#define (CHAIN_DEPTH|LAZY_DEPTH|PRED_SAMPLE_MASK)" KEPHIR_SPEED_SOURCE.cpp
           g++ -O3 -march=native -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=0 -DK2_PSG_MODE=0 -DK2_DIST_TOPO_MODE=0 -DK2_DUAL_MATCH_MODE=0 -DK2_FUSED_MATCH_MODE=0 -DK2_FUSED2_MODE=0 -pthread KEPHIR_SPEED_SOURCE.cpp -o kephir_fast_a
       - name: Silesia
@@ -42,7 +42,7 @@ jobs:
           mkdir silesia
           unzip -q silesia.zip -d silesia
       - name: Run speed sweep
-        run: python3 speed1_sweep.py
+        run: python3 research/speed/speed1_sweep.py
       - uses: actions/upload-artifact@v4
         with:
           name: speed1-results

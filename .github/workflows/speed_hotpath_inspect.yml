@@ -11,14 +11,14 @@ jobs:
       - uses: actions/checkout@v4
       - name: Rebuild
         run: |
-          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
-          python3 make_exp26_source.py
-          python3 make_exp27_source.py
-          python3 make_exp31_source.py
-          python3 make_exp33_source.py
-          python3 make_exp37_source.py
-          python3 make_exp38_source.py
-          python3 make_exp39_source.py
+          cat engine/source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 research/generators/general/make_exp26_source.py
+          python3 research/generators/general/make_exp27_source.py
+          python3 research/generators/general/make_exp31_source.py
+          python3 research/generators/general/make_exp33_source.py
+          python3 research/generators/general/make_exp37_source.py
+          python3 research/generators/general/make_exp38_source.py
+          python3 research/generators/general/make_exp39_source.py
       - name: Inspect hot paths
         run: |
           grep -n -E "kp\.predict|kp\.use_raw|tf\.confident|tf\.observe|mlctx|mlt\[" KEPHIR_2_EXP39_FUSED2.cpp | head -160
