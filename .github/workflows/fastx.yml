@@ -3,8 +3,8 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "make_fastx_source.py"
-      - "fastx_bench.py"
+      - "research/generators/speed/make_fastx_source.py"
+      - "research/speed/fastx_bench.py"
       - ".github/workflows/fastx.yml"
 jobs:
   bench:
@@ -19,20 +19,20 @@ jobs:
       - name: Build
         run: |
           cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
-          python3 make_exp26_source.py
-          python3 make_exp27_source.py
-          python3 make_exp31_source.py
-          python3 make_exp33_source.py
-          python3 make_exp37_source.py
-          python3 make_exp38_source.py
-          python3 make_exp39_source.py
-          K2_CHAIN_DEPTH_VALUE=24 K2_LAZY_DEPTH_VALUE=12 K2_PRED_MASK_VALUE=255 python3 make_speed1_source.py
-          python3 make_fastd_source.py
-          python3 make_fastk_source.py
-          python3 make_fasto_source.py
-          python3 make_fastu_source.py
-          python3 make_fastv_source.py
-          python3 make_fastx_source.py
+          python3 research/generators/general/make_exp26_source.py
+          python3 research/generators/general/make_exp27_source.py
+          python3 research/generators/general/make_exp31_source.py
+          python3 research/generators/general/make_exp33_source.py
+          python3 research/generators/general/make_exp37_source.py
+          python3 research/generators/general/make_exp38_source.py
+          python3 research/generators/general/make_exp39_source.py
+          K2_CHAIN_DEPTH_VALUE=24 K2_LAZY_DEPTH_VALUE=12 K2_PRED_MASK_VALUE=255 python3 research/generators/speed/make_speed1_source.py
+          python3 research/generators/speed/make_fastd_source.py
+          python3 research/generators/speed/make_fastk_source.py
+          python3 research/generators/speed/make_fasto_source.py
+          python3 research/generators/speed/make_fastu_source.py
+          python3 research/generators/speed/make_fastv_source.py
+          python3 research/generators/speed/make_fastx_source.py
           FLAGS="-O3 -march=native -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=0 -DK2_PSG_MODE=0 -DK2_DIST_TOPO_MODE=0 -DK2_DUAL_MATCH_MODE=0 -DK2_FUSED_MATCH_MODE=0 -DK2_FUSED2_MODE=0 -pthread"
           g++ $FLAGS KEPHIR_FAST_V.cpp -o fast_v
           g++ $FLAGS KEPHIR_FAST_X.cpp -o fast_x
@@ -43,7 +43,7 @@ jobs:
           mkdir silesia
           unzip -q silesia.zip -d silesia
       - name: Benchmark
-        run: python3 fastx_bench.py
+        run: python3 research/speed/fastx_bench.py
       - uses: actions/upload-artifact@v4
         with:
           name: fastx-results
