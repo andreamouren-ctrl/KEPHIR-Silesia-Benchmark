@@ -36,6 +36,15 @@ public:
                                    "CPU reference motion map does not match MC8R4 selection");
         return encoded.residual_yuv420;
     }
+
+    Bytes reconstruct_yuv420_mc8r4(ByteView previous_yuv420,
+                                   ByteView residual_yuv420,
+                                   ByteView motion_map,
+                                   std::uint32_t width,
+                                   std::uint32_t height) override {
+        return AuroraVideoMotion::decode_mc8r4(
+            motion_map,residual_yuv420,previous_yuv420,width,height);
+    }
 };
 
 } // namespace
