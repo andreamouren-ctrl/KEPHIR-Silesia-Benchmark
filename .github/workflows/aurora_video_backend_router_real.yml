@@ -29,7 +29,7 @@ jobs:
           python3 make_exp37_source.py
           python3 make_exp38_source.py
           python3 make_exp39_source.py
-          K2_CHAIN_DEPTH_VALUE=24 K2_LAZY_DEPTH_VALUE=12 K2_PRED_MASK_VALUE=255 python3 make_speed1_source.py
+          K2_CHAIN_DEPTH_VALUE=16 K2_LAZY_DEPTH_VALUE=8 K2_PRED_MASK_VALUE=255 python3 make_speed1_source.py
           python3 make_fastd_source.py
       - name: Build EXP-37A plugin
         run: |
