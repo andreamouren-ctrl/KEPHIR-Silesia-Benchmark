@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "exp33h_validate.py"
+      - "research/validation/exp33h_validate.py"
       - ".github/workflows/exp33h_validate.yml"
 jobs:
   validate:
@@ -18,10 +18,10 @@ jobs:
       - name: Build EXP-33H
         run: |
           cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
-          python3 make_exp26_source.py
-          python3 make_exp27_source.py
-          python3 make_exp31_source.py
-          python3 make_exp33_source.py
+          python3 research/generators/general/make_exp26_source.py
+          python3 research/generators/general/make_exp27_source.py
+          python3 research/generators/general/make_exp31_source.py
+          python3 research/generators/general/make_exp33_source.py
           g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 -DK2_DIST_TOPO_MODE=8 -pthread KEPHIR_2_EXP33_DISTANCE_TOPOLOGY.cpp -o kephir33
       - name: Silesia
         run: |
@@ -30,7 +30,7 @@ jobs:
           mkdir silesia
           unzip -q silesia.zip -d silesia
       - name: Validate
-        run: python3 exp33h_validate.py
+        run: python3 research/validation/exp33h_validate.py
       - uses: actions/upload-artifact@v4
         with:
           name: exp33h-validation

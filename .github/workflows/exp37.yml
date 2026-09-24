@@ -3,8 +3,8 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "make_exp37_source.py"
-      - "exp37_sweep.py"
+      - "research/generators/general/make_exp37_source.py"
+      - "research/experiments/exp37_sweep.py"
       - ".github/workflows/exp37.yml"
 jobs:
   sweep:
@@ -19,11 +19,11 @@ jobs:
       - name: Build EXP-37 modes
         run: |
           cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
-          python3 make_exp26_source.py
-          python3 make_exp27_source.py
-          python3 make_exp31_source.py
-          python3 make_exp33_source.py
-          python3 make_exp37_source.py
+          python3 research/generators/general/make_exp26_source.py
+          python3 research/generators/general/make_exp27_source.py
+          python3 research/generators/general/make_exp31_source.py
+          python3 research/generators/general/make_exp33_source.py
+          python3 research/generators/general/make_exp37_source.py
           for M in 0 1 2 3; do
             g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=$M -pthread KEPHIR_2_EXP37_DUAL_MATCH.cpp -o kephir37_$M
           done
@@ -34,7 +34,7 @@ jobs:
           mkdir silesia
           unzip -q silesia.zip -d silesia
       - name: Run EXP-37
-        run: python3 exp37_sweep.py
+        run: python3 research/experiments/exp37_sweep.py
       - uses: actions/upload-artifact@v4
         with:
           name: exp37-results

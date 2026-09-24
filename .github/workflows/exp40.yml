@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "exp40_diagnostic.py"
+      - "research/diagnostics/exp40_diagnostic.py"
       - ".github/workflows/exp40.yml"
 jobs:
   diagnostic:
@@ -18,11 +18,11 @@ jobs:
       - name: Build EXP-37A
         run: |
           cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
-          python3 make_exp26_source.py
-          python3 make_exp27_source.py
-          python3 make_exp31_source.py
-          python3 make_exp33_source.py
-          python3 make_exp37_source.py
+          python3 research/generators/general/make_exp26_source.py
+          python3 research/generators/general/make_exp27_source.py
+          python3 research/generators/general/make_exp31_source.py
+          python3 research/generators/general/make_exp33_source.py
+          python3 research/generators/general/make_exp37_source.py
           g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 -pthread KEPHIR_2_EXP37_DUAL_MATCH.cpp -o kephir37
       - name: Silesia
         run: |
@@ -31,7 +31,7 @@ jobs:
           mkdir silesia
           unzip -q silesia.zip -d silesia
       - name: Run EXP-40
-        run: python3 exp40_diagnostic.py
+        run: python3 research/diagnostics/exp40_diagnostic.py
       - uses: actions/upload-artifact@v4
         with:
           name: exp40-diagnostic
