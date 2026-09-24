@@ -356,7 +356,7 @@ public:
 
         ID3D12DescriptorHeap* heaps[]{heap.Get()};
         list->SetDescriptorHeaps(1,heaps);
-        list->SetComputeRootSignature(root.Get());
+        list->SetComputeRootSignature(residual_root_.Get());
         const std::array<std::uint32_t,4> constants{
             w,h,static_cast<std::uint32_t>(frameBytes),w/8
         };
@@ -379,7 +379,7 @@ public:
         list->CopyBufferRegion(readback.Get(),0,outBuf.Get(),0,outBytes);
         check(list->Close(),"Residual CommandList Close");
 
-        ID3D12CommandList* lists[]{list.Get()};
+        ID3D12CommandList* lists[]{list};
         queue_->ExecuteCommandLists(1,lists);
         const auto fv=++fence_value_;
         check(queue_->Signal(fence_.Get(),fv),"Residual Queue Signal");
@@ -488,7 +488,7 @@ public:
 
         ID3D12DescriptorHeap* heaps[]{heap.Get()};
         list->SetDescriptorHeaps(1,heaps);
-        list->SetComputeRootSignature(root.Get());
+        list->SetComputeRootSignature(reconstruct_root_.Get());
         const std::array<std::uint32_t,4> constants{
             w,h,static_cast<std::uint32_t>(frameBytes),w/8
         };
@@ -511,7 +511,7 @@ public:
         list->CopyBufferRegion(readback.Get(),0,outBuf.Get(),0,outBytes);
         check(list->Close(),"Reconstruct CommandList Close");
 
-        ID3D12CommandList* lists[]{list.Get()};
+        ID3D12CommandList* lists[]{list};
         queue_->ExecuteCommandLists(1,lists);
         const auto fv=++fence_value_;
         check(queue_->Signal(fence_.Get(),fv),"Reconstruct Queue Signal");
