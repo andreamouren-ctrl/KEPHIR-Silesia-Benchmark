@@ -129,11 +129,10 @@ MotionResidual AuroraVideoMotion::encode_mc8r4_limited(ByteView cur,ByteView pre
     if(cur.size()!=fs || prev.size()!=fs)
         throw AuroraMediaError(ErrorCode::InvalidArgument,"MC8R4 frame size mismatch");
 
-    static const auto cached_candidates=candidates(radius);
-    auto cand=cached_candidates;
+    static const auto cand=candidates(radius);
     if(max_candidates==0)
         throw AuroraMediaError(ErrorCode::InvalidArgument,"MC8R4 candidate limit must be positive");
-    if(max_candidates<cand.size()) cand.resize(max_candidates);
+    const auto candidate_count=std::min<std::size_t>(max_candidates,cand.size());
     const auto ys=y_size(w,h);
     const auto us=uv_size(w,h);
     const auto cw=w/2;
@@ -161,7 +160,7 @@ MotionResidual AuroraVideoMotion::encode_mc8r4_limited(ByteView cur,ByteView pre
             int best_idx=-1;
             std::uint64_t best_cost=std::numeric_limits<std::uint64_t>::max();
 
-            for(std::size_t i=0;i<cand.size();++i) {
+            for(std::size_t i=0;i<candidate_count;++i) {
                 const auto [dx,dy]=cand[i];
                 const int sx=static_cast<int>(bx)+dx;
                 const int sy=static_cast<int>(by)+dy;
