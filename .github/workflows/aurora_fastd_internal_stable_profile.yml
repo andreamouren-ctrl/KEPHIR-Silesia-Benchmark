@@ -1,0 +1,42 @@
+name: AURORA FAST-D Internal Stable Profile
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["research/khepri-stream-codec"]
+    paths:
+      - "benchmarks/major_codecs/aurora_fastd_internal_stable_profile.cpp"
+      - ".github/workflows/aurora_fastd_internal_stable_profile.yml"
+
+jobs:
+  internal-profile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+      - name: Generate FAST-D baseline
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          python3 make_exp37_source.py
+          python3 make_exp38_source.py
+          python3 make_exp39_source.py
+          K2_CHAIN_DEPTH_VALUE=24 K2_LAZY_DEPTH_VALUE=12 K2_PRED_MASK_VALUE=255 python3 make_speed1_source.py
+          python3 make_fastd_source.py
+      - name: Build internal profiler
+        run: |
+          g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY             -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=0 -DK2_PSG_MODE=0             -DK2_DIST_TOPO_MODE=0 -DK2_DUAL_MATCH_MODE=0             -DK2_FUSED_MATCH_MODE=0 -DK2_FUSED2_MODE=0 -pthread             src/cpp/aurora_media/AuroraVideoMotion.cpp             src/cpp/aurora_media/AuroraVideoResidual.cpp             benchmarks/major_codecs/aurora_fastd_internal_stable_profile.cpp             -Isrc/cpp/aurora_media -o aurora_fastd_internal_stable_profile
+      - name: Run internal profiler
+        run: |
+          ./aurora_fastd_internal_stable_profile | tee fastd_internal_profile.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-fastd-internal-stable-profile
+          path: fastd_internal_profile.txt
