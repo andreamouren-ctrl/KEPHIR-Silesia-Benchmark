@@ -5,7 +5,7 @@ from pathlib import Path
 import kstream_kmrl_lab as lab
 from ks06_plane_sparsity import enc_tail16, dec_tail16
 from kstream_video_baseline import encode_file as vbase_encode, decode_file as vbase_decode
-from kstream_video_mc import encode_file as vmc_encode, decode_file as vmc_decode
+from kstream_video_motion_control import encode_file as vmc_encode, decode_file as vmc_decode
 
 OUT=Path("streaming/major_codec_bench_out")
 RATE=48000; ACH=2; ABITS=16
