@@ -23,6 +23,19 @@ public:
         return AuroraVideoMotion::encode_mc8r4(
             current_yuv420, previous_yuv420, width, height).motion_map;
     }
+
+    Bytes residual_yuv420_mc8r4(ByteView current_yuv420,
+                                ByteView previous_yuv420,
+                                ByteView motion_map,
+                                std::uint32_t width,
+                                std::uint32_t height) override {
+        const auto encoded=AuroraVideoMotion::encode_mc8r4(
+            current_yuv420, previous_yuv420, width, height);
+        if(encoded.motion_map!=Bytes(motion_map.begin(),motion_map.end()))
+            throw AuroraMediaError(ErrorCode::InvalidArgument,
+                                   "CPU reference motion map does not match MC8R4 selection");
+        return encoded.residual_yuv420;
+    }
 };
 
 } // namespace

@@ -28,6 +28,14 @@ public:
                                    ByteView previous_yuv420,
                                    std::uint32_t width,
                                    std::uint32_t height) = 0;
+
+    // Generates the modulo-256 YUV420 residual using an already selected
+    // MC8R4 motion map. The map contains one candidate index per 8x8 Y block.
+    virtual Bytes residual_yuv420_mc8r4(ByteView current_yuv420,
+                                        ByteView previous_yuv420,
+                                        ByteView motion_map,
+                                        std::uint32_t width,
+                                        std::uint32_t height) = 0;
 };
 
 std::unique_ptr<IVideoMotionCompute> make_cpu_video_motion_compute();
