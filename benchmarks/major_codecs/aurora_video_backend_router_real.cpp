@@ -163,15 +163,17 @@ static void parallel_for(std::size_t count,std::uint32_t workers,Fn fn) {
 }
 
 static void run_case(const char* name,std::uint32_t fw,std::uint32_t fh,
+                     double target_fps,
                      BackendPlugin& expPlugin,BackendPlugin& fastPlugin) {
     constexpr std::uint32_t workers=4;
-    constexpr double threshold=2.60;
+    constexpr std::uint32_t frames=5;
+    const double budget_ms=1000.0/target_fps;
+    double threshold=2.60;
+
     const auto cfg=video_profile_config(VideoProfile::Balanced);
     const auto plan=make_video_tile_plan(fw,fh,cfg.tile_width,cfg.tile_height,
                                          cfg.tile_halo,cfg.max_concurrent_tiles);
-    const auto prev=make_frame(fw,fh,0);
-    const auto cur=make_frame(fw,fh,1);
-    std::vector<EncodedTile> encoded(plan.tiles.size());
+    auto prev=make_frame(fw,fh,0);
 
     std::vector<BackendPlugin::Instance> expEnc,fastEnc,expDec,fastDec;
     for(std::uint32_t i=0;i<workers;++i) {
@@ -181,66 +183,98 @@ static void run_case(const char* name,std::uint32_t fw,std::uint32_t fh,
         fastDec.emplace_back(fastPlugin.make_instance());
     }
 
-    const auto e0=Clock::now();
-    parallel_for(plan.tiles.size(),workers,[&](std::size_t i,std::uint32_t worker){
-        const auto& tile=plan.tiles[i];
-        auto c=extract_tile(cur,fw,fh,tile);
-        auto p=extract_tile(prev,fw,fh,tile);
-        auto mr=AuroraVideoMotion::encode_mc8r4_adaptive(c,p,tile.width,tile.height,4.0,9);
-        const double mean=AuroraVideoResidual::mean_signed_magnitude(mr.residual_yuv420);
-        const auto mode=AuroraVideoResidual::choose_mode(mr.residual_yuv420);
-        auto mapped=AuroraVideoResidual::map(mr.residual_yuv420,mode);
-        const auto kind=mean<=threshold ? BackendKind::FastD : BackendKind::Exp37;
-        auto packed=kind==BackendKind::FastD
-            ? fastEnc[worker].encode(mapped)
-            : expEnc[worker].encode(mapped);
-        encoded[i]=EncodedTile{tile,std::move(mr.motion_map),mode,kind,std::move(packed)};
-    });
-    const auto e1=Clock::now();
+    double total_encode_ms=0.0;
+    std::uint64_t total_packed=0;
+    std::uint64_t total_raw=0;
+    std::uint64_t budget_hits=0;
 
-    std::atomic<std::uint64_t> fastTiles{0},expTiles{0};
-    std::vector<Bytes> decoded(plan.tiles.size());
-    const auto d0=Clock::now();
-    parallel_for(encoded.size(),workers,[&](std::size_t i,std::uint32_t worker){
-        const auto& et=encoded[i];
-        auto p=extract_tile(prev,fw,fh,et.tile);
-        auto mapped=et.backend==BackendKind::FastD
-            ? fastDec[worker].decode(et.packed)
-            : expDec[worker].decode(et.packed);
-        if(et.backend==BackendKind::FastD) fastTiles.fetch_add(1,std::memory_order_relaxed);
-        else expTiles.fetch_add(1,std::memory_order_relaxed);
-        auto residual=AuroraVideoResidual::unmap(mapped,et.mode);
-        decoded[i]=AuroraVideoMotion::decode_mc8r4(
-            et.motion,residual,p,et.tile.width,et.tile.height);
-    });
-    const auto d1=Clock::now();
+    for(std::uint32_t fi=1;fi<=frames;++fi) {
+        const auto cur=make_frame(fw,fh,fi);
+        std::vector<EncodedTile> encoded(plan.tiles.size());
 
-    std::uint64_t packedBytes=0,rawBytes=0;
-    for(std::size_t i=0;i<decoded.size();++i) {
-        auto expected=extract_tile(cur,fw,fh,encoded[i].tile);
-        if(decoded[i]!=expected) throw std::runtime_error(std::string("router roundtrip mismatch ")+name);
-        packedBytes+=encoded[i].packed.size()+encoded[i].motion.size()+2;
-        rawBytes+=decoded[i].size();
+        const auto e0=Clock::now();
+        parallel_for(plan.tiles.size(),workers,[&](std::size_t i,std::uint32_t worker){
+            const auto& tile=plan.tiles[i];
+            auto ct=extract_tile(cur,fw,fh,tile);
+            auto pt=extract_tile(prev,fw,fh,tile);
+            auto mr=AuroraVideoMotion::encode_mc8r4_adaptive(
+                ct,pt,tile.width,tile.height,4.0,9);
+            const double mean=AuroraVideoResidual::mean_signed_magnitude(mr.residual_yuv420);
+            const auto mode=AuroraVideoResidual::choose_mode(mr.residual_yuv420);
+            auto mapped=AuroraVideoResidual::map(mr.residual_yuv420,mode);
+            const auto kind=mean<=threshold ? BackendKind::FastD : BackendKind::Exp37;
+            auto packed=kind==BackendKind::FastD
+                ? fastEnc[worker].encode(mapped)
+                : expEnc[worker].encode(mapped);
+            encoded[i]=EncodedTile{tile,std::move(mr.motion_map),mode,kind,std::move(packed)};
+        });
+        const auto e1=Clock::now();
+
+        std::atomic<std::uint64_t> fastTiles{0},expTiles{0};
+        std::vector<Bytes> decoded(plan.tiles.size());
+        parallel_for(encoded.size(),workers,[&](std::size_t i,std::uint32_t worker){
+            const auto& et=encoded[i];
+            auto pt=extract_tile(prev,fw,fh,et.tile);
+            auto mapped=et.backend==BackendKind::FastD
+                ? fastDec[worker].decode(et.packed)
+                : expDec[worker].decode(et.packed);
+            if(et.backend==BackendKind::FastD) fastTiles.fetch_add(1,std::memory_order_relaxed);
+            else expTiles.fetch_add(1,std::memory_order_relaxed);
+            auto residual=AuroraVideoResidual::unmap(mapped,et.mode);
+            decoded[i]=AuroraVideoMotion::decode_mc8r4(
+                et.motion,residual,pt,et.tile.width,et.tile.height);
+        });
+
+        std::uint64_t packedBytes=0,rawBytes=0;
+        for(std::size_t i=0;i<decoded.size();++i) {
+            auto expected=extract_tile(cur,fw,fh,encoded[i].tile);
+            if(decoded[i]!=expected)
+                throw std::runtime_error(std::string("latency router roundtrip mismatch ")+name);
+            packedBytes+=encoded[i].packed.size()+encoded[i].motion.size()+2;
+            rawBytes+=decoded[i].size();
+        }
+
+        const double encMs=std::chrono::duration<double,std::milli>(e1-e0).count();
+        const bool hit=encMs<=budget_ms;
+        if(hit) ++budget_hits;
+
+        std::cout<<"LATENCY_ROUTER_FRAME"
+                 <<" name="<<name
+                 <<" target_fps="<<target_fps
+                 <<" frame="<<fi
+                 <<" threshold="<<threshold
+                 <<" fast_tiles_pct="<<(100.0*fastTiles.load()/encoded.size())
+                 <<" encode_ms="<<encMs
+                 <<" budget_ms="<<budget_ms
+                 <<" budget_hit="<<(hit?1:0)
+                 <<" packed_bytes="<<packedBytes
+                 <<" ratio_percent="<<(100.0*static_cast<double>(packedBytes)/rawBytes)
+                 <<" lossless=1"
+                 <<"\n";
+
+        total_encode_ms+=encMs;
+        total_packed+=packedBytes;
+        total_raw+=rawBytes;
+
+        if(encMs>budget_ms) {
+            threshold=std::min(5.0,threshold+0.90);
+        } else if(encMs<budget_ms*0.75) {
+            threshold=std::max(2.60,threshold-0.45);
+        }
+
+        prev=cur;
     }
 
-    const double encMs=std::chrono::duration<double,std::milli>(e1-e0).count();
-    const double decMs=std::chrono::duration<double,std::milli>(d1-d0).count();
-    const double totalMs=encMs+decMs;
-    std::cout<<"REAL_ROUTER_PASS"
+    const double avg_ms=total_encode_ms/frames;
+    std::cout<<"LATENCY_ROUTER_PASS"
              <<" name="<<name
-             <<" threshold="<<threshold
-             <<" workers="<<workers
-             <<" fast_tiles="<<fastTiles.load()
-             <<" exp_tiles="<<expTiles.load()
-             <<" fast_tiles_pct="<<(100.0*fastTiles.load()/encoded.size())
-             <<" encode_ms="<<encMs
-             <<" encode_fps="<<(1000.0/encMs)
-             <<" decode_ms="<<decMs
-             <<" decode_fps="<<(1000.0/decMs)
-             <<" total_ms="<<totalMs
-             <<" total_fps="<<(1000.0/totalMs)
-             <<" packed_bytes="<<packedBytes
-             <<" ratio_percent="<<(100.0*static_cast<double>(packedBytes)/rawBytes)
+             <<" target_fps="<<target_fps
+             <<" frames="<<frames
+             <<" avg_encode_ms="<<avg_ms
+             <<" avg_encode_fps="<<(1000.0/avg_ms)
+             <<" budget_hits="<<budget_hits
+             <<" final_threshold="<<threshold
+             <<" avg_ratio_percent="<<(100.0*static_cast<double>(total_packed)/total_raw)
              <<" lossless=1"
              <<"\n";
 }
@@ -250,9 +284,11 @@ int main() {
         BackendPlugin exp("./libaurora_exp37.so");
         BackendPlugin fast("./libaurora_fastd.so");
         std::cout<<"hardware_concurrency="<<std::thread::hardware_concurrency()<<"\n";
-        run_case("1080p",1920,1080,exp,fast);
-        run_case("1440p",2560,1440,exp,fast);
-        run_case("4K",3840,2160,exp,fast);
+        for(const double target:{30.0,60.0}) {
+            run_case("1080p",1920,1080,target,exp,fast);
+            run_case("1440p",2560,1440,target,exp,fast);
+            run_case("4K",3840,2160,target,exp,fast);
+        }
         return 0;
     } catch(const std::exception& e) {
         std::cerr<<"FAIL: "<<e.what()<<"\n";
