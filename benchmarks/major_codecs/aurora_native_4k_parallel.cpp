@@ -96,7 +96,7 @@ static EncodedTile encode_one(ByteView cur,ByteView prev,
                               std::uint32_t fw,std::uint32_t fh,const VideoTile& tile) {
     auto c=extract_tile(cur,fw,fh,tile);
     auto p=extract_tile(prev,fw,fh,tile);
-    auto mr=AuroraVideoMotion::encode_mc8r4(c,p,tile.width,tile.height);
+    auto mr=AuroraVideoMotion::encode_mc8r4_adaptive(c,p,tile.width,tile.height,4.0,9);
     const auto mode=AuroraVideoResidual::choose_mode(mr.residual_yuv420);
     auto mapped=AuroraVideoResidual::map(mr.residual_yuv420,mode);
     AuroraKhepriExp37MemoryAdapter k;
@@ -129,7 +129,8 @@ static void parallel_for(std::size_t count,std::uint32_t workers,Fn fn) {
     for(auto& t:pool) t.join();
 }
 
-static void run_case(std::uint32_t workers,ByteView cur,ByteView prev,const VideoTilePlan& plan) {
+static void run_case(const char* label,std::uint32_t workers,
+                     ByteView cur,ByteView prev,const VideoTilePlan& plan) {
     std::vector<EncodedTile> encoded(plan.tiles.size());
     const auto e0=Clock::now();
     parallel_for(plan.tiles.size(),workers,[&](std::size_t i){
@@ -147,7 +148,7 @@ static void run_case(std::uint32_t workers,ByteView cur,ByteView prev,const Vide
     for(std::size_t i=0;i<decoded.size();++i)
         paste_tile(recon,plan.frame_width,plan.frame_height,plan.tiles[i],decoded[i]);
     if(!std::equal(recon.begin(),recon.end(),cur.begin(),cur.end()))
-        throw std::runtime_error("parallel 4K reconstruction mismatch");
+        throw std::runtime_error(std::string("parallel reconstruction mismatch at ")+label);
 
     std::uint64_t packed=0;
     for(const auto& e:encoded) packed+=e.packed.size()+e.motion.size()+1;
@@ -155,7 +156,9 @@ static void run_case(std::uint32_t workers,ByteView cur,ByteView prev,const Vide
     const double enc=std::chrono::duration<double>(e1-e0).count();
     const double dec=std::chrono::duration<double>(d1-e1).count();
     const double total=enc+dec;
-    std::cout<<"workers="<<workers
+    std::cout<<"PARALLEL_PASS"
+             <<" name="<<label
+             <<" workers="<<workers
              <<" encode_seconds="<<enc
              <<" encode_fps="<<(1.0/enc)
              <<" decode_seconds="<<dec
@@ -167,18 +170,25 @@ static void run_case(std::uint32_t workers,ByteView cur,ByteView prev,const Vide
 
 int main() {
     try {
-        constexpr std::uint32_t fw=3840,fh=2160;
-        const auto cfg=video_profile_config(VideoProfile::Streaming4K);
-        const auto plan=make_video_tile_plan(fw,fh,cfg.tile_width,cfg.tile_height,
-                                             cfg.tile_halo,cfg.max_concurrent_tiles);
-        const auto prev=make_frame(fw,fh,0);
-        const auto cur=make_frame(fw,fh,1);
+        struct Resolution { const char* name; std::uint32_t w,h; };
+        const Resolution resolutions[]{
+            {"1080p",1920,1080},
+            {"1440p",2560,1440},
+            {"4K",3840,2160}
+        };
+        const auto cfg=video_profile_config(VideoProfile::Balanced);
 
         std::cout<<"hardware_concurrency="<<std::thread::hardware_concurrency()<<"\n";
-        for(const auto workers:{1u,2u,4u,8u})
-            run_case(workers,cur,prev,plan);
+        for(const auto& r:resolutions) {
+            const auto plan=make_video_tile_plan(r.w,r.h,cfg.tile_width,cfg.tile_height,
+                                                 cfg.tile_halo,cfg.max_concurrent_tiles);
+            const auto prev=make_frame(r.w,r.h,0);
+            const auto cur=make_frame(r.w,r.h,1);
+            for(const auto workers:{1u,2u,4u,8u})
+                run_case(r.name,workers,cur,prev,plan);
+        }
 
-        std::cout<<"AURORA_NATIVE_4K_PARALLEL_PASS\n";
+        std::cout<<"AURORA_NATIVE_ADAPTIVE_PARALLEL_PASS\n";
         return 0;
     } catch(const std::exception& e) {
         std::cerr<<"FAIL: "<<e.what()<<"\n";
