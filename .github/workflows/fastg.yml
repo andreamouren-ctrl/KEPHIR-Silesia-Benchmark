@@ -17,7 +17,7 @@ jobs:
           sudo apt-get install -y build-essential unzip
       - name: Build FAST-G
         run: |
-          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          cat engine/source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
           python3 research/generators/general/make_exp26_source.py
           python3 research/generators/general/make_exp27_source.py
           python3 research/generators/general/make_exp31_source.py
