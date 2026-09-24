@@ -93,20 +93,20 @@ static void paste_tile(Bytes& frame,std::uint32_t fw,std::uint32_t fh,
 }
 
 static EncodedTile encode_one(ByteView cur,ByteView prev,
-                              std::uint32_t fw,std::uint32_t fh,const VideoTile& tile) {
+                              std::uint32_t fw,std::uint32_t fh,const VideoTile& tile,
+                              AuroraKhepriExp37MemoryAdapter& k) {
     auto c=extract_tile(cur,fw,fh,tile);
     auto p=extract_tile(prev,fw,fh,tile);
     auto mr=AuroraVideoMotion::encode_mc8r4_adaptive(c,p,tile.width,tile.height,4.0,9);
     const auto mode=AuroraVideoResidual::choose_mode(mr.residual_yuv420);
     auto mapped=AuroraVideoResidual::map(mr.residual_yuv420,mode);
-    AuroraKhepriExp37MemoryAdapter k;
     auto packed=k.encode(mapped);
     return EncodedTile{tile,std::move(mr.motion_map),mode,std::move(packed)};
 }
 
-static Bytes decode_one(const EncodedTile& et,ByteView prev,std::uint32_t fw,std::uint32_t fh) {
+static Bytes decode_one(const EncodedTile& et,ByteView prev,std::uint32_t fw,std::uint32_t fh,
+                        AuroraKhepriExp37MemoryAdapter& k) {
     auto p=extract_tile(prev,fw,fh,et.tile);
-    AuroraKhepriExp37MemoryAdapter k;
     auto mapped=k.decode(et.packed);
     auto residual=AuroraVideoResidual::unmap(mapped,et.mode);
     return AuroraVideoMotion::decode_mc8r4(et.motion,residual,p,et.tile.width,et.tile.height);
@@ -118,11 +118,11 @@ static void parallel_for(std::size_t count,std::uint32_t workers,Fn fn) {
     std::vector<std::thread> pool;
     pool.reserve(workers);
     for(std::uint32_t w=0;w<workers;++w) {
-        pool.emplace_back([&]{
+        pool.emplace_back([&,w]{
             for(;;) {
                 const auto i=next.fetch_add(1,std::memory_order_relaxed);
                 if(i>=count) break;
-                fn(i);
+                fn(i,w);
             }
         });
     }
@@ -132,15 +132,20 @@ static void parallel_for(std::size_t count,std::uint32_t workers,Fn fn) {
 static void run_case(const char* label,std::uint32_t workers,
                      ByteView cur,ByteView prev,const VideoTilePlan& plan) {
     std::vector<EncodedTile> encoded(plan.tiles.size());
+    std::vector<AuroraKhepriExp37MemoryAdapter> encode_khepri(workers);
+    std::vector<AuroraKhepriExp37MemoryAdapter> decode_khepri(workers);
+
     const auto e0=Clock::now();
-    parallel_for(plan.tiles.size(),workers,[&](std::size_t i){
-        encoded[i]=encode_one(cur,prev,plan.frame_width,plan.frame_height,plan.tiles[i]);
+    parallel_for(plan.tiles.size(),workers,[&](std::size_t i,std::uint32_t worker){
+        encoded[i]=encode_one(cur,prev,plan.frame_width,plan.frame_height,plan.tiles[i],
+                              encode_khepri[worker]);
     });
     const auto e1=Clock::now();
 
     std::vector<Bytes> decoded(plan.tiles.size());
-    parallel_for(plan.tiles.size(),workers,[&](std::size_t i){
-        decoded[i]=decode_one(encoded[i],prev,plan.frame_width,plan.frame_height);
+    parallel_for(plan.tiles.size(),workers,[&](std::size_t i,std::uint32_t worker){
+        decoded[i]=decode_one(encoded[i],prev,plan.frame_width,plan.frame_height,
+                              decode_khepri[worker]);
     });
     const auto d1=Clock::now();
 
