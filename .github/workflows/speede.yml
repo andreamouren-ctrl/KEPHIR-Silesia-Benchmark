@@ -16,7 +16,7 @@ jobs:
           sudo apt-get install -y build-essential unzip
       - name: Build FAST-E
         run: |
-          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          cat engine/source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
           python3 make_exp26_source.py
           python3 make_exp27_source.py
           python3 make_exp31_source.py
@@ -24,8 +24,8 @@ jobs:
           python3 make_exp37_source.py
           python3 make_exp38_source.py
           python3 make_exp39_source.py
-          K2_CHAIN_DEPTH_VALUE=12 K2_LAZY_DEPTH_VALUE=6 K2_PRED_MASK_VALUE=255 python3 make_speed1_source.py
-          python3 make_fastd_source.py
+          K2_CHAIN_DEPTH_VALUE=12 K2_LAZY_DEPTH_VALUE=6 K2_PRED_MASK_VALUE=255 python3 research/generators/speed/make_speed1_source.py
+          python3 research/generators/speed/make_fastd_source.py
           g++ -O3 -march=native -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=0 -DK2_PSG_MODE=0 -DK2_DIST_TOPO_MODE=0 -DK2_DUAL_MATCH_MODE=0 -DK2_FUSED_MATCH_MODE=0 -DK2_FUSED2_MODE=0 -pthread KEPHIR_SPEED_D_SOURCE.cpp -o kephir_fast_d
       - name: Silesia
         run: |
@@ -34,7 +34,7 @@ jobs:
           mkdir silesia
           unzip -q silesia.zip -d silesia
       - name: Bench
-        run: python3 speedd_bench.py
+        run: python3 research/speed/speedd_bench.py
       - uses: actions/upload-artifact@v4
         with:
           name: speede-results
