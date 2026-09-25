@@ -38,7 +38,7 @@ jobs:
       - name: Validate
         run: |
           grep "EXP71_MEDIA_MODEL" exp71_media_results.txt
-          test "$(grep -c 'EXP71_MEDIA_PASS' exp71_media_results.txt)" -eq 2
+          test "$(grep -c 'EXP71_MEDIA_PASS' exp71_media_results.txt)" -eq 3
           grep "lossless=1" exp71_media_results.txt
           test -s exp71_media_model.tsv
       - uses: actions/upload-artifact@v4
