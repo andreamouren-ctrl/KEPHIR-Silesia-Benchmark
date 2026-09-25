@@ -1,0 +1,71 @@
+name: AURORA FAST-D Depth Frontier
+on:
+  workflow_dispatch:
+  push:
+    branches: ["research/khepri-stream-codec"]
+    paths:
+      - ".github/workflows/aurora_fastd_depth_frontier.yml"
+jobs:
+  depth-frontier:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+      - name: Generate base chain
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          python3 make_exp37_source.py
+          python3 make_exp38_source.py
+          python3 make_exp39_source.py
+      - name: Build depth variants
+        run: |
+          common="-O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=0 -DK2_PSG_MODE=0 -DK2_DIST_TOPO_MODE=0 -DK2_DUAL_MATCH_MODE=0 -DK2_FUSED_MATCH_MODE=0 -DK2_FUSED2_MODE=0 -pthread -Isrc/cpp/aurora_media"
+          src="src/cpp/aurora_media/AuroraKhepriFastDMemoryAdapter.cpp src/cpp/aurora_media/AuroraVideoMotion.cpp src/cpp/aurora_media/AuroraVideoResidual.cpp benchmarks/major_codecs/aurora_video_stable_stage_profile.cpp"
+          for spec in "24 12 fast_24_12" "32 16 fast_32_16" "48 24 fast_48_24" "64 32 fast_64_32"; do
+            set -- $spec
+            K2_CHAIN_DEPTH_VALUE=$1 K2_LAZY_DEPTH_VALUE=$2 K2_PRED_MASK_VALUE=255 python3 make_speed1_source.py
+            python3 make_fastd_source.py
+            g++ $common $src -o $3
+          done
+      - name: Run 24-12
+        run: |
+          set -o pipefail
+          ./fast_24_12 | tee depth_24_12.txt
+      - name: Run 32-16
+        run: |
+          set -o pipefail
+          ./fast_32_16 | tee depth_32_16.txt
+      - name: Run 48-24
+        run: |
+          set -o pipefail
+          ./fast_48_24 | tee depth_48_24.txt
+      - name: Run 64-32
+        run: |
+          set -o pipefail
+          ./fast_64_32 | tee depth_64_32.txt
+      - name: Summarize
+        run: |
+          python3 - <<'PY'
+          import re
+          for name,file in [
+              ("24_12","depth_24_12.txt"),
+              ("32_16","depth_32_16.txt"),
+              ("48_24","depth_48_24.txt"),
+              ("64_32","depth_64_32.txt")]:
+              s=open(file).read()
+              m=re.search(r"STABLE_STAGE_PASS .*?wall_median_ms=([0-9.]+).*?wall_p95_ms=([0-9.]+).*?mean_packed_bytes=([0-9.]+).*?lossless=1",s)
+              if not m: raise SystemExit("MISSING_RESULT "+name)
+              print(f"DEPTH_FRONTIER_PASS mode={name} median_ms={m.group(1)} p95_ms={m.group(2)} mean_packed_bytes={m.group(3)} lossless=1")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-fastd-depth-frontier
+          path: depth_*.txt
