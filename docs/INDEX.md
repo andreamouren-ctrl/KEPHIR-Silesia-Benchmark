@@ -6,6 +6,7 @@
 3. [Project Structure](architecture/PROJECT_STRUCTURE.md)
 4. [File Catalog](architecture/FILE_CATALOG.md)
 5. [Workflow Policy](architecture/WORKFLOW_POLICY.md)
+6. [Adaptive Experience Engine](architecture/ADAPTIVE_EXPERIENCE_ENGINE.md)
 
 ## Research areas
 - `research/experiments/` — chronological EXP line.
@@ -26,9 +27,9 @@
 
 ## Current ULTRA reference
 
-- **EXP-65** — current practical ULTRA checkpoint.
+- **EXP-66** — current practical ULTRA checkpoint.
 - Silesia: **63,454,863 B / 29.9402133%**
-- encode: **33.34 s / 6.36 MB/s** on a 4-logical-CPU GitHub runner
+- encode: **25.97 s / 8.16 MB/s** on a 4-logical-CPU GitHub runner
 - SHA: PASS
 
 Additional areas:
