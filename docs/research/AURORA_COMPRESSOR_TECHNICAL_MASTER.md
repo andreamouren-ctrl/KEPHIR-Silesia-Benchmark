@@ -1486,3 +1486,30 @@ The learner should expand from Word-XOR probing to a portfolio of actions:
 - future CPU/GPU analysis actions.
 
 Candidate selection should optimize expected byte gain against measured computational cost under the active profile and remaining time budget.
+
+
+## Adaptive Experience functions now canonical
+
+The architecture approved after EXP-70 includes:
+- pre-trained Factory Knowledge shipped with the application;
+- persistent Local Experience preserved across launches and upgrades;
+- per-job Session Experience;
+- lightweight chunk fingerprint extraction;
+- context/family bucketing;
+- multi-action scoring;
+- measured byte-gain / compute-cost reward;
+- exploration and exploitation control;
+- confidence tracking;
+- experience decay;
+- profile-aware time/search budgets;
+- online updates during compression;
+- atomic persistent save/load;
+- Factory + Local merge;
+- schema/action/feature compatibility metadata;
+- migration/down-weighting of stale knowledge;
+- privacy-preserving aggregate statistics;
+- knowledge export/import and reset/recovery;
+- decoder independence from all learned state.
+
+Detailed canonical specification:
+`docs/architecture/ADAPTIVE_EXPERIENCE_ENGINE.md`.
