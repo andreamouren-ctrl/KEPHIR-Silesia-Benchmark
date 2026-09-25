@@ -1,0 +1,78 @@
+name: AURORA FAST-D Prefix8 A-B
+on:
+  workflow_dispatch:
+  push:
+    branches: ["research/khepri-stream-codec"]
+    paths:
+      - "make_fastd_prefix8_source.py"
+      - ".github/workflows/aurora_fastd_prefix8_ab.yml"
+jobs:
+  prefix8:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+      - name: Generate FAST 24-12
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          python3 make_exp37_source.py
+          python3 make_exp38_source.py
+          python3 make_exp39_source.py
+          python3 make_fastd_video_profile_source.py streaming4k
+          python3 make_fastd_prefix8_source.py baseline --output FASTD_BASE.cpp
+          python3 make_fastd_prefix8_source.py prefix8 --output FASTD_PREFIX8.cpp
+      - name: Build variants
+        run: |
+          common="-O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=0 -DK2_PSG_MODE=0 -DK2_DIST_TOPO_MODE=0 -DK2_DUAL_MATCH_MODE=0 -DK2_FUSED_MATCH_MODE=0 -DK2_FUSED2_MODE=0 -pthread -Isrc/cpp/aurora_media"
+          src="src/cpp/aurora_media/AuroraKhepriFastDMemoryAdapter.cpp src/cpp/aurora_media/AuroraVideoMotion.cpp src/cpp/aurora_media/AuroraVideoResidual.cpp benchmarks/major_codecs/aurora_video_pipeline_overlap_estimate.cpp"
+          cp FASTD_BASE.cpp KEPHIR_SPEED_D_SOURCE.cpp
+          g++ $common $src -o overlap_base
+          cp FASTD_PREFIX8.cpp KEPHIR_SPEED_D_SOURCE.cpp
+          g++ $common $src -o overlap_prefix8
+      - name: Run alternating trials
+        run: |
+          set -o pipefail
+          : > prefix8_results.txt
+          for rep in 1 2 3; do
+            if [ $((rep % 2)) -eq 1 ]; then
+              order="overlap_base baseline overlap_prefix8 prefix8"
+            else
+              order="overlap_prefix8 prefix8 overlap_base baseline"
+            fi
+            set -- $order
+            while [ "$#" -gt 0 ]; do
+              exe="$1"; name="$2"; shift 2
+              echo "PREFIX8_TRIAL rep=$rep mode=$name" | tee -a prefix8_results.txt
+              "./$exe" | sed "s/OVERLAP_PASS/OVERLAP_PASS mode=$name/" | tee -a prefix8_results.txt
+            done
+          done
+      - name: Summarize and enforce identical bytes
+        run: |
+          python3 - <<'PY'
+          import re,statistics
+          rows={"baseline":[],"prefix8":[]}
+          for line in open("prefix8_results.txt"):
+              if "OVERLAP_PASS mode=" not in line: continue
+              mode=re.search(r"mode=(\S+)",line).group(1)
+              fast=float(re.search(r"fastd_median_ms=([0-9.]+)",line).group(1))
+              b=float(re.search(r"mean_packed_bytes=([0-9.]+)",line).group(1))
+              rows[mode].append((fast,b))
+          for m in rows:
+              if len(rows[m])!=3: raise SystemExit(f"MISSING {m} {rows[m]}")
+          bb=statistics.median(x[1] for x in rows["baseline"])
+          if any(x[1]!=bb for x in rows["prefix8"]): raise SystemExit("BYTE_MISMATCH")
+          for m in rows:
+              print(f"PREFIX8_PASS mode={m} fastd_median_of_medians_ms={statistics.median(x[0] for x in rows[m]):.6f} mean_packed_bytes={bb:.0f} lossless=1")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-fastd-prefix8-ab
+          path: prefix8_results.txt
