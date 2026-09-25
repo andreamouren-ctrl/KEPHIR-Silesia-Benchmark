@@ -16,7 +16,7 @@ void MediaSession::validate_tracks() {
     for(const auto& t:demux_.tracks()) {
         if(t.type==kTrackAudio) {
             if(t.codec!=kCodecAuroraAudio) throw std::runtime_error("unsupported audio codec");
-            if(t.p1==0 || t.p2==0 || t.p3!=16) throw std::runtime_error("invalid audio track parameters");
+            (void)audio_format_from_track(t);
             has_audio=true;
         } else if(t.type==kTrackVideo) {
             if(t.codec!=kCodecAuroraVideo) throw std::runtime_error("unsupported video codec");
@@ -49,6 +49,11 @@ void MediaSession::build_order() {
 std::optional<Track> MediaSession::audio_track() const {
     for(const auto& t:demux_.tracks()) if(t.type==kTrackAudio) return t;
     return std::nullopt;
+}
+std::optional<AudioFormat> MediaSession::audio_format() const {
+    auto t=audio_track();
+    if(!t) return std::nullopt;
+    return audio_format_from_track(*t);
 }
 std::optional<Track> MediaSession::video_track() const {
     for(const auto& t:demux_.tracks()) if(t.type==kTrackVideo) return t;

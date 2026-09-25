@@ -190,6 +190,18 @@ jobs:
         run: |
           ./aurora_media_session_test session_test.aum
 
+      - name: Build generalized audio format matrix
+        run: |
+          g++ -O2 -std=c++20 -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraMediaContainer.cpp \
+            src/cpp/aurora_media/AuroraMediaSession.cpp \
+            tests/cpp/test_aurora_audio_formats.cpp \
+            -Isrc/cpp/aurora_media -o aurora_audio_formats_test
+
+      - name: Validate generalized audio formats
+        run: |
+          ./aurora_audio_formats_test audio_format_matrix
+
       - name: Build A/V sync clock test
         run: |
           g++ -O2 -std=c++20 -Wall -Wextra -Werror \

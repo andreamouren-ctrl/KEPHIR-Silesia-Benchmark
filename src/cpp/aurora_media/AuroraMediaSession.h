@@ -1,5 +1,6 @@
 #pragma once
 #include "AuroraMediaContainer.h"
+#include "AuroraAudioFormat.h"
 #include <cstdint>
 #include <filesystem>
 #include <optional>
@@ -20,6 +21,7 @@ public:
     std::uint32_t timescale() const noexcept { return demux_.timescale(); }
 
     std::optional<Track> audio_track() const;
+    std::optional<AudioFormat> audio_format() const;
     std::optional<Track> video_track() const;
 
     void reset();
