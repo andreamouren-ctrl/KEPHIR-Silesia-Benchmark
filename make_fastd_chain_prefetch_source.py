@@ -14,16 +14,13 @@ if args.mode=="prefetch":
     end=s.index('''        if(bestL==MAXL && bestD>0){''',start)
     body=s[start:end]
     body=body.replace(sig,'''        while(q!=NIL && depth<maxDepth){
-            const uint32_t nextq=prev[q];
-            if(nextq!=NIL){
-                __builtin_prefetch(prev+nextq,0,1);
-                __builtin_prefetch(d.data()+nextq,0,1);
+            const uint32_t pfq=prev[q];
+            if(pfq!=NIL){
+                __builtin_prefetch(prev+pfq,0,1);
+                __builtin_prefetch(d.data()+pfq,0,1);
             }''',1)
-    n=body.count("q=prev[q]")
-    if n<1: raise SystemExit("NO_NEXT_ASSIGNMENTS")
-    body=body.replace("q=prev[q]","q=nextq")
     s=s[:start]+body+s[end:]
-    print("PREFETCH_REPLACED",n)
+    print("PREFETCH_HINT_ONLY")
 
 Path(args.output).write_text(s)
 print("FAST_D_CHAIN_PREFETCH_OK",args.mode,len(s))
