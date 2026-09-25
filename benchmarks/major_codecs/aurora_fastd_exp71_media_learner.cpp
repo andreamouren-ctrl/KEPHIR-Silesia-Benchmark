@@ -199,35 +199,68 @@ static void train_model(std::map<std::string,ContextStats>&model,int frames){
     }
 }
 
-static Summary run_learned(const std::map<std::string,ContextStats>&model,int startFi,int count){
+static Summary run_deadline(const std::map<std::string,ContextStats>&model,int startFi,int count,double deadline_ms){
     auto cfg=video_profile_config(VideoProfile::Balanced);
     auto plan=make_video_tile_plan(3840,2160,cfg.tile_width,cfg.tile_height,cfg.tile_halo,cfg.max_concurrent_tiles);
     auto prev=make_frame(3840,2160,startFi-1); Summary s;
     for(int fi=startFi;fi<startFi+count;++fi){
         auto cur=make_frame(3840,2160,fi);std::vector<EncTile>out(plan.tiles.size());
-        auto t0=Clock::now();
+        std::atomic<std::size_t> completed{0};
+        const auto frame0=Clock::now();
+
         parallel_for(plan.tiles.size(),[&](std::size_t i,std::uint32_t){
             auto&t=plan.tiles[i];auto c=extract_tile(cur,t),p=extract_tile(prev,t);
             auto mr=AuroraVideoMotion::encode_mc8r4_adaptive(c,p,t.width,t.height,4.0,9);
             auto mode=AuroraVideoResidual::choose_mode(mr.residual_yuv420);
             auto mapped=AuroraVideoResidual::map(mr.residual_yuv420,mode);
-            auto key=context_key(mapped);int a=choose_action(model,key);set_action(a);
+            auto key=context_key(mapped);
+
+            const auto done=completed.load(std::memory_order_relaxed);
+            const auto now=Clock::now();
+            const double elapsed=std::chrono::duration<double,std::milli>(now-frame0).count();
+            const double progress=(double)(done+1)/(double)plan.tiles.size();
+            const double projected=progress>0.0 ? elapsed/progress : elapsed;
+
+            int learned=choose_action(model,key);
+            int a=learned;
+
+            // EXP71-Media v3 deadline controller.
+            // Protect the frame deadline first, then spend spare budget on ratio.
+            if(projected > deadline_ms*0.92) {
+                a=0;
+            } else if(projected > deadline_ms*0.72) {
+                a=1;
+            } else {
+                // Plenty of headroom: allow learned RATIO, otherwise remain learned.
+                a=learned;
+            }
+
+            set_action(a);
             out[i]={t,std::move(mr.motion_map),mode,aurora_fastd_runtime_encode(mapped),(std::uint8_t)a,std::move(key)};
+            completed.fetch_add(1,std::memory_order_relaxed);
         });
         auto t1=Clock::now();
+
         parallel_for(out.size(),[&](std::size_t i,std::uint32_t){
             auto mapped=aurora_fastd_runtime_decode(out[i].packed);
             auto res=AuroraVideoResidual::unmap(mapped,out[i].mode);
             auto p=extract_tile(prev,out[i].tile);
             auto rec=AuroraVideoMotion::decode_mc8r4(out[i].motion,res,p,out[i].tile.width,out[i].tile.height);
-            if(rec!=extract_tile(cur,out[i].tile))throw std::runtime_error("learned roundtrip");
+            if(rec!=extract_tile(cur,out[i].tile))throw std::runtime_error("deadline roundtrip");
         });
-        std::uint64_t sz=0;for(auto&x:out){sz+=x.packed.size()+x.motion.size()+3;if(x.action==0)s.a0++;else if(x.action==1)s.a1++;else s.a2++;}
-        s.ms.push_back(std::chrono::duration<double,std::milli>(t1-t0).count());s.bytes.push_back(sz);
+
+        std::uint64_t sz=0;
+        for(auto&x:out){
+            sz+=x.packed.size()+x.motion.size()+3;
+            if(x.action==0)s.a0++;else if(x.action==1)s.a1++;else s.a2++;
+        }
+        s.ms.push_back(std::chrono::duration<double,std::milli>(t1-frame0).count());
+        s.bytes.push_back(sz);
         prev=cur;
     }
     return s;
 }
+
 static void dump_model(const std::map<std::string,ContextStats>&m){
     std::ofstream f("exp71_media_model.tsv");
     f<<"context\taction\ttrials\tavg_bytes\tavg_ms\n";
@@ -249,10 +282,12 @@ int main(){
         train_model(model,6);
         dump_model(model);
         auto fixed=run_fixed(7,12);
-        auto learned=run_learned(model,7,12);
+        auto dl30=run_deadline(model,7,12,33.333);
+        auto dl60=run_deadline(model,7,12,16.667);
         std::cout<<"EXP71_MEDIA_MODEL contexts="<<model.size()<<" training_frames=6\n";
         print_summary("balanced_fixed",fixed);
-        print_summary("learned",learned);
+        print_summary("deadline_30fps",dl30);
+        print_summary("deadline_60fps",dl60);
         return 0;
     }catch(const std::exception&e){std::cerr<<"FAIL: "<<e.what()<<"\n";return 1;}
 }
