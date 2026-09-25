@@ -6,6 +6,7 @@ on:
     branches: ["research/khepri-stream-codec"]
     paths:
       - "make_fastd_match_prefilter_source.py"
+      - "make_fastd_video_profile_source.py"
       - ".github/workflows/aurora_fastd_match_prefilter.yml"
 
 jobs:
@@ -28,7 +29,7 @@ jobs:
           python3 make_exp37_source.py
           python3 make_exp38_source.py
           python3 make_exp39_source.py
-          python3 make_fastd_video_profile_source.py balanced
+          python3 make_fastd_video_profile_source.py balanced --match-prefilter none
           python3 make_fastd_match_prefilter_source.py baseline --output FASTD_BASE.cpp
           python3 make_fastd_match_prefilter_source.py tail8 --output FASTD_TAIL8.cpp
           python3 make_fastd_match_prefilter_source.py tail8_mid8 --output FASTD_TAILMID.cpp
