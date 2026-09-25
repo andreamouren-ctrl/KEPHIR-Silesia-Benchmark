@@ -64,7 +64,7 @@ A checkpoint is not promoted until it has:
 7. explicit promote/reject decision.
 
 
-## ULTRA line — EXP-51 to EXP-65
+## ULTRA line — EXP-51 to EXP-70
 
 | Checkpoint | Status | Ratio | Encode | Decision |
 |---|---|---:|---:|---|
@@ -82,18 +82,23 @@ A checkpoint is not promoted until it has:
 | EXP-62 | QUALITY SUCCESS / RUNTIME REJECT | 29.9402133% | 79.17 s | better grain/context, >60 s |
 | EXP-63 | PROMOTED HISTORICAL | 29.9402133% | 49.76 s | 2-worker parallel |
 | EXP-64 | PROMOTED HISTORICAL | 29.9402133% | 44.52 s | configurable workers |
-| EXP-65 | **PROMOTED ULTRA CURRENT** | **29.9402133%** | **33.34 s** | process work parcels, 4 logical CPUs |
+| EXP-65 | PROMOTED HISTORICAL | 29.9402133% | 33.34 s | process work parcels, 4 logical CPUs |
+| EXP-66 | **PROMOTED ULTRA CURRENT** | **29.9402133%** | **25.97 s** | cost-aware LPT parcel scheduler; exact EXP-65 bytes |
+| EXP-67 | RETAINED DIAGNOSTIC | 29.9400529% | 49.68 s | PSG53/55 verification; -340 B vs EXP-66 but too costly |
+| EXP-68 | RETAINED SELECTIVE PSG | 29.9400590% | 38.19 s | gate recovers time; -327 B vs EXP-66, not enough to promote |
+| EXP-69 | REJECTED / DIAGNOSTIC | 30.1473318% | 57.74 s | Word-XOR entropy router over-selected; +438,964 B vs EXP-66 |
+| EXP-70 | RETAINED LEARNING PROTOTYPE | multi-corpus 31.7245%* | 92.01→76.18 s | online learner reduced probes 401→68 while retaining 4 wins / 16,358 B gain |
 
 \* EXP-58 timing shown from the later multi-corpus Silesia run; earlier runner timing differed substantially.
 
 ### Current ULTRA checkpoint
 
 ```text
-EXP-65
+EXP-66
 compressed = 63,454,863 B
 ratio      = 29.9402133%
-encode     = 33.34 s
-throughput = 6.36 MB/s
+encode     = 25.97 s
+throughput = 8.16 MB/s
 SHA        = PASS
 runner CPU = 4 logical
 ```
@@ -104,3 +109,18 @@ runner CPU = 4 logical
 |---|---|---|
 | EXP-60 bottleneck profile | DIAGNOSTIC | 1,019 backend calls; 39.14 s backend; 16.06 s Python tokenization |
 | OpenCL CPU+GPU tokenizer prototype | RETAINED PROTOTYPE | build + exact self-test PASS; hosted CI used CPU fallback, no real GPU timing yet |
+
+
+### EXP-70 multi-corpus note
+
+EXP-70 is not directly comparable to the single-corpus Silesia ratio rows above because it trained and validated on six corpora totaling **329,460,340 B per epoch**.
+
+Measured learning progression:
+- epoch 1: 401 probes, 4 wins, 16,358 B gain, 92.01 s;
+- epoch 2: 88 probes, 4 wins, 16,358 B gain, 76.79 s;
+- epoch 3: 68 probes, 4 wins, 16,358 B gain, 76.18 s;
+- SHA PASS for all epochs.
+
+The experiment validates search-cost learning, not yet a new production ratio checkpoint.
+
+* Multi-corpus aggregate ratio: 31.7245186%.
