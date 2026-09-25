@@ -20,6 +20,12 @@ tail8='''                if(bestL>=8 && bestL<lim){
                     memcpy(&qtail,d.data()+q+bestL-8,8);
                     memcpy(&ptail,d.data()+p+bestL-8,8);
                     if(d[q+bestL]!=d[p+bestL] || qtail!=ptail){
+                        bool stop=((depth>=7 && bestL>=128) || (depth>=15 && bestL>=64) || (depth>=31 && bestL>=32));
+                        if(K2_FUSED2_MODE==2 || K2_FUSED2_MODE==3){
+                            double localSurprise=(bestL>=MINL)?dualLcost(p,min(bestL,32))/max(1,min(bestL,32)):LIT;
+                            if(localSurprise>LIT+0.35 && depth<maxDepth-4) stop=false;
+                        }
+                        if(stop) break;
                         q=prev[q]; ++depth; continue;
                     }
                 }'''
@@ -37,6 +43,12 @@ tail8_mid8='''                if(bestL>=8 && bestL<lim){
                         reject=(qmid!=pmid);
                     }
                     if(reject){
+                        bool stop=((depth>=7 && bestL>=128) || (depth>=15 && bestL>=64) || (depth>=31 && bestL>=32));
+                        if(K2_FUSED2_MODE==2 || K2_FUSED2_MODE==3){
+                            double localSurprise=(bestL>=MINL)?dualLcost(p,min(bestL,32))/max(1,min(bestL,32)):LIT;
+                            if(localSurprise>LIT+0.35 && depth<maxDepth-4) stop=false;
+                        }
+                        if(stop) break;
                         q=prev[q]; ++depth; continue;
                     }
                 }'''
