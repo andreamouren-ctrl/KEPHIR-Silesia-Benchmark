@@ -1,0 +1,75 @@
+name: AURORA Real-World Repository Benchmark
+on:
+  pull_request:
+    branches:
+      - project/aurora-compressor
+    paths:
+      - "research/benchmarks/realworld_repo_benchmark.py"
+      - ".github/workflows/realworld_repo_benchmark.yml"
+
+jobs:
+  realworld-repo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install comparison compressors
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential p7zip-full xz-utils zstd brotli bzip2 gzip zip unzip lz4
+
+      - name: Build KEPHIR EXP-37 backend used by EXP-75
+        run: |
+          cat engine/source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 research/generators/general/make_exp26_source.py
+          python3 research/generators/general/make_exp27_source.py
+          python3 research/generators/general/make_exp31_source.py
+          python3 research/generators/general/make_exp33_source.py
+          python3 research/generators/general/make_exp37_source.py
+          g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY \
+            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 \
+            -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 \
+            -pthread KEPHIR_2_EXP37_DUAL_MATCH.cpp -o kephir37
+
+      - name: Show benchmark environment
+        run: |
+          echo "CPU_COUNT=$(nproc)"
+          echo "TRACKED_FILES=$(git ls-files | wc -l)"
+          echo "TRACKED_LOGICAL_BYTES=$(git ls-files -z | xargs -0 -r stat -c%s | awk '{s+=$1} END {print s}')"
+          7z i | head -n 5 || true
+          xz --version | head -n 1
+          zstd --version
+          brotli --version
+          bzip2 --version 2>&1 | head -n 1
+          gzip --version | head -n 1
+          lz4 --version 2>&1 | head -n 1
+
+      - name: Run real-world repository benchmark
+        env:
+          KEPHIR_WORKERS: "16"
+        run: python3 research/benchmarks/realworld_repo_benchmark.py
+
+      - name: Print final report
+        run: |
+          cat realworld_repo_benchmark.md
+          python3 - <<'PY'
+          import json
+          d=json.load(open("realworld_repo_benchmark.json"))
+          assert all(x["sha_ok"] for x in d["solid"])
+          assert all(x["sha_ok"] for x in d["per_file"])
+          print("BENCHMARK_SHA_ALL_PASS")
+          print("TRACKED_FILES",d["tracked_files"])
+          print("LOGICAL_BYTES",d["logical_bytes"])
+          print("SOLID",json.dumps(d["solid"],sort_keys=True))
+          print("PER_FILE",json.dumps(d["per_file"],sort_keys=True))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: realworld-repo-benchmark-results
+          path: |
+            realworld_repo_benchmark.json
+            realworld_repo_benchmark.md
