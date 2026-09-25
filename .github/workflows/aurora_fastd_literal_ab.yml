@@ -1,14 +1,13 @@
-name: AURORA FAST-D Literal Path A-B
+name: AURORA FAST-D Literal Path Isolated Same-Runner
 on:
   workflow_dispatch:
   push:
     branches: ["research/khepri-stream-codec"]
     paths:
       - "make_fastd_literal_variants.py"
-      - "benchmarks/major_codecs/aurora_fastd_literal_ab.cpp"
       - ".github/workflows/aurora_fastd_literal_ab.yml"
 jobs:
-  literal-ab:
+  literal-isolated:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -28,23 +27,44 @@ jobs:
           python3 make_exp38_source.py
           python3 make_exp39_source.py
           K2_CHAIN_DEPTH_VALUE=24 K2_LAZY_DEPTH_VALUE=12 K2_PRED_MASK_VALUE=255 python3 make_speed1_source.py
-      - name: Build four literal variants
+      - name: Build isolated literal variants
         run: |
-          common="-O3 -std=c++20 -fPIC -shared -Wl,-Bsymbolic -DNDEBUG -DNO_INTERNAL_VERIFY -DAURORA_PLUGIN_FASTD -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=0 -DK2_PSG_MODE=0 -DK2_DIST_TOPO_MODE=0 -DK2_DUAL_MATCH_MODE=0 -DK2_FUSED_MATCH_MODE=0 -DK2_FUSED2_MODE=0 -pthread -Isrc/cpp/aurora_media"
-          src="src/cpp/aurora_media/AuroraKhepriFastDMemoryAdapter.cpp benchmarks/major_codecs/aurora_backend_plugin.cpp"
-          for spec in "baseline liblit_base.so" "predictor_only liblit_pred.so" "full liblit_full.so"; do
+          common="-O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=0 -DK2_PSG_MODE=0 -DK2_DIST_TOPO_MODE=0 -DK2_DUAL_MATCH_MODE=0 -DK2_FUSED_MATCH_MODE=0 -DK2_FUSED2_MODE=0 -pthread -Isrc/cpp/aurora_media"
+          src="src/cpp/aurora_media/AuroraKhepriFastDMemoryAdapter.cpp src/cpp/aurora_media/AuroraVideoMotion.cpp src/cpp/aurora_media/AuroraVideoResidual.cpp benchmarks/major_codecs/aurora_video_stable_stage_profile.cpp"
+          for spec in "baseline lit_baseline" "predictor_only lit_predictor" "full lit_full"; do
             set -- $spec
             K2_FASTD_LITERAL_VARIANT=$1 python3 make_fastd_literal_variants.py
             g++ $common $src -o $2
           done
-      - name: Build benchmark
-        run: |
-          g++ -O3 -std=c++20 -DNDEBUG -pthread             src/cpp/aurora_media/AuroraVideoMotion.cpp src/cpp/aurora_media/AuroraVideoResidual.cpp             benchmarks/major_codecs/aurora_fastd_literal_ab.cpp             -Isrc/cpp/aurora_media -ldl -o aurora_fastd_literal_ab
-      - name: Run benchmark
+      - name: Run baseline
         run: |
           set -o pipefail
-          ./aurora_fastd_literal_ab | tee literal_ab_results.txt
+          ./lit_baseline | tee literal_baseline.txt
+      - name: Run predictor-only
+        run: |
+          set -o pipefail
+          ./lit_predictor | tee literal_predictor.txt
+      - name: Run full literal
+        run: |
+          set -o pipefail
+          ./lit_full | tee literal_full.txt
+      - name: Summarize
+        run: |
+          python3 - <<'PY'
+          import re
+          for name,file in [
+              ("baseline","literal_baseline.txt"),
+              ("predictor_only","literal_predictor.txt"),
+              ("full_literal","literal_full.txt")]:
+              s=open(file).read()
+              m=re.search(r"STABLE_STAGE_PASS .*?wall_median_ms=([0-9.]+).*?wall_p95_ms=([0-9.]+).*?mean_packed_bytes=([0-9.]+).*?lossless=1",s)
+              if not m: raise SystemExit("MISSING_RESULT "+name)
+              print(f"LITERAL_ISOLATED_PASS mode={name} median_ms={m.group(1)} p95_ms={m.group(2)} mean_packed_bytes={m.group(3)} lossless=1")
+          PY
       - uses: actions/upload-artifact@v4
         with:
-          name: aurora-fastd-literal-ab
-          path: literal_ab_results.txt
+          name: aurora-fastd-literal-isolated
+          path: |
+            literal_baseline.txt
+            literal_predictor.txt
+            literal_full.txt
