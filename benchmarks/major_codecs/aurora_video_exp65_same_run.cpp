@@ -28,7 +28,7 @@ public:
    explicit I(Plugin&x):p(&x),h(x.create()){if(!h)throw std::runtime_error("create fail");}
    ~I(){if(h)p->destroy(h);}
    I(I&&o)noexcept:p(o.p),h(o.h){o.h=nullptr;} I(const I&)=delete;
-   Bytes run(F f,ByteView in){auto r=f(h,in.data(),in.size());Bytes o;if(r.size){if(!r.data)throw std::runtime_error("plugin fail");o.assign(r.data,r.data+r.size);}p->fre(r.data);return o;}
+   Bytes run(PluginBuffer(*f)(void*,const unsigned char*,std::size_t),ByteView in){auto r=f(h,in.data(),in.size());Bytes o;if(r.size){if(!r.data)throw std::runtime_error("plugin fail");o.assign(r.data,r.data+r.size);}p->fre(r.data);return o;}
    Bytes encode(ByteView b){return run(p->enc,b);} Bytes decode(ByteView b){return run(p->dec,b);}
  };
  I make(){return I(*this);}
