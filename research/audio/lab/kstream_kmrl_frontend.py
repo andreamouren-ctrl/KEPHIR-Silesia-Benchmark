@@ -195,6 +195,54 @@ def decode_component(buf: bytes, pos: int, n: int):
     return values, pos
 
 
+def sample_limits(bits: int):
+    if bits not in (16, 24, 32):
+        raise ValueError("unsupported PCM bit depth")
+    lo = -(1 << (bits - 1))
+    hi = (1 << (bits - 1)) - 1
+    return lo, hi
+
+
+def unpack_pcm_le(raw: bytes, bits: int):
+    if bits == 16:
+        if len(raw) % 2:
+            raise ValueError("unaligned s16le payload")
+        return list(struct.unpack("<" + "h" * (len(raw) // 2), raw))
+    if bits == 24:
+        if len(raw) % 3:
+            raise ValueError("unaligned s24le payload")
+        out = []
+        for i in range(0, len(raw), 3):
+            u = raw[i] | (raw[i + 1] << 8) | (raw[i + 2] << 16)
+            if u & 0x800000:
+                u -= 1 << 24
+            out.append(u)
+        return out
+    if bits == 32:
+        if len(raw) % 4:
+            raise ValueError("unaligned s32le payload")
+        return list(struct.unpack("<" + "i" * (len(raw) // 4), raw))
+    raise ValueError("unsupported PCM bit depth")
+
+
+def pack_pcm_le(samples, bits: int):
+    lo, hi = sample_limits(bits)
+    for x in samples:
+        if not lo <= x <= hi:
+            raise ValueError("decoded sample out of range")
+    if bits == 16:
+        return struct.pack("<" + "h" * len(samples), *samples)
+    if bits == 24:
+        out = bytearray()
+        for x in samples:
+            u = x & 0xFFFFFF
+            out.extend((u & 0xFF, (u >> 8) & 0xFF, (u >> 16) & 0xFF))
+        return bytes(out)
+    if bits == 32:
+        return struct.pack("<" + "i" * len(samples), *samples)
+    raise ValueError("unsupported PCM bit depth")
+
+
 def split_components(samples, channels):
     if channels == 2:
         a, b = [], []
@@ -212,13 +260,14 @@ def split_components(samples, channels):
     return comps
 
 
-def merge_components(comps, channels):
+def merge_components(comps, channels, bits):
+    lo, hi = sample_limits(bits)
     if channels == 2:
         out = []
         for mid, side in zip(comps[0], comps[1]):
             right = mid - (side >> 1)
             left = side + right
-            if not (-32768 <= left <= 32767 and -32768 <= right <= 32767):
+            if not (lo <= left <= hi and lo <= right <= hi):
                 raise ValueError("decoded stereo sample out of range")
             out.extend((left, right))
         return out
@@ -227,7 +276,7 @@ def merge_components(comps, channels):
     for i in range(len(comps[0])):
         for c in range(channels):
             x = comps[c][i]
-            if not -32768 <= x <= 32767:
+            if not lo <= x <= hi:
                 raise ValueError("decoded sample out of range")
             out.append(x)
     return out
@@ -247,7 +296,7 @@ def encode_payload(samples, channels, frames):
     return bytes(out)
 
 
-def decode_payload(payload: bytes, channels: int, frames: int):
+def decode_payload(payload: bytes, channels: int, frames: int, bits: int):
     pos = 0
     out = []
     frame_pos = 0
@@ -257,29 +306,34 @@ def decode_payload(payload: bytes, channels: int, frames: int):
         for _ in range(channels):
             comp, pos = decode_component(payload, pos, tile_frames)
             comps.append(comp)
-        out.extend(merge_components(comps, channels))
+        out.extend(merge_components(comps, channels, bits))
         frame_pos += tile_frames
     if pos != len(payload):
         raise ValueError("trailing KMRL payload")
     return out
 
 
-def encode_file(src: Path, dst: Path, channels: int, rate: int, block_ms: int):
+def encode_file(src: Path, dst: Path, channels: int, rate: int, bits: int, block_ms: int):
     raw = src.read_bytes()
-    frame_bytes = 2 * channels
-    if channels < 1 or len(raw) % frame_bytes:
-        raise SystemExit("input is not whole s16le frames")
+    if channels < 1:
+        raise SystemExit("invalid channel count")
+    if bits not in (16, 24, 32):
+        raise SystemExit("unsupported PCM bit depth")
+    bytes_per_sample = bits // 8
+    frame_bytes = bytes_per_sample * channels
+    if len(raw) % frame_bytes:
+        raise SystemExit("input is not whole PCM frames")
 
     total_frames = len(raw) // frame_bytes
     block_frames = max(1, rate * block_ms // 1000)
 
     with dst.open("wb") as f:
-        f.write(HDR.pack(MAGIC, VERSION, channels, 16, rate, block_ms, total_frames))
+        f.write(HDR.pack(MAGIC, VERSION, channels, bits, rate, block_ms, total_frames))
         offset = 0
         while offset < total_frames:
             frames = min(block_frames, total_frames - offset)
             block = raw[offset * frame_bytes:(offset + frames) * frame_bytes]
-            samples = list(struct.unpack("<" + "h" * (frames * channels), block))
+            samples = unpack_pcm_le(block, bits)
             payload = encode_payload(samples, channels, frames)
             f.write(CHUNK.pack(frames, len(payload), zlib.crc32(payload) & 0xFFFFFFFF))
             f.write(payload)
@@ -292,7 +346,7 @@ def decode_file(src: Path, dst: Path):
         raise SystemExit("truncated header")
 
     magic, version, channels, bits, rate, block_ms, total_frames = HDR.unpack_from(data, 0)
-    if magic != MAGIC or version != VERSION or bits != 16 or channels < 1:
+    if magic != MAGIC or version != VERSION or bits not in (16, 24, 32) or channels < 1:
         raise SystemExit("unsupported KMRL stream")
 
     pos = HDR.size
@@ -310,8 +364,8 @@ def decode_file(src: Path, dst: Path):
         if (zlib.crc32(payload) & 0xFFFFFFFF) != crc:
             raise SystemExit("chunk CRC mismatch")
 
-        samples = decode_payload(payload, channels, frames)
-        out.extend(struct.pack("<" + "h" * len(samples), *samples))
+        samples = decode_payload(payload, channels, frames, bits)
+        out.extend(pack_pcm_le(samples, bits))
         got_frames += frames
 
     if pos != len(data):
@@ -328,6 +382,7 @@ def main():
     enc.add_argument("dst", type=Path)
     enc.add_argument("--channels", type=int, required=True)
     enc.add_argument("--rate", type=int, required=True)
+    enc.add_argument("--bits", type=int, choices=(16, 24, 32), required=True)
     enc.add_argument("--block-ms", type=int, default=20)
 
     dec = sp.add_parser("decode")
@@ -336,7 +391,7 @@ def main():
 
     args = ap.parse_args()
     if args.cmd == "encode":
-        encode_file(args.src, args.dst, args.channels, args.rate, args.block_ms)
+        encode_file(args.src, args.dst, args.channels, args.rate, args.bits, args.block_ms)
     else:
         decode_file(args.src, args.dst)
 
