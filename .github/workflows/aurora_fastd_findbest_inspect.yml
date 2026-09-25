@@ -1,0 +1,54 @@
+name: AURORA FAST-D Findbest Inspect
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["research/khepri-stream-codec"]
+    paths:
+      - ".github/workflows/aurora_fastd_findbest_inspect.yml"
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate Balanced FAST-D
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          python3 make_exp37_source.py
+          python3 make_exp38_source.py
+          python3 make_exp39_source.py
+          python3 make_fastd_video_profile_source.py balanced
+      - name: Print findbest body
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path("KEPHIR_SPEED_D_SOURCE.cpp").read_text()
+          pos=s.find("findbest")
+          if pos<0:
+              raise SystemExit("FINDBEST_NOT_FOUND")
+          start=s.rfind("\n",0,pos)
+          brace=s.find("{",pos)
+          if brace<0:
+              raise SystemExit("FINDBEST_BRACE_NOT_FOUND")
+          depth=0
+          end=None
+          for i in range(brace,len(s)):
+              if s[i]=="{": depth+=1
+              elif s[i]=="}":
+                  depth-=1
+                  if depth==0:
+                      end=i+1
+                      break
+          if end is None:
+              raise SystemExit("FINDBEST_END_NOT_FOUND")
+          body=s[start+1:end]
+          print("FINDBEST_INSPECT_BEGIN")
+          print(body)
+          print("FINDBEST_INSPECT_END")
+          PY
