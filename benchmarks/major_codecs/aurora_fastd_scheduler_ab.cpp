@@ -73,7 +73,34 @@ int main(){
     });
     frames.push_back(std::move(mt));prev=cur;
   }
-  auto a=run(frames,pf_atomic<decltype([&](std::size_t,std::uint32_t){})>);
+  R atomicR,staticR;
+  {
+    std::vector<AuroraKhepriFastDMemoryAdapter> enc(4);
+    for(auto&f:frames){
+      std::vector<Bytes>out(f.size());
+      auto t0=Clock::now();
+      pf_atomic(f.size(),4,[&](std::size_t i,std::uint32_t w){out[i]=enc[w].encode(f[i].mapped);});
+      auto t1=Clock::now();
+      std::uint64_t sz=0;for(auto&x:out)sz+=x.size();
+      atomicR.ms.push_back(std::chrono::duration<double,std::milli>(t1-t0).count());
+      atomicR.bytes.push_back(sz);
+    }
+  }
+  {
+    std::vector<AuroraKhepriFastDMemoryAdapter> enc(4);
+    for(auto&f:frames){
+      std::vector<Bytes>out(f.size());
+      auto t0=Clock::now();
+      pf_static(f.size(),4,[&](std::size_t i,std::uint32_t w){out[i]=enc[w].encode(f[i].mapped);});
+      auto t1=Clock::now();
+      std::uint64_t sz=0;for(auto&x:out)sz+=x.size();
+      staticR.ms.push_back(std::chrono::duration<double,std::milli>(t1-t0).count());
+      staticR.bytes.push_back(sz);
+    }
+  }
+  pr("atomic",atomicR);
+  pr("static",staticR);
+  if(atomicR.bytes!=staticR.bytes)throw std::runtime_error("byte mismatch");
   return 0;
  }catch(...){return 1;}
 }
