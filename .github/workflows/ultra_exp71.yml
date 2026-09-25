@@ -1,0 +1,85 @@
+name: AURORA ULTRA EXP-71 Multi-Action Learning
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - project/aurora-compressor
+    paths:
+      - "research/routers/exp71_multiaction_learning.py"
+      - ".github/workflows/ultra_exp71.yml"
+
+jobs:
+  exp71-learning:
+    runs-on: ubuntu-latest
+    timeout-minutes: 420
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential unzip curl
+      - name: Build three KEPHIR experts
+        run: |
+          cat engine/source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 research/generators/general/make_exp26_source.py
+          python3 research/generators/general/make_exp27_source.py
+          python3 research/generators/general/make_exp31_source.py
+          python3 research/generators/general/make_exp33_source.py
+          python3 research/generators/general/make_exp37_source.py
+          g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY \
+            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 \
+            -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 \
+            -pthread KEPHIR_2_EXP37_DUAL_MATCH.cpp -o kephir37
+          python3 research/generators/general/make_exp53_ultra_source.py
+          g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY \
+            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=5 \
+            -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 \
+            -pthread KEPHIR_2_EXP53_ULTRA_PSG.cpp -o kephir53
+          python3 research/generators/general/make_exp55_ultra_source.py
+          g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY \
+            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=6 \
+            -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 \
+            -pthread KEPHIR_2_EXP55_ULTRA_TRANSITION_PSG.cpp -o kephir55
+      - name: Download six canonical corpora
+        run: |
+          mkdir -p corpora/{silesia,canterbury,calgary,large,artificial,enwik8}
+          curl -L --fail --retry 4 -o /tmp/silesia.zip https://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip
+          echo "c240c17d6805fb8a0bde763f1b94cd99  /tmp/silesia.zip" | md5sum -c -
+          unzip -q /tmp/silesia.zip -d corpora/silesia
+          curl -L --fail --retry 4 -o /tmp/cantrbry.zip https://corpus.canterbury.ac.nz/resources/cantrbry.zip
+          unzip -q /tmp/cantrbry.zip -d corpora/canterbury
+          curl -L --fail --retry 4 -o /tmp/calgary.tar.gz https://corpus.canterbury.ac.nz/resources/calgary.tar.gz
+          tar -xzf /tmp/calgary.tar.gz -C corpora/calgary
+          curl -L --fail --retry 4 -o /tmp/large.zip https://corpus.canterbury.ac.nz/resources/large.zip
+          unzip -q /tmp/large.zip -d corpora/large
+          curl -L --fail --retry 4 -o /tmp/artificl.zip https://corpus.canterbury.ac.nz/resources/artificl.zip
+          unzip -q /tmp/artificl.zip -d corpora/artificial
+          curl -L --fail --retry 4 -o /tmp/enwik8.zip https://mattmahoney.net/dc/enwik8.zip
+          unzip -q /tmp/enwik8.zip -d corpora/enwik8
+          test "$(stat -c%s corpora/enwik8/enwik8)" = "100000000"
+          echo "a1fa5ffddb56f4953e226637dabbb36a  corpora/enwik8/enwik8" | md5sum -c -
+      - name: Show runner CPUs
+        run: nproc
+      - name: Run 3 multi-action learning epochs
+        env:
+          KEPHIR_WORKERS: "16"
+        run: python3 research/routers/exp71_multiaction_learning.py
+      - name: Validate learning and quality
+        run: |
+          python3 - <<'PY'
+          import json
+          d=json.load(open("exp71_results.json"))
+          eps=[x["summary"] for x in d["epochs"]]
+          assert len(eps)==3, eps
+          assert all(x["sha_all"] for x in eps), eps
+          assert all(x["raw"]==329460340 for x in eps), eps
+          assert eps[-1]["size"] <= 104519707, eps
+          assert eps[-1]["probes"] <= eps[0]["probes"], eps
+          print(json.dumps(eps,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exp71-multiaction-learning-results
+          path: |
+            exp71_results.json
+            exp71_model.json
