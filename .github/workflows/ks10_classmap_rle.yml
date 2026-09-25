@@ -1,0 +1,30 @@
+name: KS10 Classmap RLE
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/khepri-stream-codec
+    paths:
+      - research/audio/experiments/ks10_classmap_rle.py
+      - research/audio/lab/kstream_kmrl_frontend.py
+      - .github/workflows/ks10_classmap_rle.yml
+
+jobs:
+  ks10:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run class-map matrix
+        env:
+          PYTHONPATH: .
+        run: |
+          python3 research/audio/experiments/ks10_classmap_rle.py | tee ks10.txt
+      - name: Validate
+        run: |
+          test "$(grep -c 'KS10_PASS' ks10.txt)" -eq 12
+          grep 'KS10_SUMMARY' ks10.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ks10-classmap-rle
+          path: ks10.txt
