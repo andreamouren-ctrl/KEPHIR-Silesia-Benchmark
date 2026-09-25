@@ -1029,487 +1029,237 @@ This document should be updated whenever a checkpoint is promoted, rejected, or 
 
 ---
 
-# PART X — ULTRA LINE UPDATE (EXP-51 → EXP-65)
+# PART XVI — ADAPTIVE PRODUCTION LINE AND KEPHIR 1.0
 
-**Update date:** 2026-09-25
+## 62. Transition from isolated experiments to an integrated compressor
 
-This section records the ULTRA research performed after EXP-50. The hard production constraint for this line is:
+After EXP-48 and the FAST line, research moved toward a production-oriented architecture combining ratio selection, bounded experimentation, parallel scheduling, persistent experience and archive-level packing.
 
-```text
-full Silesia encode time <= 60 s
-lossless SHA roundtrip mandatory
-ratio target: progress toward ~26%
-```
+The key requirement became:
 
-Canonical Silesia raw size remains **211,938,580 B**.
+~~~text
+better ratio
++ bounded selection cost
++ exact lossless roundtrip
++ real directory/archive support
++ persistent encoder-side learning
+~~~
 
-## EXP-51 — rejected
+## 63. EXP-56 to EXP-66 — reducing search cost
 
-Expanded structural candidates with additional delta/transpose lags.
+Important measured checkpoints:
 
-Result:
-- 63,201,140 B
-- 29.820498%
-- SHA PASS
-- 0 B improvement vs EXP-48
+- EXP-56 oracle: 63,002,080 B / 29.7265746%, but approximately 2046 s.
+- EXP-57: 63,784,645 B / 30.095816% / 39.59 s.
+- EXP-60: 63,609,809 B / 30.0133223% / 51.42 s.
+- EXP-62: 63,454,863 B / 29.9402133% / 79.17 s.
+- EXP-63: same bytes / approximately 49.76 s.
+- EXP-64: approximately 44.52 s.
+- EXP-65: same bytes / 33.342 s.
+- EXP-66: same bytes / 25.9723 s.
 
-Decision: **REJECTED**.
+EXP-66 established the cost-aware LPT parcel scheduler as the promoted scheduling direction.
 
-## EXP-52 — rejected
+## 64. EXP-67 to EXP-69 — selective transforms
 
-Selected reversible structural cascades.
+Broad PSG probing produced poor return on compute and was rejected as a general strategy.
 
-Result:
-- 63,201,140 B
-- 29.820498%
-- SHA PASS
-- 0 B improvement
+EXP-69 Word-XOR regressed globally but revealed a small, repeatable local signal. This became the basis for learning instead of brute-force probing.
 
-Decision: **REJECTED**.
+## 65. EXP-70 — Adaptive Experience Engine
 
-## EXP-53 — globally rejected, retained as adaptive expert
+EXP-70 introduced persistent encoder-side experience.
 
-Added PSG mode 5 local-surprise gate.
+Factory, Local and Session knowledge are logically separate.
 
-Result:
-- 63,201,664 B
-- 29.8207452%
-- SHA PASS
-- +524 B vs EXP-48
+The central result was not a direct ratio win but a reduction of repeated probes while preserving known wins. In the measured multi-epoch test, probe count fell by roughly 83% while retained gains remained available.
 
-Globally worse, but per-chunk behavior was complementary and useful for later routing.
+The decoder remains independent from this knowledge.
 
-## EXP-54 — adaptive PSG success
+## 66. EXP-71 — multi-action learning
 
-Per-chunk choice between EXP-37/PSG3 and EXP-53/PSG5 across structural modes.
+Word-XOR and PSG actions were learned together.
 
-Result:
-- 63,200,940 B
-- 29.8204036%
-- SHA PASS
-- 200 B improvement vs EXP-48
+The result confirmed that Word-XOR had useful sparse signal while PSG actions had weak bytes-saved-per-compute ROI.
 
-Decision: **RETAINED SUCCESS**.
+## 67. EXP-72 — Adaptive Grain Learning
 
-## EXP-55 — tri-PSG success
+EXP-72 became a major ratio checkpoint.
 
-Added transition-aware PSG mode 6 as third backend expert.
+Silesia epoch-3 result:
 
-Result:
-- 63,200,596 B
-- 29.8202413%
-- SHA PASS
-- 344 B better than EXP-54
-- 544 B better than EXP-48
+~~~text
+62,927,914 B
+29.691580%
+SHA PASS
+~~~
 
-Decision: **RETAINED SUCCESS**.
+Adaptive grain selection produced approximately 528,720 B measured gain on Silesia.
 
-## EXP-56 — quality/oracle checkpoint
+## 68. EXP-73 and EXP-74 — learned Word-XOR and Factory prior
 
-Adaptive subchunk routing over 512/256/128 KiB with exhaustive backend/transform search.
+EXP-73 combined grain learning with Word-XOR:
 
-Result:
-- 63,002,080 B
-- 29.7265746%
-- ~2046 s encode in competitor benchmark
-- SHA PASS
+~~~text
+62,920,997 B
+~29.6883%
+SHA PASS
+~~~
 
-This is a useful quality oracle but is far outside the 60 s production target.
+EXP-74 moved Word-XOR toward a predictive Factory gate and reduced unnecessary probes while preserving the 6,917 B measured gain.
 
-Decision: **ORACLE**.
+## 69. EXP-75 — promoted algorithm checkpoint
 
-## EXP-56 competitor benchmark
+EXP-75 made the expensive fine Word-XOR fingerprint lazy: it is computed only after the coarse Factory gate passes.
 
-On Silesia, selected reference compressors measured:
+Canonical measured Silesia:
 
-| Compressor | Ratio | Encode time |
-|---|---:|---:|
-| 7-Zip/LZMA2 mx9 | 23.0061% | 51.06 s |
-| XZ -9 | 23.0234% | 88.11 s |
-| Brotli q11 | 23.3863% | 419.91 s |
-| Zstd -19 | 24.9579% | 83.98 s |
-| Bzip2 -9 | 25.7182% | 17.71 s |
-| Brotli q9 | 26.5612% | 33.47 s |
-| Zstd -9 | 27.9242% | 3.59 s |
-| KHEPRI EXP-56 | 29.7266% | 2046.41 s |
+~~~text
+62,920,997 B
+~29.6883%
+SHA PASS
+~~~
 
-The benchmark demonstrated that a ratio near 26% within 60 s is technically plausible, while KHEPRI still required major routing and execution-efficiency work.
+Compared with an EXP-72 rerun on the same line, it saved 6,917 B with essentially no measurable total runtime penalty.
 
-## EXP-57 — first practical <60 s router
+EXP-75 is the promoted algorithm checkpoint beneath KEPHIR 1.0.
 
-Single-pass heuristic router with fixed EXP-37 backend and sampled entropy/residual decisions.
+Its training artifact contained 192 total states. The release Factory v1 distills **79 positive-gain states**:
+- 77 adaptive-grain states;
+- 2 Word-XOR states.
 
-Result:
-- 63,784,645 B
-- 30.0958160%
-- 39.59 s
-- 5.35 MB/s
-- SHA PASS
+## 70. EXP-76 — Smart Directory Packing
 
-Decision: **RETAINED PRACTICAL BASELINE**.
-
-## EXP-58 — selective BASE verification
-
-Every non-BASE structural choice gets one BASE verification encode.
-
-Measured checkpoint:
-- 63,745,538 B
-- 30.0773639%
-- 44.07 s in the later multi-corpus Silesia run
-- SHA PASS
-
-An earlier runner measured 25.98 s; timings across runners are not directly interchangeable.
-
-Decision: **RETAINED PRACTICAL CHECKPOINT**.
-
-## EXP-58 multi-corpus benchmark
-
-Validated SHA PASS on:
-- Silesia
-- Canterbury
-- Calgary
-- Canterbury Large
-- Artificial
-- enwik8
-
-Key KHEPRI ratios:
-- Silesia: 30.0774%
-- Canterbury: 22.7581%
-- Calgary: 32.5740%
-- Canterbury Large: 29.2163%
-- Artificial aggregate: 33.4532%
-- enwik8: 36.3672%
-
-Interpretation:
-- performance generalizes at roughly 4–5 MB/s;
-- strongest ratio weaknesses are text/structured data and Artificial;
-- selective improvements are preferable to global brute-force expansion.
-
-## EXP-59 — text token transform, ratio success / speed reject
-
-Added reversible selective text tokenization.
-
-Result:
-- 63,609,809 B
-- 30.0133223%
-- 302.33 s
-- SHA PASS
-- 135,729 B better than EXP-58
-
-The concept improved ratio but the naive tokenizer was too slow.
-
-Decision: **REJECTED IMPLEMENTATION / RETAINED CONCEPT**.
-
-## EXP-60 — indexed text token transform
-
-Indexed token candidates by first byte.
-
-Result:
-- 63,609,809 B
-- 30.0133223%
-- 51.42 s
-- 4.12 MB/s
-- SHA PASS
-
-Same compressed output as EXP-59, with runtime reduced from ~302 s to ~51 s.
-
-Decision: **PROMOTED PRACTICAL CHECKPOINT** at that stage.
-
-## EXP-61 — low-confidence structural verification
-
-Budgeted secondary structural checks on uncertain 512 KiB chunks.
-
-Result:
-- 63,609,809 B
-- 30.0133223%
-- 78.32 s
-- SHA PASS
-- 0 B gain
-
-Decision: **REJECTED**.
-
-## EXP-60 bottleneck diagnostic
-
-Instrumentation-only run preserved the exact EXP-60 output and measured:
-
-- total encode: 59.96 s
-- backend encode calls: 1,019
-- backend time: 39.14 s
-- primary backend time: 26.46 s
-- text backend time: 9.73 s
-- BASE verification time: 2.95 s
-- Python tokenization time: 16.06 s
-- tokenization calls: 198
-- text backend encodes: 164
-
-This showed that the main scalability limits were:
-1. repeated backend process launches / temporary-file I/O;
-2. Python tokenization in the hot path;
-3. work scheduling and insufficient multicore utilization.
-
-## EXP-62 — conservative grain routing
-
-Raised split thresholds to preserve more 512 KiB context and reduce over-fragmentation, especially on Mozilla/Samba/XML-like data.
-
-Result:
-- 63,454,863 B
-- 29.9402133%
-- 79.17 s
-- SHA PASS
-- 154,946 B better than EXP-60
-
-Per-file improvements included roughly:
-- Mozilla: ~84 KB
-- Samba: ~47 KB
-- XML: ~22.6 KB
-
-Ratio improved, but runtime exceeded 60 s.
-
-Decision: **QUALITY SUCCESS / RUNTIME REJECT**.
-
-## EXP-63 — two-worker CPU parallelism
-
-Preserved exact EXP-62 decisions but processed independent chunks concurrently with two workers.
-
-Result:
-- 63,454,863 B
-- 29.9402133%
-- 49.76 s
-- 4.26 MB/s
-- SHA PASS
-
-Decision: **PROMOTED PRACTICAL CHECKPOINT**.
-
-## EXP-64 — configurable thread scaling
-
-Made chunk worker count configurable up to 16. GitHub runner exposed 4 logical CPUs while the experiment requested 16 workers.
-
-Result:
-- 63,454,863 B
-- 29.9402133%
-- 44.52 s
-- 4.76 MB/s
-- SHA PASS
-- exact EXP-63 output
-
-Decision: **PROMOTED SCALING CHECKPOINT**.
-
-## EXP-65 — process-based work parcels
-
-Replaced Python thread scheduling with a process-based work-parcel scheduler:
-- worker count capped to actual available CPUs;
-- ProcessPool removes the Python GIL from tokenization/transforms;
-- tasks are grouped into coarse parcels to reduce IPC/scheduler overhead;
-- deterministic output order is preserved.
-
-GitHub runner:
-- 4 logical CPUs
-- requested workers: 16
-- workers actually used: 4
-- total work parcels: 119
-
-Result:
-- **63,454,863 B**
-- **29.9402133%**
-- **33.34 s**
-- **6.36 MB/s**
-- decode: 13.94 s / 15.20 MB/s
-- SHA PASS
-- exact EXP-64 output
-
-Decision: **PROMOTED — current practical ULTRA checkpoint**.
-
-The improvement from EXP-64 to EXP-65 is architectural: the same compressed bytes are produced while encode time drops from 44.52 s to 33.34 s on the same 4-logical-CPU class of runner.
-
-## CPU+GPU prototype
-
-A separate OpenCL prototype was added for CPU+GPU pipelining.
-
-Current design:
-- GPU: token-start matching / highly parallel pre-analysis work;
-- CPU: deterministic compaction, KHEPRI entropy coding and packaging;
-- exact reversible roundtrip required;
-- CPU fallback when no GPU is available.
-
-GitHub hosted CI compiled the prototype and passed its self-test, but the runner had no GPU device and therefore reported:
-
-```text
-gpu_used=0
-device="CPU fallback"
-```
-
-No GPU performance claim is considered valid until measured on a real GPU runner.
-
-## Current ULTRA reference
-
-As of 2026-09-25:
-
-```text
-EXP-66
-Silesia raw:       211,938,580 B
-Compressed:         63,454,863 B
-Ratio:              29.9402133%
-Encode:             25.97 s
-Encode throughput:   8.16 MB/s
-SHA:                PASS
-Runner CPUs:         4 logical
-```
-
-EXP-66 preserves the EXP-62/63/64/65 archive size while adding cost-aware LPT parcel scheduling. It remains the current practical ULTRA checkpoint. Real 8C/16T plus GPU validation remains pending.
-
-
----
-
-# PART XVI — ADAPTIVE EXPERIENCE LINE (EXP-66 → EXP-70)
-
-## EXP-66 — cost-aware scheduler
-
-EXP-66 replaced equal/coarse parcel construction with a cost-aware LPT-style scheduler while preserving exact codec decisions.
-
-Measured Silesia result:
-- 63,454,863 B
-- 29.9402133%
-- 25.97 s
-- 8.16 MB/s
-- SHA PASS
-- 4 logical CPUs on hosted CI
-- exact compressed size vs EXP-65
-
-Decision: **PROMOTED — current practical ULTRA checkpoint**.
-
-## EXP-67 — selective complementary PSG verification
-
-EXP-67 spent recovered runtime budget testing PSG53/PSG55 on non-text chunks.
-
-Result:
-- 63,454,523 B
-- 29.9400529%
-- 49.68 s
-- SHA PASS
-- 340 B better than EXP-66
-
-The gain was real but too small for the added runtime.
-
-Decision: **RETAINED DIAGNOSTIC / NOT PROMOTED**.
-
-## EXP-68 — PSG gate
-
-EXP-68 gated complementary PSG verification to BASE/non-text chunks.
-
-Result:
-- 63,454,536 B
-- 29.9400590%
-- 38.19 s
-- SHA PASS
-- 327 B better than EXP-66
-- only 13 B worse than EXP-67
-
-The gate recovered substantial time, but the byte gain remained too small for practical promotion.
-
-Decision: **RETAINED SELECTIVE-PSG EXPERIMENT**.
-
-## EXP-69 — Word-XOR structural surface
-
-EXP-69 reintroduced 16-bit Word-XOR + transpose into the practical entropy router.
-
-Result:
-- 63,893,827 B
-- 30.1473318%
-- 57.74 s
-- SHA PASS
-- +438,964 B vs EXP-66
-
-The transform itself showed isolated value on a few Mozilla chunks, but the entropy estimator selected it far too often.
-
-Decision: **REJECTED / DIAGNOSTIC VALUE RETAINED**.
-
-## EXP-70 — Adaptive Experience prototype
-
-EXP-70 introduced the first encoder-side online learner.
-
-Training/validation corpus:
-- Silesia
-- Canterbury
-- Calgary
-- Canterbury Large
-- Artificial
-- enwik8
-
-Aggregate raw data per epoch: **329,460,340 B**.
-
-Three consecutive epochs:
-
-| Epoch | Encode time | Throughput | Probes | Wins | Byte gain |
-|---|---:|---:|---:|---:|---:|
-| 1 | 92.01 s | 3.58 MB/s | 401 | 4 | 16,358 B |
-| 2 | 76.79 s | 4.29 MB/s | 88 | 4 | 16,358 B |
-| 3 | 76.18 s | 4.32 MB/s | 68 | 4 | 16,358 B |
-
-SHA roundtrip passed in all epochs.
-
-From epoch 1 to epoch 3, probe count fell from 401 to 68 (about 83%) while all four winning decisions and the same 16,358 B gain were retained.
-
-This validates the architecture premise that accumulated experience can reduce search cost without losing already-discovered winning decisions.
-
-## Canonical Adaptive Experience architecture decision
-
-KEPHIR will ship with a **Factory Knowledge Base** trained from approved benchmark/R&D corpora.
-
-A new installation therefore starts with accumulated project experience rather than an empty learner.
-
-Runtime knowledge is layered:
-
-1. **Factory Knowledge Base** — shipped, versioned, read-only;
-2. **Persistent Local Experience** — user-machine writable overlay preserved across launches/upgrades;
-3. **Session Experience** — short-term adaptation during the current compression job.
-
-The shipped factory model and local learned model must remain separate. Program updates may replace/improve factory knowledge but must preserve compatible user-local experience.
-
-Learning is encoder-side only. The decoder never depends on the learner or its history; archives contain all transform/backend/mode information required for exact reconstruction.
-
-Persistent learning stores aggregate statistics and feature/action outcomes, not source-file contents.
-
-Canonical architecture reference:
-
-`docs/architecture/ADAPTIVE_EXPERIENCE_ENGINE.md`
-
-## Next research direction
-
-The learner should expand from Word-XOR probing to a portfolio of actions:
-- BASE;
-- structural delta/transpose families;
-- Word-XOR;
-- PSG variants;
-- 128/256/512 KiB grain decisions;
-- BASE verification;
-- text transforms;
-- future CPU/GPU analysis actions.
-
-Candidate selection should optimize expected byte gain against measured computational cost under the active profile and remaining time budget.
-
-
-## Adaptive Experience functions now canonical
-
-The architecture approved after EXP-70 includes:
-- pre-trained Factory Knowledge shipped with the application;
-- persistent Local Experience preserved across launches and upgrades;
-- per-job Session Experience;
-- lightweight chunk fingerprint extraction;
-- context/family bucketing;
-- multi-action scoring;
-- measured byte-gain / compute-cost reward;
-- exploration and exploitation control;
-- confidence tracking;
-- experience decay;
-- profile-aware time/search budgets;
-- online updates during compression;
-- atomic persistent save/load;
-- Factory + Local merge;
-- schema/action/feature compatibility metadata;
-- migration/down-weighting of stale knowledge;
-- privacy-preserving aggregate statistics;
-- knowledge export/import and reset/recovery;
-- decoder independence from all learned state.
-
-Detailed canonical specification:
-`docs/architecture/ADAPTIVE_EXPERIENCE_ENGINE.md`.
+Real-world repository testing revealed a weakness on many small files.
+
+EXP-76 introduced a reversible archive layer that:
+- classifies contents rather than filenames/extensions;
+- groups homogeneous byte streams;
+- stores a compact prefix-compressed manifest;
+- compresses group streams independently;
+- reconstructs all original files byte-for-byte.
+
+Measured repository snapshot:
+
+~~~text
+logical bytes: 722,706
+archive:       104,325
+ratio:         14.4353%
+roundtrip:     PASS
+~~~
+
+EXP-76 is the promoted packing architecture beneath KEPHIR 1.0.
+
+## 71. KEPHIR 1.0 integrated architecture
+
+The integrated release candidate combines:
+- EXP-75 algorithm line;
+- EXP-76 directory/archive packing;
+- adaptive grain selection;
+- lazy Word-XOR;
+- cost-aware parcel scheduling;
+- multiprocessing encoder-side;
+- Factory Knowledge;
+- optional persistent Local Experience;
+- decoder-independent learning;
+- compact manifest;
+- safe extraction checks;
+- explicit roundtrip verification.
+
+The qualified implementation is:
+
+~~~text
+branch: release/kephir-1.0-final-candidate
+commit: efd00a3cfc63d8306bef65aa90eb0154dc7b9004
+workflow: KEPHIR 1.0 Final Candidate Qualification
+run: 36151845469
+result: SUCCESS
+roundtrip: FINAL_SHA_ALL_PASS
+~~~
+
+## 72. KEPHIR 1.0 qualification — repository dataset
+
+Dataset:
+- 242 files;
+- 759,128 logical bytes.
+
+KEPHIR cold:
+
+~~~text
+117,523 B
+15.481%
+compress 1.703 s
+decompress 0.078 s
+SHA PASS
+~~~
+
+KEPHIR Factory:
+
+~~~text
+117,523 B
+15.481%
+compress 0.705 s
+decompress 0.080 s
+SHA PASS
+~~~
+
+The Factory preserved identical archive size and removed most of the cold exploration cost on this dataset.
+
+## 73. KEPHIR 1.0 qualification — Silesia
+
+Canonical logical bytes:
+
+~~~text
+211,938,580 B
+~~~
+
+KEPHIR cold:
+
+~~~text
+62,953,321 B
+29.704%
+compress 96.050 s
+decompress 13.645 s
+SHA PASS
+~~~
+
+KEPHIR Factory:
+
+~~~text
+62,958,288 B
+29.706%
+compress 75.057 s
+decompress 13.629 s
+SHA PASS
+~~~
+
+Competitor results from the same qualification included:
+
+- 7z-LZMA2: 48,719,288 B / 22.987%;
+- XZ-9: 48,767,040 B / 23.010%;
+- Brotli-11: 49,774,776 B / 23.485%;
+- Zstd-19: 52,854,090 B / 24.938%;
+- Bzip2-9: 54,590,366 B / 25.758%;
+- Gzip-9: 67,650,744 B / 31.920%;
+- LZ4-HC: 78,001,175 B / 36.804%.
+
+KEPHIR 1.0 therefore beats Gzip-9 and LZ4-HC on Silesia ratio, while a substantial ratio and throughput gap remains versus mature high-compression codecs.
+
+## 74. Release baseline decision
+
+The integrated candidate is promoted as the **KEPHIR 1.0 release baseline**.
+
+The exact qualified commit is frozen as the technical reference. It still reports `1.0.0-rc1` internally; changing even the version string would create a different commit and should be followed by a new qualification.
+
+Future algorithm changes belong to the KEPHIR 1.1 / new EXP line.
+
+## 75. Current engineering priorities after 1.0
+
+1. Improve compression ratio without returning to brute-force multi-encoding.
+2. Reduce encode/decode cost of the Python-orchestrated prototype.
+3. Improve small-file and heterogeneous-directory efficiency.
+4. Develop predictive/lazy grain selection with lower probe cost.
+5. Separate metadata effects from content-grouping gains in controlled tests.
+6. Validate CPU/GPU cooperation on real supported hardware before product integration.
+7. Preserve decoder independence from all learned state.
+8. Keep release qualification byte-exact and reproducible.
