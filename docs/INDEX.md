@@ -22,3 +22,15 @@
 ## Product split
 - general-purpose compressor → `project/aurora-compressor`
 - audio/video codec → `project/aurora-media`
+
+
+## Current ULTRA reference
+
+- **EXP-65** — current practical ULTRA checkpoint.
+- Silesia: **63,454,863 B / 29.9402133%**
+- encode: **33.34 s / 6.36 MB/s** on a 4-logical-CPU GitHub runner
+- SHA: PASS
+
+Additional areas:
+- `research/gpu/` — CPU+GPU/OpenCL prototypes.
+- `research/diagnostics/` — profiling and bottleneck analysis.
