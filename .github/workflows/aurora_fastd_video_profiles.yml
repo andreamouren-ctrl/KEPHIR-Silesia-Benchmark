@@ -1,0 +1,66 @@
+name: AURORA FAST-D Video Profile Generation
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["research/khepri-stream-codec"]
+    paths:
+      - "make_fastd_video_profile_source.py"
+      - "src/cpp/aurora_media/AuroraVideoProfiles.h"
+      - "tests/cpp/test_aurora_fastd_video_profile.cpp"
+      - ".github/workflows/aurora_fastd_video_profiles.yml"
+
+jobs:
+  profiles:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+      - name: Generate KHEPRI base chain
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          python3 make_exp37_source.py
+          python3 make_exp38_source.py
+          python3 make_exp39_source.py
+      - name: Generate all video profiles
+        run: |
+          python3 make_fastd_video_profile_source.py streaming4k --output KEPHIR_FASTD_STREAMING4K.cpp
+          python3 make_fastd_video_profile_source.py balanced --output KEPHIR_FASTD_BALANCED.cpp
+          python3 make_fastd_video_profile_source.py maxcompression --output KEPHIR_FASTD_MAXCOMPRESSION.cpp
+      - name: Verify generated depths
+        run: |
+          python3 - <<'PY'
+          import re
+          cases=[
+              ("streaming4k","KEPHIR_FASTD_STREAMING4K.cpp",24,12),
+              ("balanced","KEPHIR_FASTD_BALANCED.cpp",48,24),
+              ("maxcompression","KEPHIR_FASTD_MAXCOMPRESSION.cpp",64,32),
+          ]
+          for name,path,chain,lazy in cases:
+              s=open(path).read()
+              mc=re.search(r"#define\s+CHAIN_DEPTH\s+(\d+)",s)
+              ml=re.search(r"#define\s+LAZY_DEPTH\s+(\d+)",s)
+              if not mc or not ml:
+                  raise SystemExit("DEPTH_DEFINE_MISSING "+name)
+              got=(int(mc.group(1)),int(ml.group(1)))
+              if got!=(chain,lazy):
+                  raise SystemExit(f"DEPTH_MISMATCH {name} got={got}")
+              print(f"FAST_D_VIDEO_PROFILE_DEPTH_PASS profile={name} chain={chain} lazy={lazy}")
+          PY
+      - name: Build and roundtrip each profile
+        run: |
+          common="-O2 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=0 -DK2_PSG_MODE=0 -DK2_DIST_TOPO_MODE=0 -DK2_DUAL_MATCH_MODE=0 -DK2_FUSED_MATCH_MODE=0 -DK2_FUSED2_MODE=0 -pthread -Isrc/cpp/aurora_media"
+          for spec in             "KEPHIR_FASTD_STREAMING4K.cpp streaming4k"             "KEPHIR_FASTD_BALANCED.cpp balanced"             "KEPHIR_FASTD_MAXCOMPRESSION.cpp maxcompression"; do
+              set -- $spec
+              cp "$1" KEPHIR_SPEED_D_SOURCE.cpp
+              g++ $common                 src/cpp/aurora_media/AuroraKhepriFastDMemoryAdapter.cpp                 tests/cpp/test_aurora_fastd_video_profile.cpp                 -o "profile_$2"
+              "./profile_$2"
+          done
