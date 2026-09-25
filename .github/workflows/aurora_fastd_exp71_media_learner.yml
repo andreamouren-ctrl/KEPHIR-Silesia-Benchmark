@@ -1,0 +1,49 @@
+name: AURORA EXP71 Media Learner
+on:
+  workflow_dispatch:
+  push:
+    branches: ["research/khepri-stream-codec"]
+    paths:
+      - "benchmarks/major_codecs/aurora_fastd_exp71_media_learner.cpp"
+      - ".github/workflows/aurora_fastd_exp71_media_learner.yml"
+jobs:
+  exp71-media:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+      - name: Generate runtime FAST-D
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          python3 make_exp37_source.py
+          python3 make_exp38_source.py
+          python3 make_exp39_source.py
+          python3 make_fastd_video_profile_source.py maxcompression --match-prefilter none
+          python3 make_fastd_runtime_depth_source.py
+      - name: Build EXP71 media learner
+        run: |
+          g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY             -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=0 -DK2_PSG_MODE=0 -DK2_DIST_TOPO_MODE=0             -DK2_DUAL_MATCH_MODE=0 -DK2_FUSED_MATCH_MODE=0 -DK2_FUSED2_MODE=0 -pthread             benchmarks/major_codecs/aurora_fastd_runtime_depth_adapter.cpp             src/cpp/aurora_media/AuroraVideoMotion.cpp src/cpp/aurora_media/AuroraVideoResidual.cpp             benchmarks/major_codecs/aurora_fastd_exp71_media_learner.cpp             -Isrc/cpp/aurora_media -o aurora_fastd_exp71_media_learner
+      - name: Run learner
+        run: |
+          set -o pipefail
+          ./aurora_fastd_exp71_media_learner | tee exp71_media_results.txt
+      - name: Validate
+        run: |
+          grep "EXP71_MEDIA_MODEL" exp71_media_results.txt
+          test "$(grep -c 'EXP71_MEDIA_PASS' exp71_media_results.txt)" -eq 2
+          grep "lossless=1" exp71_media_results.txt
+          test -s exp71_media_model.tsv
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-exp71-media-learner
+          path: |
+            exp71_media_results.txt
+            exp71_media_model.tsv
