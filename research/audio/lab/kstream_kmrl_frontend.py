@@ -95,6 +95,34 @@ def representation_cost(us):
             + 4 * counts[3])
 
 
+def pack_classes_rle(classes):
+    out = bytearray()
+    i = 0
+    while i < len(classes):
+        c = classes[i]
+        j = i + 1
+        while j < len(classes) and classes[j] == c and j - i < 64:
+            j += 1
+        out.append(((c & 3) << 6) | ((j - i - 1) & 0x3F))
+        i = j
+    return bytes(out)
+
+
+def unpack_classes_rle(buf: bytes, pos: int, n: int):
+    out = []
+    while len(out) < n:
+        if pos >= len(buf):
+            raise ValueError("truncated RLE class field")
+        b = buf[pos]
+        pos += 1
+        c = (b >> 6) & 3
+        run = (b & 0x3F) + 1
+        if len(out) + run > n:
+            raise ValueError("RLE class overflow")
+        out.extend([c] * run)
+    return out, pos
+
+
 def encode_component(values):
     candidates = []
     for mode in (0, 1, 2):
@@ -104,28 +132,28 @@ def encode_component(values):
     _, mode, us = min(candidates, key=lambda x: (x[0], x[1]))
 
     classes = [residual_class(u) for u in us]
-    out = bytearray([mode])
-    out.extend(pack_classes(classes))
+    raw_classes = pack_classes(classes)
+    rle_classes = pack_classes_rle(classes)
+    use_rle = len(rle_classes) < len(raw_classes)
+
+    # Predictor byte: low 2 bits predictor, bit 7 class-map RLE flag.
+    out = bytearray([mode | (0x80 if use_rle else 0)])
+    out.extend(rle_classes if use_rle else raw_classes)
 
     c0 = [u for u, c in zip(us, classes) if c == 0]
     c1 = [u for u, c in zip(us, classes) if c == 1]
     c2 = [u for u, c in zip(us, classes) if c == 2]
     c3 = [u for u, c in zip(us, classes) if c == 3]
 
-    # 4-bit field.
     for i in range(0, len(c0), 2):
         a = c0[i] & 0xF
         b = (c0[i + 1] & 0xF) if i + 1 < len(c0) else 0
         out.append(a | (b << 4))
 
-    # 8-bit field.
     out.extend(u & 0xFF for u in c1)
-
-    # 16-bit values serialized as byte-significance planes.
     out.extend(u & 0xFF for u in c2)
     out.extend((u >> 8) & 0xFF for u in c2)
 
-    # 32-bit values serialized as four byte-significance planes.
     for shift in (0, 8, 16, 24):
         out.extend((u >> shift) & 0xFF for u in c3)
 
@@ -135,13 +163,20 @@ def encode_component(values):
 def decode_component(buf: bytes, pos: int, n: int):
     if pos >= len(buf):
         raise ValueError("truncated component")
-    mode = buf[pos]
+    control = buf[pos]
     pos += 1
+    mode = control & 0x03
+    use_rle = bool(control & 0x80)
+    if control & 0x7C:
+        raise ValueError("bad component control flags")
     if mode not in (0, 1, 2):
         raise ValueError("bad predictor mode")
 
-    classes, used = unpack_classes(buf[pos:], n)
-    pos += used
+    if use_rle:
+        classes, pos = unpack_classes_rle(buf, pos, n)
+    else:
+        classes, used = unpack_classes(buf[pos:], n)
+        pos += used
     counts = [classes.count(i) for i in range(4)]
 
     n0b = (counts[0] + 1) // 2
