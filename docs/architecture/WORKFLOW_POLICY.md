@@ -43,3 +43,18 @@ Every active benchmark workflow must:
 ## Experiment discipline
 
 One optimization hypothesis should correspond to one focused validation cycle. Failed experiments are documented and then stopped before a new hypothesis begins.
+
+
+## Parallel and GPU validation policy
+
+For multicore / GPU experiments:
+
+- record the logical CPU count exposed by the runner;
+- record requested workers and workers actually used;
+- preserve deterministic archive ordering;
+- require exact SHA roundtrip;
+- require compressed output identity when the experiment is intended to be speed-only;
+- do not claim GPU acceleration from a hosted runner that actually used CPU fallback;
+- separate quality changes from scheduling/parallelism changes whenever possible.
+
+Speed checkpoints must distinguish algorithmic improvements from runner variance.
