@@ -41,7 +41,9 @@ jobs:
         run: |
           g++ -O3 -std=c++20 -DNDEBUG -pthread             src/cpp/aurora_media/AuroraVideoMotion.cpp src/cpp/aurora_media/AuroraVideoResidual.cpp             benchmarks/major_codecs/aurora_fastd_literal_ab.cpp             -Isrc/cpp/aurora_media -ldl -o aurora_fastd_literal_ab
       - name: Run benchmark
-        run: ./aurora_fastd_literal_ab | tee literal_ab_results.txt
+        run: |
+          set -o pipefail
+          ./aurora_fastd_literal_ab | tee literal_ab_results.txt
       - uses: actions/upload-artifact@v4
         with:
           name: aurora-fastd-literal-ab
