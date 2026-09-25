@@ -171,6 +171,7 @@ def trusted_grain(parent,model):
     return (best[1] if best else baseline),key,bool(best)
 
 def final_encode(src,dst,tmp,model):
+    tmp.mkdir(parents=True,exist_ok=True)
     raw=src.read_bytes(); tasks=[]; seq=0
     chosen=collections.Counter(); grains=collections.Counter()
     prior_hits=0; grain_probes=grain_wins=grain_gain_bytes=0; grain_probe_cost_s=0.0
@@ -258,6 +259,7 @@ def final_encode(src,dst,tmp,model):
     }
 
 def final_decode(src,dst,tmp):
+    tmp.mkdir(parents=True,exist_ok=True)
     return E.decode(src,dst,tmp)
 
 def build_manifest(records,group_ids):
