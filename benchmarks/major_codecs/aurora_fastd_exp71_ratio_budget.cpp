@@ -67,20 +67,33 @@ static void train(std::map<std::string,Stat>&model){
   });prev=cur;
  }
 }
-static bool use48(const std::map<std::string,Stat>&m,const std::string&k,double minSavePct,double maxCostPct){
- auto it=m.find(k);if(it==m.end()||it->second.n<2)return false;auto&s=it->second;
- double b24=(double)s.b24/s.n,b48=(double)s.b48/s.n,t24=s.t24/s.n,t48=s.t48/s.n;
- double save=(b24-b48)/b24*100.0,cost=(t48-t24)/t24*100.0;
- return save>=minSavePct && cost<=maxCostPct;
+static std::vector<std::string> top_contexts(const std::map<std::string,Stat>&m,int topk){
+ struct Q{std::string k;double score;double save;double cost;};
+ std::vector<Q>q;
+ for(auto&[k,s]:m){
+  if(s.n<2)continue;
+  double b24=(double)s.b24/s.n,b48=(double)s.b48/s.n,t24=s.t24/s.n,t48=s.t48/s.n;
+  double save=b24-b48,cost=t48-t24;
+  if(save<=0)continue;
+  double score=save/std::max(0.02,cost);
+  q.push_back({k,score,save,cost});
+ }
+ std::sort(q.begin(),q.end(),[](const Q&a,const Q&b){return a.score>b.score;});
+ std::vector<std::string>out;
+ for(int i=0;i<topk&&i<(int)q.size();++i)out.push_back(q[i].k);
+ return out;
+}
+static bool use48_top(const std::vector<std::string>&top,const std::string&k){
+ return std::find(top.begin(),top.end(),k)!=top.end();
 }
 struct R{std::vector<double>ms;std::vector<std::uint64_t>bytes;std::uint64_t c24=0,c48=0;};
 
-static R run(const std::map<std::string,Stat>&model,double minSavePct,double maxCostPct,bool adaptive){
- auto cfg=video_profile_config(VideoProfile::Streaming4K);auto plan=make_video_tile_plan(3840,2160,cfg.tile_width,cfg.tile_height,cfg.tile_halo,cfg.max_concurrent_tiles);auto prev=fr(3840,2160,6);R r;
+static R run(const std::map<std::string,Stat>&model,int topk,bool adaptive){
+ auto cfg=video_profile_config(VideoProfile::Streaming4K);auto plan=make_video_tile_plan(3840,2160,cfg.tile_width,cfg.tile_height,cfg.tile_halo,cfg.max_concurrent_tiles);auto prev=fr(3840,2160,6);R r;auto top=top_contexts(model,topk);
  for(int fi=7;fi<=18;++fi){auto cur=fr(3840,2160,fi);std::vector<Tile>o(plan.tiles.size());auto t0=Clock::now();
   pf_static(plan.tiles.size(),4,[&](std::size_t i,std::uint32_t){
    auto&t=plan.tiles[i];auto c=tile(cur,t),p=tile(prev,t);auto mr=AuroraVideoMotion::encode_mc8r4_adaptive(c,p,t.width,t.height,4.0,9);auto mode=AuroraVideoResidual::choose_mode(mr.residual_yuv420);auto mapped=AuroraVideoResidual::map(mr.residual_yuv420,mode);int a=0;
-   if(adaptive && use48(model,key(mapped),minSavePct,maxCostPct))a=1;
+   if(adaptive && use48_top(top,key(mapped)))a=1;
    aurora_fastd_runtime_set_depths(a?48:24,a?24:12);
    o[i]=Tile{t,std::move(mr.motion_map),mode,aurora_fastd_runtime_encode(mapped),(std::uint8_t)a};
   });
@@ -98,6 +111,6 @@ static void pr(const char*n,const R&r){
 }
 int main(){try{
  std::map<std::string,Stat>m;train(m);std::cout<<"RATIO_BUDGET_MODEL contexts="<<m.size()<<"\n";
- auto base=run(m,0,0,false);auto a=run(m,0.30,6.0,true);auto b=run(m,0.50,8.0,true);auto c=run(m,0.75,10.0,true);
- pr("fast_static",base);pr("budget_a",a);pr("budget_b",b);pr("budget_c",c);return 0;
+ auto base=run(m,0,false);auto a=run(m,1,true);auto b=run(m,2,true);auto c=run(m,3,true);
+ pr("fast_static",base);pr("top1",a);pr("top2",b);pr("top3",c);return 0;
 }catch(const std::exception&e){std::cerr<<"FAIL: "<<e.what()<<"\n";return 1;}}
