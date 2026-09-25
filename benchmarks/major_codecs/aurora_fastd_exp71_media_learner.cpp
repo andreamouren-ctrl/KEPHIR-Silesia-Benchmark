@@ -115,12 +115,17 @@ static int choose_action(const std::map<std::string,ContextStats>&model,const st
         bytes[a]=(double)s.a[a].total_bytes/s.a[a].trials;
         ms[a]=s.a[a].total_ms/s.a[a].trials;
     }
-    const double best=*std::min_element(bytes.begin(),bytes.end());
-    // EXP71-media policy: prefer the shallowest action whose learned size
-    // stays inside a very small local loss budget.
-    if(bytes[0] <= best*1.0045) return 0;
-    if(bytes[1] <= best*1.0020) return 1;
-    return 2;
+
+    // EXP71-Media v2: Balanced (48/24) is the anchor.
+    // Promote FAST only when it is measurably cheaper and its local size
+    // penalty is tiny. Promote RATIO only when it buys meaningful bytes
+    // for a small time premium.
+    const double b48=bytes[1], t48=ms[1];
+    if(ms[0] <= t48*0.985 && bytes[0] <= b48*1.0015)
+        return 0;
+    if(bytes[2] <= b48*0.9950 && ms[2] <= t48*1.030)
+        return 2;
+    return 1;
 }
 static double percentile(std::vector<double>v,double q){
     std::sort(v.begin(),v.end());double p=q*(v.size()-1);
