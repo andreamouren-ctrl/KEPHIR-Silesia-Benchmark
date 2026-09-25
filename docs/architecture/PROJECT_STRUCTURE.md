@@ -33,12 +33,35 @@ Il codice audio, video, container AUM, protocollo AUS1 e streaming appartiene a 
 
 ## Aggiornamento ULTRA / parallelismo
 
-Aree aggiunte dalla linea EXP-51→EXP-65:
+Aree aggiunte dalla linea EXP-51→EXP-70:
 
-- `research/routers/` — router ULTRA EXP-54→65, inclusi grain routing e scheduler paralleli.
+- `research/routers/` — router ULTRA EXP-54→70, inclusi grain routing, scheduler paralleli, candidate verification e learner adattivo.
 - `research/diagnostics/` — profiling EXP-60 e diagnostica dei colli di bottiglia.
 - `research/gpu/` — prototipi OpenCL CPU+GPU; nessuna misura GPU è considerata valida senza hardware reale.
 - `benchmarks/competitors/` — benchmark EXP-56 e benchmark multi-corpus EXP-58.
 - branch sperimentali `research/ultra-expXX` — conservano gli esperimenti senza promuoverli automaticamente nella branch canonica.
 
-Il checkpoint ULTRA pratico corrente è EXP-65.
+Il checkpoint ULTRA pratico corrente è **EXP-66**.
+
+
+## Adaptive Experience Engine
+
+La memoria adattiva è una funzione canonica dell'encoder KEPHIR.
+
+Componenti logici:
+- **Factory Knowledge Base** — esperienza pre-addestrata e distribuita con il programma;
+- **Persistent Local Experience** — esperienza locale persistente tra sessioni e aggiornamenti;
+- **Session Experience** — apprendimento rapido limitato al job corrente;
+- **Feature/Fingerprint Extractor** — descrive i chunk senza usare il nome del file;
+- **Action Portfolio** — BASE, delta/transpose, Word-XOR, PSG, grain, token text e future azioni;
+- **Decision/Utility Engine** — stima byte attesi risparmiati rispetto al costo computazionale;
+- **Exploration Controller** — mantiene probe rari anche sulle azioni sfavorite;
+- **Confidence + Decay** — aumenta la fiducia con l'evidenza e riduce il peso dell'esperienza obsoleta;
+- **Budget Manager** — limita la ricerca extra in funzione del profilo ULTRA/BALANCED/FAST;
+- **Knowledge Merger** — combina Factory + Local + Session senza distruggere la memoria locale;
+- **Version/Compatibility Layer** — gestisce schema, feature set, action set e compatibilità con il motore;
+- **Integrity/Recovery** — checksum, fallback sicuro e reset della sola knowledge base senza influire sugli archivi.
+
+Documento canonico: `docs/architecture/ADAPTIVE_EXPERIENCE_ENGINE.md`.
+
+La knowledge base influenza solo l'encoder. Il decoder rimane indipendente dallo stato appreso.
