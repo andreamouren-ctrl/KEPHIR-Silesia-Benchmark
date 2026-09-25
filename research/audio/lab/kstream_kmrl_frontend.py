@@ -13,7 +13,7 @@ import zlib
 from pathlib import Path
 
 MAGIC = b"KMR1"
-VERSION = 1
+VERSION = 2
 TILE_FRAMES = 256
 
 HDR = struct.Struct("<4sBBHIIQ")
@@ -260,6 +260,72 @@ def split_components(samples, channels):
     return comps
 
 
+def pair_forward(a, b):
+    side = [x - y for x, y in zip(a, b)]
+    mid = [y + (s >> 1) for y, s in zip(b, side)]
+    return mid, side
+
+
+def pair_inverse(mid, side):
+    b = [m - (s >> 1) for m, s in zip(mid, side)]
+    a = [s + y for s, y in zip(side, b)]
+    return a, b
+
+
+def hierarchical_components(comps):
+    out = [list(x) for x in comps]
+    if len(out) >= 2:
+        out[0], out[1] = pair_forward(out[0], out[1])
+    if len(out) >= 6:
+        out[4], out[5] = pair_forward(out[4], out[5])
+    if len(out) >= 8:
+        out[6], out[7] = pair_forward(out[6], out[7])
+    if len(out) >= 3:
+        out[0], out[2] = pair_forward(out[0], out[2])
+    return out
+
+
+def inverse_hierarchical_components(comps):
+    out = [list(x) for x in comps]
+    if len(out) >= 3:
+        out[0], out[2] = pair_inverse(out[0], out[2])
+    if len(out) >= 8:
+        out[6], out[7] = pair_inverse(out[6], out[7])
+    if len(out) >= 6:
+        out[4], out[5] = pair_inverse(out[4], out[5])
+    if len(out) >= 2:
+        out[0], out[1] = pair_inverse(out[0], out[1])
+    return out
+
+
+def quick_predictive_cost(comps):
+    cost = 0
+    for values in comps:
+        if not values:
+            continue
+        prev = values[0]
+        for i in range(8, len(values), 16):
+            x = values[i]
+            cost += abs(x - prev)
+            prev = x
+    return cost
+
+
+def choose_multichannel_transform(comps, bits, mode="adaptive"):
+    if bits != 32 or len(comps) < 6:
+        return 0, comps
+    if mode == "independent":
+        return 0, comps
+    transformed = hierarchical_components(comps)
+    if mode == "hierarchical":
+        return 1, transformed
+    base_cost = quick_predictive_cost(comps)
+    hier_cost = quick_predictive_cost(transformed)
+    if hier_cost * 1000 < base_cost * 995:
+        return 1, transformed
+    return 0, comps
+
+
 def merge_components(comps, channels, bits):
     lo, hi = sample_limits(bits)
     if channels == 2:
@@ -282,7 +348,7 @@ def merge_components(comps, channels, bits):
     return out
 
 
-def encode_payload(samples, channels, frames):
+def encode_payload(samples, channels, frames, bits, multichannel_mode="adaptive"):
     out = bytearray()
     frame_pos = 0
     while frame_pos < frames:
@@ -290,22 +356,37 @@ def encode_payload(samples, channels, frames):
         begin = frame_pos * channels
         end = (frame_pos + tile_frames) * channels
         comps = split_components(samples[begin:end], channels)
+        transform, comps = choose_multichannel_transform(
+            comps, bits, multichannel_mode
+        )
+        if bits == 32 and channels >= 6:
+            out.append(transform)
         for comp in comps:
             out.extend(encode_component(comp))
         frame_pos += tile_frames
     return bytes(out)
 
 
-def decode_payload(payload: bytes, channels: int, frames: int, bits: int):
+def decode_payload(payload: bytes, channels: int, frames: int, bits: int, version=VERSION):
     pos = 0
     out = []
     frame_pos = 0
     while frame_pos < frames:
         tile_frames = min(TILE_FRAMES, frames - frame_pos)
+        transform = 0
+        if version >= 2 and bits == 32 and channels >= 6:
+            if pos >= len(payload):
+                raise ValueError("truncated multichannel transform mode")
+            transform = payload[pos]
+            pos += 1
+            if transform not in (0, 1):
+                raise ValueError("bad multichannel transform mode")
         comps = []
         for _ in range(channels):
             comp, pos = decode_component(payload, pos, tile_frames)
             comps.append(comp)
+        if transform == 1:
+            comps = inverse_hierarchical_components(comps)
         out.extend(merge_components(comps, channels, bits))
         frame_pos += tile_frames
     if pos != len(payload):
@@ -313,7 +394,7 @@ def decode_payload(payload: bytes, channels: int, frames: int, bits: int):
     return out
 
 
-def encode_file(src: Path, dst: Path, channels: int, rate: int, bits: int, block_ms: int):
+def encode_file(src: Path, dst: Path, channels: int, rate: int, bits: int, block_ms: int, multichannel_mode="adaptive"):
     raw = src.read_bytes()
     if channels < 1:
         raise SystemExit("invalid channel count")
@@ -334,7 +415,7 @@ def encode_file(src: Path, dst: Path, channels: int, rate: int, bits: int, block
             frames = min(block_frames, total_frames - offset)
             block = raw[offset * frame_bytes:(offset + frames) * frame_bytes]
             samples = unpack_pcm_le(block, bits)
-            payload = encode_payload(samples, channels, frames)
+            payload = encode_payload(samples, channels, frames, bits, multichannel_mode)
             f.write(CHUNK.pack(frames, len(payload), zlib.crc32(payload) & 0xFFFFFFFF))
             f.write(payload)
             offset += frames
@@ -346,7 +427,7 @@ def decode_file(src: Path, dst: Path):
         raise SystemExit("truncated header")
 
     magic, version, channels, bits, rate, block_ms, total_frames = HDR.unpack_from(data, 0)
-    if magic != MAGIC or version != VERSION or bits not in (16, 24, 32) or channels < 1:
+    if magic != MAGIC or version not in (1, 2) or bits not in (16, 24, 32) or channels < 1:
         raise SystemExit("unsupported KMRL stream")
 
     pos = HDR.size
@@ -364,7 +445,7 @@ def decode_file(src: Path, dst: Path):
         if (zlib.crc32(payload) & 0xFFFFFFFF) != crc:
             raise SystemExit("chunk CRC mismatch")
 
-        samples = decode_payload(payload, channels, frames, bits)
+        samples = decode_payload(payload, channels, frames, bits, version)
         out.extend(pack_pcm_le(samples, bits))
         got_frames += frames
 
@@ -384,6 +465,7 @@ def main():
     enc.add_argument("--rate", type=int, required=True)
     enc.add_argument("--bits", type=int, choices=(16, 24, 32), required=True)
     enc.add_argument("--block-ms", type=int, default=20)
+    enc.add_argument("--multichannel-mode", choices=("adaptive", "independent", "hierarchical"), default="adaptive")
 
     dec = sp.add_parser("decode")
     dec.add_argument("src", type=Path)
@@ -391,7 +473,7 @@ def main():
 
     args = ap.parse_args()
     if args.cmd == "encode":
-        encode_file(args.src, args.dst, args.channels, args.rate, args.bits, args.block_ms)
+        encode_file(args.src, args.dst, args.channels, args.rate, args.bits, args.block_ms, args.multichannel_mode)
     else:
         decode_file(args.src, args.dst)
 
