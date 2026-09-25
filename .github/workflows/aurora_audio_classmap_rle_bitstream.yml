@@ -1,0 +1,29 @@
+name: AURORA Audio Classmap RLE Bitstream
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/khepri-stream-codec
+    paths:
+      - research/audio/lab/kstream_kmrl_frontend.py
+      - tests/python/test_kmrl_classmap_rle_bitstream.py
+      - .github/workflows/aurora_audio_classmap_rle_bitstream.yml
+
+jobs:
+  classmap-rle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run real bitstream matrix
+        run: |
+          python3 tests/python/test_kmrl_classmap_rle_bitstream.py | tee classmap_rle.txt
+      - name: Validate
+        run: |
+          grep "CLASSMAP_RLE_BITSTREAM_ALL_PASS cases=12" classmap_rle.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-audio-classmap-rle-bitstream
+          path: |
+            classmap_rle.txt
+            results/audio/classmap_rle_bitstream
