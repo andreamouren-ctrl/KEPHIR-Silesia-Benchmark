@@ -44,7 +44,7 @@ jobs:
       - name: Validate
         run: |
           grep "RATIO_BUDGET_MODEL" ratio_budget.txt
-          test "$(grep -c 'RATIO_BUDGET_PASS' ratio_budget.txt)" -eq 4
+          test "$(grep -c 'RATIO_BUDGET_PASS' ratio_budget.txt)" -eq 5
       - uses: actions/upload-artifact@v4
         with:
           name: aurora-exp71-ratio-budget
