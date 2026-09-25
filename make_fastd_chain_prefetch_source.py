@@ -7,10 +7,10 @@ args=ap.parse_args()
 s=Path("KEPHIR_SPEED_D_SOURCE.cpp").read_text()
 
 sig='''        while(q!=NIL && depth<maxDepth){'''
-if s.count(sig)!=1: raise SystemExit(f"LOOP_COUNT={s.count(sig)}")
 
 if args.mode=="prefetch":
-    start=s.index(sig)
+    fb=s.index("auto findbest=")
+    start=s.index(sig,fb)
     end=s.index('''        if(bestL==MAXL && bestD>0){''',start)
     body=s[start:end]
     body=body.replace(sig,'''        while(q!=NIL && depth<maxDepth){
