@@ -1,0 +1,29 @@
+name: AURORA Audio Adaptive Multichannel
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/khepri-stream-codec
+    paths:
+      - research/audio/lab/kstream_kmrl_frontend.py
+      - tests/python/test_kmrl_adaptive_multichannel.py
+      - .github/workflows/aurora_audio_adaptive_multichannel.yml
+
+jobs:
+  adaptive-mc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run adaptive multichannel matrix
+        run: |
+          python3 tests/python/test_kmrl_adaptive_multichannel.py | tee adaptive_mc.txt
+      - name: Validate
+        run: |
+          grep "ADAPTIVE_MC_ALL_PASS cases=4" adaptive_mc.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-audio-adaptive-multichannel
+          path: |
+            adaptive_mc.txt
+            results/audio/adaptive_multichannel
