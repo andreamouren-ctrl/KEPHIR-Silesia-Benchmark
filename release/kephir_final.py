@@ -326,6 +326,7 @@ def compress_directory(root,out,model,tmp):
     return {"groups":{g:len(groups[g]) for g in names},"manifest_bytes":len(manifest),"engine":group_stats}
 
 def extract_archive(arc,out,tmp):
+    tmp.mkdir(parents=True,exist_ok=True)
     b=arc.read_bytes();pos=0
     if b[:4]!=MAGIC:raise ValueError("not a KEPHIR 1.0 archive")
     pos=4;kind=b[pos];pos+=1
