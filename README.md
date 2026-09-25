@@ -15,6 +15,7 @@ Il progetto codec audio-video è separato nella branch `project/aurora-media`.
 - `docs/architecture/PROJECT_STRUCTURE.md` — struttura canonica.
 - `docs/architecture/FILE_CATALOG.md` — catalogo delle aree.
 - `docs/architecture/WORKFLOW_POLICY.md` — regole CI e riproducibilità.
+- `docs/architecture/ADAPTIVE_EXPERIENCE_ENGINE.md` — memoria adattiva, knowledge base factory e apprendimento persistente.
 - `docs/INDEX.md` — indice della documentazione.
 
 ## Struttura
@@ -55,12 +56,12 @@ AURORA Compressor e AURORA Media condividono la tecnologia KHEPRI e la storia sc
 Current practical checkpoint:
 
 ```text
-EXP-65
+EXP-66
 Silesia raw:        211,938,580 B
 Compressed:          63,454,863 B
 Ratio:               29.9402133%
-Encode:              33.34 s
-Encode throughput:    6.36 MB/s
+Encode:              25.97 s
+Encode throughput:    8.16 MB/s
 SHA:                 PASS
 Runner:              4 logical CPUs
 ```
@@ -71,5 +72,6 @@ Recent architecture work:
 - process-based work parcels for multicore scaling;
 - OpenCL CPU+GPU token-matching prototype with exact CPU fallback;
 - explicit profiling of backend calls, tokenization and scheduler overhead.
+- Adaptive Experience Engine con knowledge base factory pre-addestrata e apprendimento locale persistente.
 
 GPU performance is not yet claimed: hosted CI validated build/reversibility but used CPU fallback.
