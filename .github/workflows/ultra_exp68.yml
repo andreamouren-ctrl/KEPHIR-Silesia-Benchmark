@@ -1,0 +1,69 @@
+name: AURORA ULTRA EXP-68 PSG Gate
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - project/aurora-compressor
+    paths:
+      - "research/routers/exp68_ultra_psg_gate.py"
+      - ".github/workflows/ultra_exp68.yml"
+
+jobs:
+  ultra-exp68:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential unzip
+      - name: Build three PSG backends
+        run: |
+          cat engine/source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 research/generators/general/make_exp26_source.py
+          python3 research/generators/general/make_exp27_source.py
+          python3 research/generators/general/make_exp31_source.py
+          python3 research/generators/general/make_exp33_source.py
+          python3 research/generators/general/make_exp37_source.py
+          g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY \
+            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 \
+            -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 \
+            -pthread KEPHIR_2_EXP37_DUAL_MATCH.cpp -o kephir37
+          python3 research/generators/general/make_exp53_ultra_source.py
+          g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY \
+            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=5 \
+            -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 \
+            -pthread KEPHIR_2_EXP53_ULTRA_PSG.cpp -o kephir53
+          python3 research/generators/general/make_exp55_ultra_source.py
+          g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY \
+            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=6 \
+            -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 \
+            -pthread KEPHIR_2_EXP55_ULTRA_TRANSITION_PSG.cpp -o kephir55
+      - name: Download canonical Silesia
+        run: |
+          curl -L --fail --retry 4 -o silesia.zip https://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip
+          echo "c240c17d6805fb8a0bde763f1b94cd99  silesia.zip" | md5sum -c -
+          mkdir silesia
+          unzip -q silesia.zip -d silesia
+      - name: Show runner CPUs
+        run: nproc
+      - name: Run EXP-68
+        env:
+          KEPHIR_WORKERS: "16"
+        run: python3 research/routers/exp68_ultra_psg_gate.py
+      - name: Validate
+        run: |
+          python3 - <<'PY'
+          import json
+          s=json.load(open("exp68_results.json"))["summary"]
+          assert s["raw"] == 211938580, s
+          assert s["sha_all"] is True, s
+          assert s["size"] < 63454863, s
+          assert s["within_60s"] is True, s
+          print(json.dumps(s,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ultra-exp68-results
+          path: exp68_results.json
