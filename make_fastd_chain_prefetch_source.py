@@ -16,7 +16,7 @@ if args.mode=="prefetch":
     body=body.replace(sig,'''        while(q!=NIL && depth<maxDepth){
             const uint32_t nextq=prev[q];
             if(nextq!=NIL){
-                __builtin_prefetch(prev.data()+nextq,0,1);
+                __builtin_prefetch(prev+nextq,0,1);
                 __builtin_prefetch(d.data()+nextq,0,1);
             }''',1)
     n=body.count("q=prev[q]")
