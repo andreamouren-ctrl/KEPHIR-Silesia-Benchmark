@@ -1,0 +1,95 @@
+name: AURORA FAST-D Match Prefilter
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["research/khepri-stream-codec"]
+    paths:
+      - "make_fastd_match_prefilter_source.py"
+      - ".github/workflows/aurora_fastd_match_prefilter.yml"
+
+jobs:
+  prefilter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+      - name: Generate Balanced FAST-D
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          python3 make_exp37_source.py
+          python3 make_exp38_source.py
+          python3 make_exp39_source.py
+          python3 make_fastd_video_profile_source.py balanced
+          python3 make_fastd_match_prefilter_source.py baseline --output FASTD_BASE.cpp
+          python3 make_fastd_match_prefilter_source.py tail8 --output FASTD_TAIL8.cpp
+          python3 make_fastd_match_prefilter_source.py tail8_mid8 --output FASTD_TAILMID.cpp
+      - name: Build variants
+        run: |
+          common="-O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=0 -DK2_PSG_MODE=0 -DK2_DIST_TOPO_MODE=0 -DK2_DUAL_MATCH_MODE=0 -DK2_FUSED_MATCH_MODE=0 -DK2_FUSED2_MODE=0 -pthread -Isrc/cpp/aurora_media"
+          src="src/cpp/aurora_media/AuroraKhepriFastDMemoryAdapter.cpp src/cpp/aurora_media/AuroraVideoMotion.cpp src/cpp/aurora_media/AuroraVideoResidual.cpp benchmarks/major_codecs/aurora_video_depth_profiles_multires.cpp"
+          for spec in "FASTD_BASE.cpp pref_base" "FASTD_TAIL8.cpp pref_tail8" "FASTD_TAILMID.cpp pref_tailmid"; do
+            set -- $spec
+            cp "$1" KEPHIR_SPEED_D_SOURCE.cpp
+            g++ $common $src -o "$2"
+          done
+      - name: Run alternating 4K trials
+        run: |
+          set -o pipefail
+          : > prefilter_results.txt
+          for rep in 1 2 3; do
+            if [ $((rep % 2)) -eq 1 ]; then
+              order="pref_base baseline pref_tail8 tail8 pref_tailmid tail8_mid8"
+            else
+              order="pref_tailmid tail8_mid8 pref_tail8 tail8 pref_base baseline"
+            fi
+            set -- $order
+            while [ "$#" -gt 0 ]; do
+              exe="$1"; name="$2"; shift 2
+              echo "PREFILTER_TRIAL rep=$rep mode=$name" | tee -a prefilter_results.txt
+              "./$exe" "$name" 3840 2160 | tee -a prefilter_results.txt
+            done
+          done
+      - name: Summarize and enforce identical bytes
+        run: |
+          python3 - <<'PY'
+          import re, statistics
+          s=open("prefilter_results.txt").read().splitlines()
+          rows={}
+          for line in s:
+              if "DEPTH_MULTIRES_PASS" not in line: continue
+              mode=re.search(r"profile=(\S+)",line).group(1)
+              med=float(re.search(r"median_ms=([0-9.]+)",line).group(1))
+              p95=float(re.search(r"p95_ms=([0-9.]+)",line).group(1))
+              b=float(re.search(r"mean_packed_bytes=([0-9.]+)",line).group(1))
+              rows.setdefault(mode,[]).append((med,p95,b))
+          required=["baseline","tail8","tail8_mid8"]
+          for mode in required:
+              if len(rows.get(mode,[]))!=3:
+                  raise SystemExit(f"MISSING_TRIALS {mode} {rows.get(mode)}")
+          base_bytes=statistics.median(x[2] for x in rows["baseline"])
+          for mode in required:
+              meds=[x[0] for x in rows[mode]]
+              p95s=[x[1] for x in rows[mode]]
+              bs=[x[2] for x in rows[mode]]
+              if any(x!=base_bytes for x in bs):
+                  raise SystemExit(f"BYTE_MISMATCH {mode} base={base_bytes} got={bs}")
+              print(
+                  f"PREFILTER_PASS mode={mode} "
+                  f"median_of_medians_ms={statistics.median(meds):.6f} "
+                  f"median_p95_ms={statistics.median(p95s):.6f} "
+                  f"mean_packed_bytes={base_bytes:.0f} lossless=1"
+              )
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-fastd-match-prefilter
+          path: prefilter_results.txt
