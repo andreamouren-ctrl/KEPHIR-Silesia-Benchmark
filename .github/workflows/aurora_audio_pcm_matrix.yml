@@ -1,0 +1,29 @@
+name: AURORA Audio PCM Matrix
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/khepri-stream-codec
+    paths:
+      - research/audio/lab/kstream_kmrl_frontend.py
+      - tests/python/test_kmrl_pcm_matrix.py
+      - .github/workflows/aurora_audio_pcm_matrix.yml
+
+jobs:
+  pcm-matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run PCM matrix
+        run: |
+          python3 tests/python/test_kmrl_pcm_matrix.py | tee pcm_matrix.txt
+      - name: Validate
+        run: |
+          grep "AUDIO_PCM_MATRIX_ALL_PASS cases=9" pcm_matrix.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-audio-pcm-matrix
+          path: |
+            pcm_matrix.txt
+            results/audio/pcm_matrix
