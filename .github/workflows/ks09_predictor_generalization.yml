@@ -1,0 +1,30 @@
+name: KS09 Predictor Generalization
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/khepri-stream-codec
+    paths:
+      - research/audio/experiments/ks09_predictor_generalization.py
+      - research/audio/lab/kstream_kmrl_frontend.py
+      - .github/workflows/ks09_predictor_generalization.yml
+
+jobs:
+  ks09:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run predictor matrix
+        env:
+          PYTHONPATH: .
+        run: |
+          python3 research/audio/experiments/ks09_predictor_generalization.py | tee ks09.txt
+      - name: Validate
+        run: |
+          test "$(grep -c 'KS09_PASS' ks09.txt)" -eq 8
+          grep 'KS09_SUMMARY' ks09.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ks09-predictor-generalization
+          path: ks09.txt
