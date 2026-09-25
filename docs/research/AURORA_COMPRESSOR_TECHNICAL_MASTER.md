@@ -6,7 +6,7 @@
 **Repository:** `andreamouren-ctrl/KEPHIR-Silesia-Benchmark`  
 **Document role:** canonical technical/scientific reconstruction of the general-purpose compressor research  
 **Status:** living engineering document  
-**Updated:** 2026-09-24
+**Updated:** 2026-09-25
 
 ---
 
@@ -1345,14 +1345,144 @@ No GPU performance claim is considered valid until measured on a real GPU runner
 As of 2026-09-25:
 
 ```text
-EXP-65
+EXP-66
 Silesia raw:       211,938,580 B
 Compressed:         63,454,863 B
 Ratio:              29.9402133%
-Encode:             33.34 s
-Encode throughput:   6.36 MB/s
+Encode:             25.97 s
+Encode throughput:   8.16 MB/s
 SHA:                PASS
 Runner CPUs:         4 logical
 ```
 
-The next scalability objective is better work stealing / load balancing and real 8C/16T plus GPU validation while preserving the exact EXP-65 archive result.
+EXP-66 preserves the EXP-62/63/64/65 archive size while adding cost-aware LPT parcel scheduling. It remains the current practical ULTRA checkpoint. Real 8C/16T plus GPU validation remains pending.
+
+
+---
+
+# PART XVI — ADAPTIVE EXPERIENCE LINE (EXP-66 → EXP-70)
+
+## EXP-66 — cost-aware scheduler
+
+EXP-66 replaced equal/coarse parcel construction with a cost-aware LPT-style scheduler while preserving exact codec decisions.
+
+Measured Silesia result:
+- 63,454,863 B
+- 29.9402133%
+- 25.97 s
+- 8.16 MB/s
+- SHA PASS
+- 4 logical CPUs on hosted CI
+- exact compressed size vs EXP-65
+
+Decision: **PROMOTED — current practical ULTRA checkpoint**.
+
+## EXP-67 — selective complementary PSG verification
+
+EXP-67 spent recovered runtime budget testing PSG53/PSG55 on non-text chunks.
+
+Result:
+- 63,454,523 B
+- 29.9400529%
+- 49.68 s
+- SHA PASS
+- 340 B better than EXP-66
+
+The gain was real but too small for the added runtime.
+
+Decision: **RETAINED DIAGNOSTIC / NOT PROMOTED**.
+
+## EXP-68 — PSG gate
+
+EXP-68 gated complementary PSG verification to BASE/non-text chunks.
+
+Result:
+- 63,454,536 B
+- 29.9400590%
+- 38.19 s
+- SHA PASS
+- 327 B better than EXP-66
+- only 13 B worse than EXP-67
+
+The gate recovered substantial time, but the byte gain remained too small for practical promotion.
+
+Decision: **RETAINED SELECTIVE-PSG EXPERIMENT**.
+
+## EXP-69 — Word-XOR structural surface
+
+EXP-69 reintroduced 16-bit Word-XOR + transpose into the practical entropy router.
+
+Result:
+- 63,893,827 B
+- 30.1473318%
+- 57.74 s
+- SHA PASS
+- +438,964 B vs EXP-66
+
+The transform itself showed isolated value on a few Mozilla chunks, but the entropy estimator selected it far too often.
+
+Decision: **REJECTED / DIAGNOSTIC VALUE RETAINED**.
+
+## EXP-70 — Adaptive Experience prototype
+
+EXP-70 introduced the first encoder-side online learner.
+
+Training/validation corpus:
+- Silesia
+- Canterbury
+- Calgary
+- Canterbury Large
+- Artificial
+- enwik8
+
+Aggregate raw data per epoch: **329,460,340 B**.
+
+Three consecutive epochs:
+
+| Epoch | Encode time | Throughput | Probes | Wins | Byte gain |
+|---|---:|---:|---:|---:|---:|
+| 1 | 92.01 s | 3.58 MB/s | 401 | 4 | 16,358 B |
+| 2 | 76.79 s | 4.29 MB/s | 88 | 4 | 16,358 B |
+| 3 | 76.18 s | 4.32 MB/s | 68 | 4 | 16,358 B |
+
+SHA roundtrip passed in all epochs.
+
+From epoch 1 to epoch 3, probe count fell from 401 to 68 (about 83%) while all four winning decisions and the same 16,358 B gain were retained.
+
+This validates the architecture premise that accumulated experience can reduce search cost without losing already-discovered winning decisions.
+
+## Canonical Adaptive Experience architecture decision
+
+KEPHIR will ship with a **Factory Knowledge Base** trained from approved benchmark/R&D corpora.
+
+A new installation therefore starts with accumulated project experience rather than an empty learner.
+
+Runtime knowledge is layered:
+
+1. **Factory Knowledge Base** — shipped, versioned, read-only;
+2. **Persistent Local Experience** — user-machine writable overlay preserved across launches/upgrades;
+3. **Session Experience** — short-term adaptation during the current compression job.
+
+The shipped factory model and local learned model must remain separate. Program updates may replace/improve factory knowledge but must preserve compatible user-local experience.
+
+Learning is encoder-side only. The decoder never depends on the learner or its history; archives contain all transform/backend/mode information required for exact reconstruction.
+
+Persistent learning stores aggregate statistics and feature/action outcomes, not source-file contents.
+
+Canonical architecture reference:
+
+`docs/architecture/ADAPTIVE_EXPERIENCE_ENGINE.md`
+
+## Next research direction
+
+The learner should expand from Word-XOR probing to a portfolio of actions:
+- BASE;
+- structural delta/transpose families;
+- Word-XOR;
+- PSG variants;
+- 128/256/512 KiB grain decisions;
+- BASE verification;
+- text transforms;
+- future CPU/GPU analysis actions.
+
+Candidate selection should optimize expected byte gain against measured computational cost under the active profile and remaining time budget.
