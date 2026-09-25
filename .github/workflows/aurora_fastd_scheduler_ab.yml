@@ -1,0 +1,60 @@
+name: AURORA FAST-D Scheduler A-B
+on:
+  workflow_dispatch:
+  push:
+    branches: ["research/khepri-stream-codec"]
+    paths:
+      - "benchmarks/major_codecs/aurora_fastd_scheduler_ab.cpp"
+      - ".github/workflows/aurora_fastd_scheduler_ab.yml"
+jobs:
+  scheduler:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+      - name: Generate FAST
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          python3 make_exp37_source.py
+          python3 make_exp38_source.py
+          python3 make_exp39_source.py
+          python3 make_fastd_video_profile_source.py streaming4k
+      - name: Build
+        run: |
+          python3 - <<'PY'
+          p="benchmarks/major_codecs/aurora_fastd_scheduler_ab.cpp"
+          s=open(p).read()
+          s=s.replace('auto a=run(frames,pf_atomic<decltype([&](std::size_t,std::uint32_t){})>);\n  return 0;',
+          '''R atomicR,staticR;
+  {
+    std::vector<AuroraKhepriFastDMemoryAdapter> enc(4);
+    for(auto&f:frames){std::vector<Bytes>out(f.size());auto t0=Clock::now();pf_atomic(f.size(),4,[&](std::size_t i,std::uint32_t w){out[i]=enc[w].encode(f[i].mapped);});auto t1=Clock::now();std::uint64_t sz=0;for(auto&x:out)sz+=x.size();atomicR.ms.push_back(std::chrono::duration<double,std::milli>(t1-t0).count());atomicR.bytes.push_back(sz);}
+  }
+  {
+    std::vector<AuroraKhepriFastDMemoryAdapter> enc(4);
+    for(auto&f:frames){std::vector<Bytes>out(f.size());auto t0=Clock::now();pf_static(f.size(),4,[&](std::size_t i,std::uint32_t w){out[i]=enc[w].encode(f[i].mapped);});auto t1=Clock::now();std::uint64_t sz=0;for(auto&x:out)sz+=x.size();staticR.ms.push_back(std::chrono::duration<double,std::milli>(t1-t0).count());staticR.bytes.push_back(sz);}
+  }
+  pr("atomic",atomicR);pr("static",staticR);
+  if(atomicR.bytes!=staticR.bytes)throw std::runtime_error("byte mismatch");
+  return 0;''')
+          open(p,"w").write(s)
+          PY
+          g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY             -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=0 -DK2_PSG_MODE=0 -DK2_DIST_TOPO_MODE=0             -DK2_DUAL_MATCH_MODE=0 -DK2_FUSED_MATCH_MODE=0 -DK2_FUSED2_MODE=0 -pthread             src/cpp/aurora_media/AuroraKhepriFastDMemoryAdapter.cpp             src/cpp/aurora_media/AuroraVideoMotion.cpp src/cpp/aurora_media/AuroraVideoResidual.cpp             benchmarks/major_codecs/aurora_fastd_scheduler_ab.cpp             -Isrc/cpp/aurora_media -o aurora_fastd_scheduler_ab
+      - name: Run
+        run: |
+          set -o pipefail
+          ./aurora_fastd_scheduler_ab | tee scheduler_ab.txt
+      - name: Validate
+        run: test "$(grep -c 'SCHED_AB_PASS' scheduler_ab.txt)" -eq 2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-fastd-scheduler-ab
+          path: scheduler_ab.txt
