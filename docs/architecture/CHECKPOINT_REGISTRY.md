@@ -62,3 +62,45 @@ A checkpoint is not promoted until it has:
 5. throughput data where relevant;
 6. comparison with the active checkpoint;
 7. explicit promote/reject decision.
+
+
+## ULTRA line — EXP-51 to EXP-65
+
+| Checkpoint | Status | Ratio | Encode | Decision |
+|---|---|---:|---:|---|
+| EXP-51 | REJECTED | 29.820498% | — | 0 B gain vs EXP-48 |
+| EXP-52 | REJECTED | 29.820498% | — | structural cascades gave 0 B gain |
+| EXP-53 | REJECTED GLOBAL / RETAINED EXPERT | 29.8207452% | — | worse globally, useful per chunk |
+| EXP-54 | RETAINED SUCCESS | 29.8204036% | — | adaptive PSG gain |
+| EXP-55 | RETAINED SUCCESS | 29.8202413% | — | tri-PSG gain |
+| EXP-56 | ORACLE | 29.7265746% | ~2046 s | quality oracle, too slow |
+| EXP-57 | RETAINED PRACTICAL | 30.0958160% | 39.59 s | first <60 s ULTRA |
+| EXP-58 | RETAINED PRACTICAL | 30.0773639% | 44.07 s* | selective BASE verification |
+| EXP-59 | REJECTED IMPLEMENTATION | 30.0133223% | 302.33 s | ratio win, tokenizer too slow |
+| EXP-60 | PROMOTED HISTORICAL | 30.0133223% | 51.42 s | indexed tokenization |
+| EXP-61 | REJECTED | 30.0133223% | 78.32 s | 0 B gain, too slow |
+| EXP-62 | QUALITY SUCCESS / RUNTIME REJECT | 29.9402133% | 79.17 s | better grain/context, >60 s |
+| EXP-63 | PROMOTED HISTORICAL | 29.9402133% | 49.76 s | 2-worker parallel |
+| EXP-64 | PROMOTED HISTORICAL | 29.9402133% | 44.52 s | configurable workers |
+| EXP-65 | **PROMOTED ULTRA CURRENT** | **29.9402133%** | **33.34 s** | process work parcels, 4 logical CPUs |
+
+\* EXP-58 timing shown from the later multi-corpus Silesia run; earlier runner timing differed substantially.
+
+### Current ULTRA checkpoint
+
+```text
+EXP-65
+compressed = 63,454,863 B
+ratio      = 29.9402133%
+encode     = 33.34 s
+throughput = 6.36 MB/s
+SHA        = PASS
+runner CPU = 4 logical
+```
+
+### Diagnostic / platform checkpoints
+
+| Item | Status | Result |
+|---|---|---|
+| EXP-60 bottleneck profile | DIAGNOSTIC | 1,019 backend calls; 39.14 s backend; 16.06 s Python tokenization |
+| OpenCL CPU+GPU tokenizer prototype | RETAINED PROTOTYPE | build + exact self-test PASS; hosted CI used CPU fallback, no real GPU timing yet |
