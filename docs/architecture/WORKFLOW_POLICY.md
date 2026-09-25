@@ -1,14 +1,14 @@
 # Workflow Policy — AURORA Compressor / KHEPRI
 
-**Branch:** `project/aurora-compressor`
+**Canonical branch:** `project/aurora-compressor`
 
 ## Purpose
 
-GitHub Actions is part of the reproducibility system. Workflows should reproduce a named experiment, validation or benchmark; they are not a storage mechanism.
+GitHub Actions è parte del sistema di riproducibilità. Un workflow deve riprodurre un esperimento, una validazione o una qualification nominata; non deve essere usato come storage né partire senza necessità.
 
 ## Path policy
 
-Workflow scripts must use the canonical locations:
+Percorsi canonici:
 
 - EXP generators → `research/generators/general/`
 - FAST/SPEED generators → `research/generators/speed/`
@@ -18,43 +18,65 @@ Workflow scripts must use the canonical locations:
 - routers → `research/routers/`
 - diagnostics → `research/diagnostics/`
 - speed harnesses → `research/speed/`
+- packaging → `research/packaging/`
+- real-world research benchmarks → `research/benchmarks/`
 - Silesia harness → `benchmarks/silesia/`
 - competitor benchmarks → `benchmarks/competitors/`
+- release qualification → `release/`
 - source fragments → `engine/source_parts/`
 
-No workflow should reintroduce root-level research scripts.
+Nessun workflow deve reintrodurre script di ricerca nella root.
 
 ## Trigger policy
 
-Historical experiments should prefer `workflow_dispatch` when they no longer require automatic validation.
+### Historical workflows
 
-Active research may use narrow path-filtered push triggers.
+Gli esperimenti storici conclusi devono preferire:
 
-Avoid broad push triggers on historical workflows.
+`workflow_dispatch`
+
+e non devono reagire a normali modifiche di documentazione/release.
+
+### Active R&D
+
+Può usare trigger automatici, ma con path filter stretti sull'esperimento interessato.
+
+### Release qualification
+
+La qualification deve attivarsi solo quando cambiano componenti che possono alterare:
+- encoder;
+- decoder;
+- packing;
+- Factory Knowledge;
+- qualification harness;
+- backend/build chain.
+
+Modifiche solo a `docs/**`, README o file editoriali non devono richiedere una qualification completa.
 
 ## Result discipline
 
-Every active benchmark workflow must:
-- fail on roundtrip/SHA mismatch;
-- identify the checkpoint under test;
-- preserve measured output as an artifact when useful;
-- compare against the current reference when the experiment is intended as a replacement.
+Ogni benchmark attivo deve:
+- fallire su roundtrip/SHA mismatch;
+- identificare il checkpoint;
+- registrare corpus e dimensione input;
+- conservare output misurato come artifact quando utile;
+- confrontare con il reference quando propone una sostituzione;
+- separare misure reali da ipotesi.
+
+## Release discipline
+
+Il commit qualificato di una release è immutabile come riferimento tecnico.
+
+KEPHIR 1.0:
+- qualified commit: `efd00a3cfc63d8306bef65aa90eb0154dc7b9004`
+- qualification run: `36151845469`
+- result: **SUCCESS**
+- roundtrip: **FINAL_SHA_ALL_PASS**
+
+Una modifica successiva al codice crea un nuovo candidato e richiede una nuova qualification.
 
 ## Experiment discipline
 
-One optimization hypothesis should correspond to one focused validation cycle. Failed experiments are documented and then stopped before a new hypothesis begins.
+Una modifica concettuale → una CI → un risultato misurato → PROMOTE/REJECT.
 
-
-## Parallel and GPU validation policy
-
-For multicore / GPU experiments:
-
-- record the logical CPU count exposed by the runner;
-- record requested workers and workers actually used;
-- preserve deterministic archive ordering;
-- require exact SHA roundtrip;
-- require compressed output identity when the experiment is intended to be speed-only;
-- do not claim GPU acceleration from a hosted runner that actually used CPU fallback;
-- separate quality changes from scheduling/parallelism changes whenever possible.
-
-Speed checkpoints must distinguish algorithmic improvements from runner variance.
+Le eccezioni sono le integration qualification esplicitamente costruite per validare una release completa.

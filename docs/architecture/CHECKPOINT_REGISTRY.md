@@ -1,17 +1,21 @@
 # AURORA Compressor / KHEPRI — Checkpoint Registry
 
-**Branch:** `project/aurora-compressor`
+**Canonical branch:** `project/aurora-compressor`  
+**Qualified 1.0 engine commit:** `efd00a3cfc63d8306bef65aa90eb0154dc7b9004`  
+**Qualification run:** `36151845469`
 
 ## Status vocabulary
-- **PROMOTED** — reference checkpoint for a defined profile.
+
+- **PROMOTED** — reference checkpoint.
 - **RETAINED** — valid historical/control checkpoint.
-- **REJECTED** — tested and not worth repeating without a new hypothesis.
-- **ORACLE** — useful upper-bound measurement, not directly production-feasible.
+- **REJECTED** — measured and not worth repeating without a new hypothesis.
+- **ORACLE** — upper-bound measurement, not production-feasible as-is.
 - **DIAGNOSTIC** — measurement checkpoint used to locate a bottleneck.
+- **RELEASE BASELINE** — integrated, reversible, qualified product checkpoint.
 
-## General-purpose ratio line
+## Early / structural ratio line
 
-| Checkpoint | Status | Ratio / result | Decision |
+| Checkpoint | Status | Result | Decision |
 |---|---|---:|---|
 | EXP-22 | RETAINED | 33.4880% | reproducible baseline |
 | EXP-23 | RETAINED | 31.1942% | distance penalty recalibration |
@@ -37,20 +41,73 @@
 | EXP-44 | RETAINED ROUTER | 30.0000% | first end-to-end structural router |
 | EXP-46 | RETAINED | 29.9332% | structural numeric router |
 | EXP-47 | ORACLE | 29.8328% equivalent | adaptive period surface |
-| EXP-48 | PROMOTED RATIO | 29.820498% | Adaptive Structural Router |
+| EXP-48 | PROMOTED HISTORICAL RATIO | 29.820498% | Adaptive Structural Router |
 | EXP-49 | REJECTED | niche only | extra surface not justified |
 | EXP-50R | REJECTED | 0 B saved on SAO | 28-byte record surface |
 
-## Speed line
+## Throughput line
 
-| Checkpoint | Status | Ratio | Encode | Decode | Decision |
-|---|---|---:|---:|---:|---|
-| FAST-A | RETAINED DIAGNOSTIC | 31.3995% | 42.23 MB/s | 116.43 MB/s | insufficient speed |
-| FAST-D | PROMOTED SPEED | 30.9388149% | 64.63 MB/s | 181.67 MB/s | current speed baseline |
-| FAST-E | REJECTED | 31.5409% | 63.62 MB/s | 143.95 MB/s | shorter chain regressed |
-| FAST-G | REJECTED | 30.9388149% | 52.658 MB/s same-run | 160.526 MB/s | 64-bit compare no encode gain |
-| FAST-H | RETAINED EXPERIMENT | 30.9681942% | 52.631 MB/s same-run | 160.499 MB/s | ~6.8% same-run encode gain but ratio loss |
-| FAST-AA | REJECTED | 30.9388149% | 42.3942 MB/s same-run | 147.6690 MB/s | persistent scratch -19.29% encode |
+| Checkpoint | Status | Ratio | Encode | Decode |
+|---|---|---:|---:|---:|
+| FAST-A | RETAINED DIAGNOSTIC | 31.3995% | 42.23 MB/s | 116.43 MB/s |
+| FAST-D | PROMOTED HISTORICAL SPEED | 30.9388149% | 64.63 MB/s | 181.67 MB/s |
+| FAST-E | REJECTED | 31.5409% | 63.62 MB/s | 143.95 MB/s |
+| FAST-G | REJECTED | 30.9388149% | no encode gain | slight decode gain |
+| FAST-H | RETAINED EXPERIMENT | 30.9681942% | ~6.8% same-run gain | slight gain |
+| FAST-AA | REJECTED | 30.9388149% | -19.29% same-run | unchanged |
+
+## Late adaptive / production research
+
+| Checkpoint | Status | Key measured result | Decision |
+|---|---|---|---|
+| EXP-56 | ORACLE | 63,002,080 B / 29.7265746% | ratio upper bound, too slow |
+| EXP-57 | RETAINED | 63,784,645 B / 30.095816% / 39.59 s | fast heuristic direction |
+| EXP-58 | RETAINED | 63,745,538 B / 30.077364% | selective verification |
+| EXP-59 | RETAINED EXPERIMENT | ratio improved, ~302 s | token transform too expensive |
+| EXP-60 | RETAINED | 63,609,809 B / 30.013322% / 51.42 s | indexed token |
+| EXP-62 | RETAINED | 63,454,863 B / 29.940213% / 79.17 s | conservative grain |
+| EXP-63 | RETAINED | same bytes / 49.76 s | CPU parallel |
+| EXP-64 | RETAINED | same bytes / 44.52 s | thread/config tuning |
+| EXP-65 | RETAINED | 63,454,863 B / 33.342 s | work parcels |
+| EXP-66 | PROMOTED SCHEDULER | 63,454,863 B / 25.972 s | cost-aware LPT scheduler |
+| EXP-67 | REJECTED BROAD PSG | +340 B vs EXP-66 / much slower | poor ROI |
+| EXP-68 | REJECTED BROAD PSG | +327 B vs EXP-66 / slower | gate insufficient |
+| EXP-69 | RETAINED NICHE | global regression; Mozilla local gain | Word-XOR signal discovered |
+| EXP-70 | RETAINED ARCHITECTURE | learner cut repeated probes ~83% | Adaptive Experience Engine validated |
+| EXP-71 | RETAINED | multi-action learner | PSG low ROI confirmed |
+| EXP-72 | PROMOTED GRAIN | 62,927,914 B / 29.691580% | adaptive grain learning |
+| EXP-73 | RETAINED | 62,920,997 B | grain + Word-XOR |
+| EXP-74 | RETAINED | same 62,920,997 B / predictive WX | Factory prior concept validated |
+| EXP-75 | **PROMOTED ALGORITHM** | **62,920,997 B / ~29.6883%** | lazy fine fingerprint; production algorithm checkpoint |
+| EXP-76 | **PROMOTED PACKING** | **104,325 B / 14.4353%** on 722,706 B repo snapshot | Smart Directory Packing architecture |
+
+## KEPHIR 1.0 integrated qualification
+
+**Status: RELEASE BASELINE**
+
+Qualified implementation:
+- branch: `release/kephir-1.0-final-candidate`
+- commit: `efd00a3cfc63d8306bef65aa90eb0154dc7b9004`
+- workflow run: `36151845469`
+- result: **SUCCESS**
+- roundtrip: **FINAL_SHA_ALL_PASS**
+- Factory Knowledge v1: **79 positive states**
+
+### Silesia canonical
+
+| Profile | Bytes | Ratio | Compress | Decompress | SHA |
+|---|---:|---:|---:|---:|:---:|
+| KEPHIR 1.0 cold | 62,953,321 | 29.704% | 96.050 s | 13.645 s | PASS |
+| KEPHIR 1.0 Factory | 62,958,288 | 29.706% | 75.057 s | 13.629 s | PASS |
+
+### Real repository qualification
+
+Dataset: **242 files / 759,128 logical bytes**
+
+| Profile | Bytes | Ratio | Compress | Decompress | SHA |
+|---|---:|---:|---:|---:|:---:|
+| KEPHIR 1.0 cold | 117,523 | 15.481% | 1.703 s | 0.078 s | PASS |
+| KEPHIR 1.0 Factory | 117,523 | 15.481% | 0.705 s | 0.080 s | PASS |
 
 ## Promotion rule
 
@@ -63,64 +120,4 @@ A checkpoint is not promoted until it has:
 6. comparison with the active checkpoint;
 7. explicit promote/reject decision.
 
-
-## ULTRA line — EXP-51 to EXP-70
-
-| Checkpoint | Status | Ratio | Encode | Decision |
-|---|---|---:|---:|---|
-| EXP-51 | REJECTED | 29.820498% | — | 0 B gain vs EXP-48 |
-| EXP-52 | REJECTED | 29.820498% | — | structural cascades gave 0 B gain |
-| EXP-53 | REJECTED GLOBAL / RETAINED EXPERT | 29.8207452% | — | worse globally, useful per chunk |
-| EXP-54 | RETAINED SUCCESS | 29.8204036% | — | adaptive PSG gain |
-| EXP-55 | RETAINED SUCCESS | 29.8202413% | — | tri-PSG gain |
-| EXP-56 | ORACLE | 29.7265746% | ~2046 s | quality oracle, too slow |
-| EXP-57 | RETAINED PRACTICAL | 30.0958160% | 39.59 s | first <60 s ULTRA |
-| EXP-58 | RETAINED PRACTICAL | 30.0773639% | 44.07 s* | selective BASE verification |
-| EXP-59 | REJECTED IMPLEMENTATION | 30.0133223% | 302.33 s | ratio win, tokenizer too slow |
-| EXP-60 | PROMOTED HISTORICAL | 30.0133223% | 51.42 s | indexed tokenization |
-| EXP-61 | REJECTED | 30.0133223% | 78.32 s | 0 B gain, too slow |
-| EXP-62 | QUALITY SUCCESS / RUNTIME REJECT | 29.9402133% | 79.17 s | better grain/context, >60 s |
-| EXP-63 | PROMOTED HISTORICAL | 29.9402133% | 49.76 s | 2-worker parallel |
-| EXP-64 | PROMOTED HISTORICAL | 29.9402133% | 44.52 s | configurable workers |
-| EXP-65 | PROMOTED HISTORICAL | 29.9402133% | 33.34 s | process work parcels, 4 logical CPUs |
-| EXP-66 | **PROMOTED ULTRA CURRENT** | **29.9402133%** | **25.97 s** | cost-aware LPT parcel scheduler; exact EXP-65 bytes |
-| EXP-67 | RETAINED DIAGNOSTIC | 29.9400529% | 49.68 s | PSG53/55 verification; -340 B vs EXP-66 but too costly |
-| EXP-68 | RETAINED SELECTIVE PSG | 29.9400590% | 38.19 s | gate recovers time; -327 B vs EXP-66, not enough to promote |
-| EXP-69 | REJECTED / DIAGNOSTIC | 30.1473318% | 57.74 s | Word-XOR entropy router over-selected; +438,964 B vs EXP-66 |
-| EXP-70 | RETAINED LEARNING PROTOTYPE | multi-corpus 31.7245%* | 92.01→76.18 s | online learner reduced probes 401→68 while retaining 4 wins / 16,358 B gain |
-
-\* EXP-58 timing shown from the later multi-corpus Silesia run; earlier runner timing differed substantially.
-
-### Current ULTRA checkpoint
-
-```text
-EXP-66
-compressed = 63,454,863 B
-ratio      = 29.9402133%
-encode     = 25.97 s
-throughput = 8.16 MB/s
-SHA        = PASS
-runner CPU = 4 logical
-```
-
-### Diagnostic / platform checkpoints
-
-| Item | Status | Result |
-|---|---|---|
-| EXP-60 bottleneck profile | DIAGNOSTIC | 1,019 backend calls; 39.14 s backend; 16.06 s Python tokenization |
-| OpenCL CPU+GPU tokenizer prototype | RETAINED PROTOTYPE | build + exact self-test PASS; hosted CI used CPU fallback, no real GPU timing yet |
-
-
-### EXP-70 multi-corpus note
-
-EXP-70 is not directly comparable to the single-corpus Silesia ratio rows above because it trained and validated on six corpora totaling **329,460,340 B per epoch**.
-
-Measured learning progression:
-- epoch 1: 401 probes, 4 wins, 16,358 B gain, 92.01 s;
-- epoch 2: 88 probes, 4 wins, 16,358 B gain, 76.79 s;
-- epoch 3: 68 probes, 4 wins, 16,358 B gain, 76.18 s;
-- SHA PASS for all epochs.
-
-The experiment validates search-cost learning, not yet a new production ratio checkpoint.
-
-* Multi-corpus aggregate ratio: 31.7245186%.
+A **release baseline** additionally requires integrated archive creation, extraction, metadata restoration and a successful qualification workflow.
