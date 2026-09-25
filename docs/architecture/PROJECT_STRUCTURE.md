@@ -29,3 +29,16 @@ Il codice audio, video, container AUM, protocollo AUS1 e streaming appartiene a 
 2. Gli ID storici EXP/FAST restano nei nomi file.
 3. I risultati promossi devono essere documentati prima di diventare baseline.
 4. Il lavoro media non entra in questa branch.
+
+
+## Aggiornamento ULTRA / parallelismo
+
+Aree aggiunte dalla linea EXP-51→EXP-65:
+
+- `research/routers/` — router ULTRA EXP-54→65, inclusi grain routing e scheduler paralleli.
+- `research/diagnostics/` — profiling EXP-60 e diagnostica dei colli di bottiglia.
+- `research/gpu/` — prototipi OpenCL CPU+GPU; nessuna misura GPU è considerata valida senza hardware reale.
+- `benchmarks/competitors/` — benchmark EXP-56 e benchmark multi-corpus EXP-58.
+- branch sperimentali `research/ultra-expXX` — conservano gli esperimenti senza promuoverli automaticamente nella branch canonica.
+
+Il checkpoint ULTRA pratico corrente è EXP-65.
