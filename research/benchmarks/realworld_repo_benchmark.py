@@ -80,11 +80,19 @@ def competitor_solid(name,src):
     return dict(name=name,size=arc.stat().st_size,comp_time_s=ct,dec_time_s=dt,sha_ok=ok)
 
 # Load EXP-75 core without executing its corpus benchmark main.
+# Materialize an importable temporary module so ProcessPool workers can
+# resolve process_parcel by module name when multiprocessing pickles it.
+import sys, importlib
 code=Path("research/routers/exp75_lazy_wx_fingerprint.py").read_text()
 prefix=code.split("\nCORPORA=[",1)[0]
-ns={"__name__":"kephir_exp75_lib"}
-exec(compile(prefix,"exp75_lazy_wx_fingerprint.py","exec"),ns)
-kencode=ns["encode"]; kdecode=ns["decode"]
+lib_path=Path("kephir_exp75_lib.py")
+lib_path.write_text(prefix)
+importlib.invalidate_caches()
+if str(Path.cwd()) not in sys.path:
+    sys.path.insert(0,str(Path.cwd()))
+kephir_exp75_lib=importlib.import_module("kephir_exp75_lib")
+kencode=kephir_exp75_lib.encode
+kdecode=kephir_exp75_lib.decode
 
 logical_bytes=sum(len(blob_bytes(p)) for p in FILES)
 exts=collections.Counter((p.suffix.lower() or "<none>") for p in FILES)
