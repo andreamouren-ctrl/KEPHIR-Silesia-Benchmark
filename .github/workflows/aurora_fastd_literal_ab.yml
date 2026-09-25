@@ -32,7 +32,7 @@ jobs:
         run: |
           common="-O3 -std=c++20 -fPIC -shared -DNDEBUG -DNO_INTERNAL_VERIFY -DAURORA_PLUGIN_FASTD -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=0 -DK2_PSG_MODE=0 -DK2_DIST_TOPO_MODE=0 -DK2_DUAL_MATCH_MODE=0 -DK2_FUSED_MATCH_MODE=0 -DK2_FUSED2_MODE=0 -pthread -Isrc/cpp/aurora_media"
           src="src/cpp/aurora_media/AuroraKhepriFastDMemoryAdapter.cpp benchmarks/major_codecs/aurora_backend_plugin.cpp"
-          for spec in "baseline liblit_base.so" "predictor_only liblit_pred.so" "model_only liblit_model.so" "full liblit_full.so"; do
+          for spec in "baseline liblit_base.so" "predictor_only liblit_pred.so" "full liblit_full.so"; do
             set -- $spec
             K2_FASTD_LITERAL_VARIANT=$1 python3 make_fastd_literal_variants.py
             g++ $common $src -o $2
