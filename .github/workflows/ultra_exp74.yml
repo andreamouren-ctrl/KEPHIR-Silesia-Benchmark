@@ -1,0 +1,77 @@
+name: AURORA ULTRA EXP-74 Predictive Word-XOR Gate
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - project/aurora-compressor
+    paths:
+      - "research/routers/exp74_predictive_wordxor.py"
+      - ".github/workflows/ultra_exp74.yml"
+
+jobs:
+  exp74-learning:
+    runs-on: ubuntu-latest
+    timeout-minutes: 420
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential unzip curl
+      - name: Build EXP-37 backend
+        run: |
+          cat engine/source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 research/generators/general/make_exp26_source.py
+          python3 research/generators/general/make_exp27_source.py
+          python3 research/generators/general/make_exp31_source.py
+          python3 research/generators/general/make_exp33_source.py
+          python3 research/generators/general/make_exp37_source.py
+          g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY \
+            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 \
+            -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 \
+            -pthread KEPHIR_2_EXP37_DUAL_MATCH.cpp -o kephir37
+      - name: Download six canonical corpora
+        run: |
+          mkdir -p corpora/{silesia,canterbury,calgary,large,artificial,enwik8}
+          curl -L --fail --retry 4 -o /tmp/silesia.zip https://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip
+          echo "c240c17d6805fb8a0bde763f1b94cd99  /tmp/silesia.zip" | md5sum -c -
+          unzip -q /tmp/silesia.zip -d corpora/silesia
+          curl -L --fail --retry 4 -o /tmp/cantrbry.zip https://corpus.canterbury.ac.nz/resources/cantrbry.zip
+          unzip -q /tmp/cantrbry.zip -d corpora/canterbury
+          curl -L --fail --retry 4 -o /tmp/calgary.tar.gz https://corpus.canterbury.ac.nz/resources/calgary.tar.gz
+          tar -xzf /tmp/calgary.tar.gz -C corpora/calgary
+          curl -L --fail --retry 4 -o /tmp/large.zip https://corpus.canterbury.ac.nz/resources/large.zip
+          unzip -q /tmp/large.zip -d corpora/large
+          curl -L --fail --retry 4 -o /tmp/artificl.zip https://corpus.canterbury.ac.nz/resources/artificl.zip
+          unzip -q /tmp/artificl.zip -d corpora/artificial
+          curl -L --fail --retry 4 -o /tmp/enwik8.zip https://mattmahoney.net/dc/enwik8.zip
+          unzip -q /tmp/enwik8.zip -d corpora/enwik8
+          test "$(stat -c%s corpora/enwik8/enwik8)" = "100000000"
+          echo "a1fa5ffddb56f4953e226637dabbb36a  corpora/enwik8/enwik8" | md5sum -c -
+      - name: Show runner CPUs
+        run: nproc
+      - name: Run 3 predictive Word-XOR epochs
+        env:
+          KEPHIR_WORKERS: "16"
+        run: python3 research/routers/exp74_predictive_wordxor.py
+      - name: Validate lossless results
+        run: |
+          python3 - <<'PY'
+          import json
+          d=json.load(open("exp74_results.json"))
+          eps=[x["summary"] for x in d["epochs"]]
+          assert len(eps)==3, eps
+          assert all(x["sha_all"] for x in eps), eps
+          assert all(x["raw"]==329460340 for x in eps), eps
+          rows=d["epochs"][-1]["rows"]
+          s=[r for r in rows if r["corpus"]=="Silesia"]
+          sm={k:sum(r[k] for r in s) for k in ("raw","size","comp_time_s","wx_probes","wx_wins","wx_gain_bytes","wx_probe_cost_s","grain_probes","grain_gain_bytes")}
+          print("SILESIA_EPOCH3",json.dumps(sm,sort_keys=True))
+          print(json.dumps(eps,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exp74-predictive-wordxor-results
+          path: |
+            exp74_results.json
+            exp74_model.json
