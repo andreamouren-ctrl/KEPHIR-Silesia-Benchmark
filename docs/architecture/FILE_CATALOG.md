@@ -24,3 +24,18 @@
 
 ## CI
 I workflow sotto `.github/workflows/` mantengono gli ID storici per la riproducibilità ma puntano alle cartelle canoniche sopra.
+
+
+## Linea ULTRA moderna
+
+- `research/routers/exp59_ultra_text_token.py` — text-token transform origin.
+- `research/routers/exp60_ultra_indexed_text_token.py` — indexed tokenization.
+- `research/routers/exp61_ultra_confidence_verify.py` — rejected confidence verification.
+- `research/routers/exp62_ultra_conservative_grain.py` — conservative grain/context experiment.
+- `research/routers/exp63_ultra_cpu_parallel.py` — two-worker CPU parallel checkpoint.
+- `research/routers/exp64_ultra_thread_scale.py` — configurable worker scaling.
+- `research/routers/exp65_ultra_work_parcels.py` — process-based work parcel scheduler.
+- `research/diagnostics/exp60_bottleneck_profile.py` — backend/tokenization timing diagnostic.
+- `research/gpu/khepri_gpu_tokenizer.cpp` — OpenCL token-matching prototype with CPU fallback.
+
+These files may reside on their retained experiment branches until explicitly promoted/merged; the catalog records their canonical research role and lineage.
