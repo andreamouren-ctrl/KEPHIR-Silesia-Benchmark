@@ -1,0 +1,40 @@
+name: AURORA FAST-D Worker Scale
+on:
+  workflow_dispatch:
+  push:
+    branches: ["research/khepri-stream-codec"]
+    paths:
+      - "benchmarks/major_codecs/aurora_fastd_worker_scale.cpp"
+      - ".github/workflows/aurora_fastd_worker_scale.yml"
+jobs:
+  scale:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+      - name: Generate FAST
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          python3 make_exp37_source.py
+          python3 make_exp38_source.py
+          python3 make_exp39_source.py
+          python3 make_fastd_video_profile_source.py streaming4k
+      - name: Build
+        run: |
+          g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY             -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=0 -DK2_PSG_MODE=0 -DK2_DIST_TOPO_MODE=0             -DK2_DUAL_MATCH_MODE=0 -DK2_FUSED_MATCH_MODE=0 -DK2_FUSED2_MODE=0 -pthread             src/cpp/aurora_media/AuroraKhepriFastDMemoryAdapter.cpp             src/cpp/aurora_media/AuroraVideoMotion.cpp src/cpp/aurora_media/AuroraVideoResidual.cpp             benchmarks/major_codecs/aurora_fastd_worker_scale.cpp             -Isrc/cpp/aurora_media -o aurora_fastd_worker_scale
+      - name: Run
+        run: ./aurora_fastd_worker_scale | tee worker_scale.txt
+      - name: Validate
+        run: test "$(grep -c 'WORKER_SCALE_PASS' worker_scale.txt)" -eq 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-fastd-worker-scale
+          path: worker_scale.txt
