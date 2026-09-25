@@ -16,10 +16,14 @@ old='''                if(bestL>=8 && bestL<lim){
                 }'''
 
 tail8='''                if(bestL>=8 && bestL<lim){
+                    int mid=bestL>>1;
+                    if(d[q+bestL]!=d[p+bestL] || d[q+mid]!=d[p+mid]){
+                        q=prev[q]; ++depth; continue;
+                    }
                     uint64_t qtail,ptail;
                     memcpy(&qtail,d.data()+q+bestL-8,8);
                     memcpy(&ptail,d.data()+p+bestL-8,8);
-                    if(d[q+bestL]!=d[p+bestL] || qtail!=ptail){
+                    if(qtail!=ptail){
                         bool stop=((depth>=7 && bestL>=128) || (depth>=15 && bestL>=64) || (depth>=31 && bestL>=32));
                         if(K2_FUSED2_MODE==2 || K2_FUSED2_MODE==3){
                             double localSurprise=(bestL>=MINL)?dualLcost(p,min(bestL,32))/max(1,min(bestL,32)):LIT;
@@ -31,12 +35,16 @@ tail8='''                if(bestL>=8 && bestL<lim){
                 }'''
 
 tail8_mid8='''                if(bestL>=8 && bestL<lim){
+                    int mid=bestL>>1;
+                    if(d[q+bestL]!=d[p+bestL] || d[q+mid]!=d[p+mid]){
+                        q=prev[q]; ++depth; continue;
+                    }
                     uint64_t qtail,ptail;
                     memcpy(&qtail,d.data()+q+bestL-8,8);
                     memcpy(&ptail,d.data()+p+bestL-8,8);
-                    bool reject=(d[q+bestL]!=d[p+bestL] || qtail!=ptail);
+                    bool reject=(qtail!=ptail);
                     if(!reject && bestL>=16){
-                        const int mo=(bestL>>1)-4;
+                        const int mo=mid-4;
                         uint64_t qmid,pmid;
                         memcpy(&qmid,d.data()+q+mo,8);
                         memcpy(&pmid,d.data()+p+mo,8);
