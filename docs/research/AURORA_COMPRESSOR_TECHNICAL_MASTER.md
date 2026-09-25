@@ -1025,3 +1025,334 @@ The KHEPRI research has established three separate facts:
 The current development direction is therefore not to discard the later compression research, but to recover throughput by making parser decisions cheaper and eventually replacing brute-force structural routing with an inexpensive selector.
 
 This document should be updated whenever a checkpoint is promoted, rejected, or changes the architectural understanding of KHEPRI.
+
+
+---
+
+# PART X — ULTRA LINE UPDATE (EXP-51 → EXP-65)
+
+**Update date:** 2026-09-25
+
+This section records the ULTRA research performed after EXP-50. The hard production constraint for this line is:
+
+```text
+full Silesia encode time <= 60 s
+lossless SHA roundtrip mandatory
+ratio target: progress toward ~26%
+```
+
+Canonical Silesia raw size remains **211,938,580 B**.
+
+## EXP-51 — rejected
+
+Expanded structural candidates with additional delta/transpose lags.
+
+Result:
+- 63,201,140 B
+- 29.820498%
+- SHA PASS
+- 0 B improvement vs EXP-48
+
+Decision: **REJECTED**.
+
+## EXP-52 — rejected
+
+Selected reversible structural cascades.
+
+Result:
+- 63,201,140 B
+- 29.820498%
+- SHA PASS
+- 0 B improvement
+
+Decision: **REJECTED**.
+
+## EXP-53 — globally rejected, retained as adaptive expert
+
+Added PSG mode 5 local-surprise gate.
+
+Result:
+- 63,201,664 B
+- 29.8207452%
+- SHA PASS
+- +524 B vs EXP-48
+
+Globally worse, but per-chunk behavior was complementary and useful for later routing.
+
+## EXP-54 — adaptive PSG success
+
+Per-chunk choice between EXP-37/PSG3 and EXP-53/PSG5 across structural modes.
+
+Result:
+- 63,200,940 B
+- 29.8204036%
+- SHA PASS
+- 200 B improvement vs EXP-48
+
+Decision: **RETAINED SUCCESS**.
+
+## EXP-55 — tri-PSG success
+
+Added transition-aware PSG mode 6 as third backend expert.
+
+Result:
+- 63,200,596 B
+- 29.8202413%
+- SHA PASS
+- 344 B better than EXP-54
+- 544 B better than EXP-48
+
+Decision: **RETAINED SUCCESS**.
+
+## EXP-56 — quality/oracle checkpoint
+
+Adaptive subchunk routing over 512/256/128 KiB with exhaustive backend/transform search.
+
+Result:
+- 63,002,080 B
+- 29.7265746%
+- ~2046 s encode in competitor benchmark
+- SHA PASS
+
+This is a useful quality oracle but is far outside the 60 s production target.
+
+Decision: **ORACLE**.
+
+## EXP-56 competitor benchmark
+
+On Silesia, selected reference compressors measured:
+
+| Compressor | Ratio | Encode time |
+|---|---:|---:|
+| 7-Zip/LZMA2 mx9 | 23.0061% | 51.06 s |
+| XZ -9 | 23.0234% | 88.11 s |
+| Brotli q11 | 23.3863% | 419.91 s |
+| Zstd -19 | 24.9579% | 83.98 s |
+| Bzip2 -9 | 25.7182% | 17.71 s |
+| Brotli q9 | 26.5612% | 33.47 s |
+| Zstd -9 | 27.9242% | 3.59 s |
+| KHEPRI EXP-56 | 29.7266% | 2046.41 s |
+
+The benchmark demonstrated that a ratio near 26% within 60 s is technically plausible, while KHEPRI still required major routing and execution-efficiency work.
+
+## EXP-57 — first practical <60 s router
+
+Single-pass heuristic router with fixed EXP-37 backend and sampled entropy/residual decisions.
+
+Result:
+- 63,784,645 B
+- 30.0958160%
+- 39.59 s
+- 5.35 MB/s
+- SHA PASS
+
+Decision: **RETAINED PRACTICAL BASELINE**.
+
+## EXP-58 — selective BASE verification
+
+Every non-BASE structural choice gets one BASE verification encode.
+
+Measured checkpoint:
+- 63,745,538 B
+- 30.0773639%
+- 44.07 s in the later multi-corpus Silesia run
+- SHA PASS
+
+An earlier runner measured 25.98 s; timings across runners are not directly interchangeable.
+
+Decision: **RETAINED PRACTICAL CHECKPOINT**.
+
+## EXP-58 multi-corpus benchmark
+
+Validated SHA PASS on:
+- Silesia
+- Canterbury
+- Calgary
+- Canterbury Large
+- Artificial
+- enwik8
+
+Key KHEPRI ratios:
+- Silesia: 30.0774%
+- Canterbury: 22.7581%
+- Calgary: 32.5740%
+- Canterbury Large: 29.2163%
+- Artificial aggregate: 33.4532%
+- enwik8: 36.3672%
+
+Interpretation:
+- performance generalizes at roughly 4–5 MB/s;
+- strongest ratio weaknesses are text/structured data and Artificial;
+- selective improvements are preferable to global brute-force expansion.
+
+## EXP-59 — text token transform, ratio success / speed reject
+
+Added reversible selective text tokenization.
+
+Result:
+- 63,609,809 B
+- 30.0133223%
+- 302.33 s
+- SHA PASS
+- 135,729 B better than EXP-58
+
+The concept improved ratio but the naive tokenizer was too slow.
+
+Decision: **REJECTED IMPLEMENTATION / RETAINED CONCEPT**.
+
+## EXP-60 — indexed text token transform
+
+Indexed token candidates by first byte.
+
+Result:
+- 63,609,809 B
+- 30.0133223%
+- 51.42 s
+- 4.12 MB/s
+- SHA PASS
+
+Same compressed output as EXP-59, with runtime reduced from ~302 s to ~51 s.
+
+Decision: **PROMOTED PRACTICAL CHECKPOINT** at that stage.
+
+## EXP-61 — low-confidence structural verification
+
+Budgeted secondary structural checks on uncertain 512 KiB chunks.
+
+Result:
+- 63,609,809 B
+- 30.0133223%
+- 78.32 s
+- SHA PASS
+- 0 B gain
+
+Decision: **REJECTED**.
+
+## EXP-60 bottleneck diagnostic
+
+Instrumentation-only run preserved the exact EXP-60 output and measured:
+
+- total encode: 59.96 s
+- backend encode calls: 1,019
+- backend time: 39.14 s
+- primary backend time: 26.46 s
+- text backend time: 9.73 s
+- BASE verification time: 2.95 s
+- Python tokenization time: 16.06 s
+- tokenization calls: 198
+- text backend encodes: 164
+
+This showed that the main scalability limits were:
+1. repeated backend process launches / temporary-file I/O;
+2. Python tokenization in the hot path;
+3. work scheduling and insufficient multicore utilization.
+
+## EXP-62 — conservative grain routing
+
+Raised split thresholds to preserve more 512 KiB context and reduce over-fragmentation, especially on Mozilla/Samba/XML-like data.
+
+Result:
+- 63,454,863 B
+- 29.9402133%
+- 79.17 s
+- SHA PASS
+- 154,946 B better than EXP-60
+
+Per-file improvements included roughly:
+- Mozilla: ~84 KB
+- Samba: ~47 KB
+- XML: ~22.6 KB
+
+Ratio improved, but runtime exceeded 60 s.
+
+Decision: **QUALITY SUCCESS / RUNTIME REJECT**.
+
+## EXP-63 — two-worker CPU parallelism
+
+Preserved exact EXP-62 decisions but processed independent chunks concurrently with two workers.
+
+Result:
+- 63,454,863 B
+- 29.9402133%
+- 49.76 s
+- 4.26 MB/s
+- SHA PASS
+
+Decision: **PROMOTED PRACTICAL CHECKPOINT**.
+
+## EXP-64 — configurable thread scaling
+
+Made chunk worker count configurable up to 16. GitHub runner exposed 4 logical CPUs while the experiment requested 16 workers.
+
+Result:
+- 63,454,863 B
+- 29.9402133%
+- 44.52 s
+- 4.76 MB/s
+- SHA PASS
+- exact EXP-63 output
+
+Decision: **PROMOTED SCALING CHECKPOINT**.
+
+## EXP-65 — process-based work parcels
+
+Replaced Python thread scheduling with a process-based work-parcel scheduler:
+- worker count capped to actual available CPUs;
+- ProcessPool removes the Python GIL from tokenization/transforms;
+- tasks are grouped into coarse parcels to reduce IPC/scheduler overhead;
+- deterministic output order is preserved.
+
+GitHub runner:
+- 4 logical CPUs
+- requested workers: 16
+- workers actually used: 4
+- total work parcels: 119
+
+Result:
+- **63,454,863 B**
+- **29.9402133%**
+- **33.34 s**
+- **6.36 MB/s**
+- decode: 13.94 s / 15.20 MB/s
+- SHA PASS
+- exact EXP-64 output
+
+Decision: **PROMOTED — current practical ULTRA checkpoint**.
+
+The improvement from EXP-64 to EXP-65 is architectural: the same compressed bytes are produced while encode time drops from 44.52 s to 33.34 s on the same 4-logical-CPU class of runner.
+
+## CPU+GPU prototype
+
+A separate OpenCL prototype was added for CPU+GPU pipelining.
+
+Current design:
+- GPU: token-start matching / highly parallel pre-analysis work;
+- CPU: deterministic compaction, KHEPRI entropy coding and packaging;
+- exact reversible roundtrip required;
+- CPU fallback when no GPU is available.
+
+GitHub hosted CI compiled the prototype and passed its self-test, but the runner had no GPU device and therefore reported:
+
+```text
+gpu_used=0
+device="CPU fallback"
+```
+
+No GPU performance claim is considered valid until measured on a real GPU runner.
+
+## Current ULTRA reference
+
+As of 2026-09-25:
+
+```text
+EXP-65
+Silesia raw:       211,938,580 B
+Compressed:         63,454,863 B
+Ratio:              29.9402133%
+Encode:             33.34 s
+Encode throughput:   6.36 MB/s
+SHA:                PASS
+Runner CPUs:         4 logical
+```
+
+The next scalability objective is better work stealing / load balancing and real 8C/16T plus GPU validation while preserving the exact EXP-65 archive result.
