@@ -1,0 +1,42 @@
+name: AURORA FAST-D Findbest Stats
+on:
+  workflow_dispatch:
+  push:
+    branches: ["research/khepri-stream-codec"]
+    paths:
+      - "make_fastd_findbest_stats_source.py"
+      - "benchmarks/major_codecs/aurora_fastd_findbest_stats.cpp"
+      - ".github/workflows/aurora_fastd_findbest_stats.yml"
+jobs:
+  stats:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+      - name: Generate FAST-D 24-12
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          python3 make_exp37_source.py
+          python3 make_exp38_source.py
+          python3 make_exp39_source.py
+          python3 make_fastd_video_profile_source.py streaming4k
+          python3 make_fastd_findbest_stats_source.py
+      - name: Build
+        run: |
+          g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY             -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=0 -DK2_PSG_MODE=0 -DK2_DIST_TOPO_MODE=0             -DK2_DUAL_MATCH_MODE=0 -DK2_FUSED_MATCH_MODE=0 -DK2_FUSED2_MODE=0 -pthread             benchmarks/major_codecs/aurora_fastd_findbest_stats.cpp             -Isrc/cpp/aurora_media -o aurora_fastd_findbest_stats
+      - name: Run
+        run: ./aurora_fastd_findbest_stats | tee findbest_stats.txt
+      - name: Validate
+        run: grep "FINDBEST_STATS_PASS" findbest_stats.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-fastd-findbest-stats
+          path: findbest_stats.txt
