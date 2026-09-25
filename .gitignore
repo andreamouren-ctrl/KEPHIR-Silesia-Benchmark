@@ -1,0 +1,28 @@
+# Python/runtime
+__pycache__/
+*.py[cod]
+release/_kephir_engine_runtime.py
+
+# KEPHIR generated archives and temporary knowledge
+*.kpf
+*.kxp
+khepri_local_v1.json
+khepri_session.tmp
+
+# Benchmark/runtime output
+kephir_final_qualification/
+kephir_final_qualification.json
+kephir_final_qualification.md
+*.tmp
+
+# Native build output
+kephir37
+*.o
+*.obj
+*.exe
+
+# IDE / OS
+.vs/
+.vscode/
+.DS_Store
+Thumbs.db
