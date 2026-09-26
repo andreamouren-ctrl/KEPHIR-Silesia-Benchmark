@@ -523,7 +523,10 @@ std::vector<std::uint8_t> inverse(
     }
 }
 
-EncodedEntry encode_entry(std::span<const std::uint8_t> raw) {
+EncodedEntry encode_entry_impl(
+    std::span<const std::uint8_t> raw,
+    bool allow_word_xor) {
+
     if (raw.size() > std::numeric_limits<std::uint32_t>::max())
         throw std::runtime_error("K75 grain too large");
 
@@ -538,7 +541,7 @@ EncodedEntry encode_entry(std::span<const std::uint8_t> raw) {
         }
     }
 
-    if (mode == 0 && should_probe_word_xor(raw)) {
+    if (allow_word_xor && mode == 0 && should_probe_word_xor(raw)) {
         auto wx_compressed =
             native37::encode_aur2_blob(transform(raw, 3));
         if (wx_compressed.size() < compressed.size()) {
@@ -550,8 +553,10 @@ EncodedEntry encode_entry(std::span<const std::uint8_t> raw) {
     if (is_text_like(raw)) {
         auto tokenized = text_tokenize(raw);
         if (tokenized.size() + 16 <
-            static_cast<std::size_t>(static_cast<double>(raw.size()) * 0.99)) {
-            auto token_compressed = native37::encode_aur2_blob(tokenized);
+            static_cast<std::size_t>(
+                static_cast<double>(raw.size()) * 0.99)) {
+            auto token_compressed =
+                native37::encode_aur2_blob(tokenized);
             if (token_compressed.size() < compressed.size()) {
                 mode = 6;
                 compressed = std::move(token_compressed);
@@ -564,6 +569,71 @@ EncodedEntry encode_entry(std::span<const std::uint8_t> raw) {
         static_cast<std::uint32_t>(raw.size()),
         std::move(compressed)
     };
+}
+
+EncodedEntry encode_entry(std::span<const std::uint8_t> raw) {
+    return encode_entry_impl(raw, true);
+}
+
+bool should_exact_grain_probe(std::string_view key) noexcept {
+    // EXP-104: frozen high-impact uncertain grain families discovered by
+    // EXP-103. These are feature buckets, not corpus/file-name exceptions.
+    return key == "l2:h7:z0:p1:s0"
+        || key == "l2:h5:z2:p1:s6"
+        || key == "l2:h5:z1:p3:s2";
+}
+
+std::size_t measure_grain_exact_native(
+    std::span<const std::uint8_t> parent,
+    std::size_t grain) {
+
+    std::size_t total = 0;
+    for (std::size_t offset = 0; offset < parent.size(); offset += grain) {
+        const auto bytes = std::min(grain, parent.size() - offset);
+        const auto encoded =
+            encode_entry_impl(parent.subspan(offset, bytes), false);
+
+        if (encoded.compressed.size()
+            > std::numeric_limits<std::size_t>::max() - total - 9u) {
+            throw std::runtime_error("K75 grain probe size overflow");
+        }
+        total += 9u + encoded.compressed.size();
+    }
+    return total;
+}
+
+std::size_t select_grain(std::span<const std::uint8_t> parent) {
+    const auto baseline = trusted_factory_grain(parent);
+    const auto key = grain_feature_bucket(parent);
+
+    if (!should_exact_grain_probe(key)) {
+        return baseline;
+    }
+
+    std::array<std::size_t, 3> candidates{
+        128u * 1024u,
+        256u * 1024u,
+        parent.size()
+    };
+
+    std::size_t best_grain = baseline;
+    std::size_t best_size =
+        measure_grain_exact_native(parent, baseline);
+
+    for (const auto grain : candidates) {
+        if (!valid_grain_candidate(parent.size(), grain)
+            || grain == baseline) {
+            continue;
+        }
+
+        const auto size = measure_grain_exact_native(parent, grain);
+        if (size < best_size) {
+            best_size = size;
+            best_grain = grain;
+        }
+    }
+
+    return best_grain;
 }
 
 } // namespace
@@ -652,7 +722,7 @@ BackendEncodeResult NativeK75Backend::encode(
         const auto parent_span =
             std::span<const std::uint8_t>(parent.data(), got);
 
-        const auto grain = trusted_factory_grain(parent_span);
+        const auto grain = select_grain(parent_span);
         if (!grain)
             throw std::runtime_error("invalid zero K75 grain");
 
