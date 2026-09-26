@@ -1,0 +1,58 @@
+name: KEPHIR 2 EXP-100 Parallel Encode Scaling
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - development/kephir-2-core
+    paths:
+      - "src/kephir2/**"
+      - "research/benchmarks/exp100_parallel_encode.py"
+      - ".github/workflows/exp100_parallel_encode.yml"
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build native KEPHIR
+        run: |
+          cmake -S src/kephir2 -B build/kephir2 -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/kephir2 --config Release --parallel
+
+      - name: Native test suite
+        run: ctest --test-dir build/kephir2 --output-on-failure
+
+      - name: Download canonical Silesia
+        run: |
+          mkdir -p corpora/silesia
+          curl -L --fail --retry 4 -o /tmp/silesia.zip             https://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip
+          echo "c240c17d6805fb8a0bde763f1b94cd99  /tmp/silesia.zip" | md5sum -c -
+          unzip -q /tmp/silesia.zip -d corpora/silesia
+          test "$(find corpora/silesia -type f -printf '%s\n' | awk '{s+=$1} END {print s}')" -eq 211938580
+
+      - name: Run EXP-100
+        run: |
+          python3 research/benchmarks/exp100_parallel_encode.py             build/kephir2/kephir2_native_k75_cli
+
+      - name: Validate result
+        run: |
+          python3 - <<'PY'
+          import json
+          d=json.load(open("exp100_results.json"))
+          assert d["raw_bytes"] == 211938580
+          assert len(d["rows"]) == 5
+          assert all(r["archive_identical_to_1"] for r in d["rows"])
+          assert all(r["sha_all_pass"] for r in d["rows"])
+          base=d["rows"][0]["comp_MBps"]
+          best=max(r["comp_MBps"] for r in d["rows"])
+          assert best > base
+          print("EXP100_VALIDATION_PASS","BASE",base,"BEST",best)
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exp100-parallel-encode-results
+          path: exp100_results.json
