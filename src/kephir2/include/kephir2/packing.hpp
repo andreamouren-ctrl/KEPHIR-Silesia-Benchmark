@@ -41,6 +41,9 @@ struct DirectoryPackingPlan {
     const std::filesystem::path& root,
     const ContentAnalyzer& analyzer = {});
 
+[[nodiscard]] DirectoryPackingPlan build_flat_directory_packing_plan(
+    const std::filesystem::path& root);
+
 class PackedGroupSource final : public ByteSource {
 public:
     PackedGroupSource(
