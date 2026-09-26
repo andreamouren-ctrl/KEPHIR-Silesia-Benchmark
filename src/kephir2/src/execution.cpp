@@ -148,13 +148,20 @@ ByteBuffer ArchiveExecutor::compress_file(
 ByteBuffer ArchiveExecutor::compress_directory(
     const std::filesystem::path& root,
     CompressionBackend& backend,
-    const BackendOptions& options) const {
+    const BackendOptions& options,
+    Layout layout) const {
 
     if (!std::filesystem::is_directory(root)) {
         throw std::runtime_error("compression input is not a directory");
     }
 
-    const auto plan = build_directory_packing_plan(root);
+    if (layout == Layout::Hybrid) {
+        throw std::runtime_error("HYBRID layout is not implemented");
+    }
+
+    const auto plan = layout == Layout::Flat
+        ? build_flat_directory_packing_plan(root)
+        : build_directory_packing_plan(root);
 
     Kpf1DirectoryEnvelope envelope;
     envelope.manifest = plan.manifest;
