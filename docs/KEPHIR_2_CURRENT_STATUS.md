@@ -2556,3 +2556,100 @@ The parity-migration phase is now complete:
 The next engineering phase is no longer “port parity.” It is:
 
 **build a new native Pareto advantage beyond the legacy design.**
+
+
+---
+
+## 53. EXP-105 — Quarter Distribution Drift Study
+
+Status:
+
+**DIAGNOSTIC COMPLETE / SIGNAL VALIDATED**
+
+The study measured 39 occurrences of the ambiguous high-entropy bucket
+`l2:h7:z0:p1:s0` across Silesia and Router Matrix v2 holdouts.
+
+The useful signal is not entropy itself, but the combination of:
+
+- quarter histogram total-variation drift;
+- stability of printable-byte fraction.
+
+Candidate gate:
+
+```text
+coarse bucket == l2:h7:z0:p1:s0
+AND tv_max > 0.04
+AND printable_range < 0.01
+```
+
+Observed selected parents:
+
+```text
+mozilla parent 2:
+  tv_max 0.05118
+  printable_range 0.00671
+  oracle 128 KiB
+  gain vs 512 KiB: 11,592 B
+
+mozilla parent 7:
+  tv_max 0.09256
+  printable_range 0.00677
+  oracle 256 KiB
+  gain vs 512 KiB: 20,769 B
+
+x-ray parent 2:
+  tv_max 0.12864
+  printable_range 0.00529
+  oracle 256 KiB
+  gain vs 512 KiB: 198 B
+```
+
+Observed negative controls:
+
+- synthetic random/incompressible parents: `tv_max ≈ 0.025–0.028`;
+- `samba` high-entropy parents: printable drift above the gate;
+- most `x-ray` parents: printable drift above gate or 512 KiB remains best.
+
+Candidate grain split:
+
+```text
+if tv_max < 0.07 → 128 KiB
+else             → 256 KiB
+```
+
+On the observed matrix this selects the correct grain for all three gated parents.
+
+Important:
+
+This remains an experimental production candidate until end-to-end ratio and routing regressions pass.
+
+---
+
+## 54. EXP-106 — Distribution-Drift Grain Gate
+
+Status:
+
+**IN VALIDATION**
+
+Implementation:
+
+- existing trusted Factory Grain rules retain priority;
+- the new drift calculation runs only for the ambiguous
+  `l2:h7:z0:p1:s0` bucket;
+- four exact 128 KiB quarter histograms are computed;
+- no compression probe is performed;
+- no dataset/file-name special cases;
+- all other grain behavior is unchanged.
+
+Expected Silesia recovery from the observed oracle:
+
+approximately `32.5 KiB`, primarily from `mozilla`.
+
+Promotion gates:
+
+1. Core Smoke PASS;
+2. Legacy Interop PASS;
+3. Production AUTO remains qualified;
+4. EXP-91 SHA PASS;
+5. Native aggregate ratio improves;
+6. `mr` native win is preserved.
