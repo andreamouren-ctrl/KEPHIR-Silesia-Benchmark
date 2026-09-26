@@ -40,6 +40,11 @@ add_executable(kephir2_planner_smoke
 )
 target_link_libraries(kephir2_planner_smoke PRIVATE kephir2_core)
 
+add_executable(kephir2_planner_dump
+    tests/planner_dump.cpp
+)
+target_link_libraries(kephir2_planner_dump PRIVATE kephir2_core)
+
 enable_testing()
 add_test(NAME kephir2_strategy_smoke COMMAND kephir2_strategy_smoke)
 add_test(NAME kephir2_analyzer_smoke COMMAND kephir2_analyzer_smoke)
