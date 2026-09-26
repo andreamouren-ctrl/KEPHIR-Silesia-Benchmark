@@ -132,6 +132,11 @@ add_executable(kephir2_native37_blob_smoke
 )
 target_link_libraries(kephir2_native37_blob_smoke PRIVATE kephir2_core)
 
+add_executable(kephir2_native37_blob_cli
+    tests/native37_blob_cli.cpp
+)
+target_link_libraries(kephir2_native37_blob_cli PRIVATE kephir2_core)
+
 add_executable(kephir2_native_k75_smoke
     tests/native_k75_smoke.cpp
 )
