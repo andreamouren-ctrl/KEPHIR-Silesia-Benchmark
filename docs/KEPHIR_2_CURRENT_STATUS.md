@@ -731,7 +731,62 @@ Future router comparisons should use this matrix rather than the live developmen
 
 ---
 
-## 16. Current validated facts
+## 16. EXP-84 — Deterministic-Dominance Fast Router
+
+Status:
+
+**PROMOTED CANDIDATE**
+
+EXP-84 combines:
+
+- Canonical Router Matrix v1;
+- exact single-content-class FLAT dominance;
+- full-input probe for directories <= 1 MiB;
+- 512 KiB stage-1 probe for larger heterogeneous directories;
+- 2 MiB stage-2 maximum probe;
+- EXP-82 representative-sample direction preservation.
+
+Result:
+
+```text
+Correct selections: 8 / 8
+Selection accuracy: 100%
+Total regret:       0 bytes
+Routing time:       3.91 s aggregate
+SHA roundtrip:      PASS on all datasets
+```
+
+Dataset routing times:
+
+```text
+repository          1.463 s   FLAT   correct
+silesia             0.634 s   SMART  correct
+many_tiny_source    1.044 s   FLAT   deterministic dominance
+homogeneous_large   0.009 s   FLAT   deterministic dominance
+mixed_content       0.717 s   FLAT   correct
+incompressible      0.005 s   FLAT   deterministic dominance
+zero_rich           0.009 s   FLAT   deterministic dominance
+redundant_backup    0.032 s   FLAT   deterministic dominance
+```
+
+Improvement versus EXP-82:
+
+```text
+EXP-82 routing: 41.96 s
+EXP-84 routing:  3.91 s
+Speedup:        ~10.7x
+Reduction:      ~90.7%
+Correctness:    8/8 → 8/8
+Regret:         0 B → 0 B
+```
+
+The single-content-class dominance rule is also promoted into the native C++ Global Router and the full native Core Smoke suite remains **PASS**.
+
+EXP-84 is the current AUTO router candidate pending comparison with the parallel EXP-85 adaptive-budget run and further workload expansion.
+
+---
+
+## 17. Current validated facts
 
 At the present checkpoint:
 
@@ -749,7 +804,7 @@ At the present checkpoint:
 
 ---
 
-## 17. Current product architecture priority
+## 18. Current product architecture priority
 
 The current production path now contains both the native Content Analyzer and the native Global Router:
 
@@ -769,7 +824,7 @@ The next architectural task is to validate this decision layer over a broader wo
 
 ---
 
-## 18. Validation matrix still required
+## 19. Validation matrix still required
 
 Before EXP-79 can be declared the final production Global Router, it must be tested on:
 
@@ -798,7 +853,7 @@ For every workload, record:
 
 ---
 
-## 19. Current engineering rules
+## 20. Current engineering rules
 
 Every future milestone must follow:
 
@@ -823,45 +878,25 @@ Production functionality should progressively migrate into the native KEPHIR 2 C
 
 ---
 
-## 20. Immediate next milestone
+## 21. Immediate next milestone
 
-**EXP-84 — Deterministic-Dominance Fast Router**
+**AUTO Router Candidate Consolidation**
 
 Goal:
 
-Combine EXP-82 correctness with EXP-83 speed improvements.
+Compare EXP-84 against the parallel EXP-85 adaptive-budget run and retain a single canonical AUTO policy.
 
-New rules:
+After consolidation, the next optimization target is the remaining heterogeneous-workload probe cost, primarily:
 
-```text
-one content class across the directory
-    → FLAT directly
-    → no compression probe
+- repository;
+- Silesia;
+- mixed-content directories.
 
-total logical size <= 1 MiB
-    → full-input SMART/FLAT probe
-
-otherwise
-    → 512 KiB stage-1 probe
-    → 2 MiB stage-2 only if needed
-```
-
-Rationale for the single-class rule:
-
-With one content group, SMART concatenates the same files in the same order as FLAT and feeds the same payload to the inner engine, while SMART carries additional group metadata. FLAT therefore dominates the layout decision and probing is unnecessary.
-
-Acceptance criteria on Canonical Router Matrix v1:
-
-- 8/8 correct selections;
-- 0 B aggregate regret;
-- all SHA PASS;
-- materially lower routing time than EXP-82's 41.96 s;
-- preferably lower than EXP-83's 14.24 s;
-- no filename/extension routing.
+The next research direction should replace expensive full KEPHIR micro-compression probes with a much cheaper predictive/groupability estimator while preserving the current 8/8 matrix correctness.
 
 ---
 
-## 21. Current checkpoint summary
+## 22. Current checkpoint summary
 
 ```text
 KEPHIR 1.0
@@ -886,7 +921,9 @@ KEPHIR 2
             ├── EXP-81 ................. REJECTED, 7/8, 54.11 s routing
             ├── EXP-82 ................. PROMOTED, 8/8, 0 B regret
             ├── EXP-82 routing ......... 41.96 s aggregate
-            ├── EXP-83 ................. REJECTED, 7/8, 14.24 s
+            ├── EXP-83 budget-only ..... REJECTED, 7/8, 14.24 s
+            ├── EXP-84 ................. PROMOTED CANDIDATE, 8/8
+            ├── EXP-84 routing ......... 3.91 s aggregate
             ├── Router Matrix v1 ....... FROZEN
             ├── Native EXP-82 policy ... PASS
             ├── Routing SHA ............ PASS
@@ -895,7 +932,7 @@ KEPHIR 2
 
 ---
 
-## 22. Update policy
+## 23. Update policy
 
 This document is mandatory project state.
 
