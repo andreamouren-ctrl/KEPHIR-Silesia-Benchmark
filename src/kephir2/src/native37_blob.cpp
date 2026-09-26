@@ -12,7 +12,7 @@
 namespace kephir2::native37 {
 namespace {
 
-constexpr std::size_t kChunkBytes = 512u * 1024u;
+constexpr std::size_t kDefaultChunkBytes = 512u * 1024u;
 constexpr std::uint32_t kAur2Version = 4u;
 constexpr std::string_view kInnerName = "payload.bin";
 
@@ -63,13 +63,25 @@ std::uint64_t get_u64(
 std::vector<std::uint8_t> encode_aur2_blob(
     std::span<const std::uint8_t> raw) {
 
+    return encode_aur2_blob(raw, kDefaultChunkBytes);
+}
+
+std::vector<std::uint8_t> encode_aur2_blob(
+    std::span<const std::uint8_t> raw,
+    std::size_t chunk_bytes) {
+
+    if (chunk_bytes == 0
+        || chunk_bytes > std::numeric_limits<std::uint32_t>::max()) {
+        throw std::runtime_error("invalid AUR2 chunk size");
+    }
+
     if (raw.size() > std::numeric_limits<std::uint64_t>::max()) {
         throw std::runtime_error("AUR2 raw input too large");
     }
 
     const std::uint64_t raw_size = raw.size();
     const std::uint64_t chunks64 =
-        raw_size == 0 ? 0 : (raw_size + kChunkBytes - 1) / kChunkBytes;
+        raw_size == 0 ? 0 : (raw_size + chunk_bytes - 1) / chunk_bytes;
 
     if (chunks64 > std::numeric_limits<std::uint32_t>::max()) {
         throw std::runtime_error("AUR2 chunk count overflow");
@@ -78,8 +90,8 @@ std::vector<std::uint8_t> encode_aur2_blob(
     std::vector<std::vector<std::uint8_t>> compressed;
     compressed.reserve(static_cast<std::size_t>(chunks64));
 
-    for (std::size_t offset = 0; offset < raw.size(); offset += kChunkBytes) {
-        const auto bytes = std::min(kChunkBytes, raw.size() - offset);
+    for (std::size_t offset = 0; offset < raw.size(); offset += chunk_bytes) {
+        const auto bytes = std::min(chunk_bytes, raw.size() - offset);
         std::vector<std::uint8_t> chunk(
             raw.begin() + static_cast<std::ptrdiff_t>(offset),
             raw.begin() + static_cast<std::ptrdiff_t>(offset + bytes));
@@ -99,7 +111,7 @@ std::vector<std::uint8_t> encode_aur2_blob(
 
     std::size_t offset = 0;
     for (const auto& comp : compressed) {
-        const auto bytes = std::min(kChunkBytes, raw.size() - offset);
+        const auto bytes = std::min(chunk_bytes, raw.size() - offset);
         if (bytes > std::numeric_limits<std::uint32_t>::max()
             || comp.size() > std::numeric_limits<std::uint32_t>::max()) {
             throw std::runtime_error("AUR2 chunk length overflow");
