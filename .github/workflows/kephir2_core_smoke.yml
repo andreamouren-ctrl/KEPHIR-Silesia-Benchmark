@@ -29,3 +29,7 @@ jobs:
 
       - name: Python-native archive parity
         run: python3 src/kephir2/tests/archive_parity.py build/kephir2/kephir2_archive_dump
+
+
+      - name: Python-native packing parity
+        run: python3 src/kephir2/tests/packing_parity.py build/kephir2/kephir2_packing_dump
