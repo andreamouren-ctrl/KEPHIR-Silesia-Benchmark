@@ -144,15 +144,29 @@ MotionResidual AuroraVideoMotion::encode_mc8r4_limited(ByteView cur,ByteView pre
     auto residual_plane=[&](std::size_t cur_off,std::size_t prev_off,std::size_t out_off,
                             std::uint32_t stride,std::uint32_t x,std::uint32_t y,
                             std::uint32_t bs,int dx,int dy) {
-        for(std::uint32_t yy=0;yy<bs;++yy)
-            for(std::uint32_t xx=0;xx<bs;++xx) {
-                const auto ci=cur_off+static_cast<std::size_t>(y+yy)*stride+(x+xx);
-                const auto pi=prev_off+static_cast<std::size_t>(static_cast<int>(y)+dy+static_cast<int>(yy))*stride+
-                              static_cast<std::size_t>(static_cast<int>(x)+dx+static_cast<int>(xx));
-                const int d=static_cast<int>(cur[ci])-static_cast<int>(prev[pi]);
-                out.residual_yuv420[out_off+static_cast<std::size_t>(y+yy)*stride+(x+xx)]
-                    = static_cast<Byte>(d & 0xff);
+        for(std::uint32_t yy=0;yy<bs;++yy) {
+            const auto ci=cur_off+static_cast<std::size_t>(y+yy)*stride+x;
+            const auto pi=prev_off+
+                static_cast<std::size_t>(static_cast<int>(y)+dy+static_cast<int>(yy))*stride+
+                static_cast<std::size_t>(static_cast<int>(x)+dx);
+            const auto oi=out_off+static_cast<std::size_t>(y+yy)*stride+x;
+#if defined(__SSE2__) && !defined(AURORA_DISABLE_RESIDUAL_SIMD)
+            if(bs==8) {
+                const __m128i a=_mm_loadl_epi64(
+                    reinterpret_cast<const __m128i*>(cur.data()+ci));
+                const __m128i b=_mm_loadl_epi64(
+                    reinterpret_cast<const __m128i*>(prev.data()+pi));
+                const __m128i d=_mm_sub_epi8(a,b);
+                _mm_storel_epi64(
+                    reinterpret_cast<__m128i*>(out.residual_yuv420.data()+oi),d);
+                continue;
             }
+#endif
+            for(std::uint32_t xx=0;xx<bs;++xx) {
+                const int d=static_cast<int>(cur[ci+xx])-static_cast<int>(prev[pi+xx]);
+                out.residual_yuv420[oi+xx]=static_cast<Byte>(d & 0xff);
+            }
+        }
     };
 
     for(std::uint32_t by=0;by<h;by+=block) {
@@ -250,15 +264,29 @@ MotionResidual AuroraVideoMotion::encode_mc8r4_shortlist(ByteView cur,ByteView p
     auto residual_plane=[&](std::size_t cur_off,std::size_t prev_off,std::size_t out_off,
                             std::uint32_t stride,std::uint32_t x,std::uint32_t y,
                             std::uint32_t bs,int dx,int dy) {
-        for(std::uint32_t yy=0;yy<bs;++yy)
-            for(std::uint32_t xx=0;xx<bs;++xx) {
-                const auto ci=cur_off+static_cast<std::size_t>(y+yy)*stride+(x+xx);
-                const auto pi=prev_off+static_cast<std::size_t>(static_cast<int>(y)+dy+static_cast<int>(yy))*stride+
-                              static_cast<std::size_t>(static_cast<int>(x)+dx+static_cast<int>(xx));
-                const int d=static_cast<int>(cur[ci])-static_cast<int>(prev[pi]);
-                out.residual_yuv420[out_off+static_cast<std::size_t>(y+yy)*stride+(x+xx)]
-                    = static_cast<Byte>(d & 0xff);
+        for(std::uint32_t yy=0;yy<bs;++yy) {
+            const auto ci=cur_off+static_cast<std::size_t>(y+yy)*stride+x;
+            const auto pi=prev_off+
+                static_cast<std::size_t>(static_cast<int>(y)+dy+static_cast<int>(yy))*stride+
+                static_cast<std::size_t>(static_cast<int>(x)+dx);
+            const auto oi=out_off+static_cast<std::size_t>(y+yy)*stride+x;
+#if defined(__SSE2__) && !defined(AURORA_DISABLE_RESIDUAL_SIMD)
+            if(bs==8) {
+                const __m128i a=_mm_loadl_epi64(
+                    reinterpret_cast<const __m128i*>(cur.data()+ci));
+                const __m128i b=_mm_loadl_epi64(
+                    reinterpret_cast<const __m128i*>(prev.data()+pi));
+                const __m128i d=_mm_sub_epi8(a,b);
+                _mm_storel_epi64(
+                    reinterpret_cast<__m128i*>(out.residual_yuv420.data()+oi),d);
+                continue;
             }
+#endif
+            for(std::uint32_t xx=0;xx<bs;++xx) {
+                const int d=static_cast<int>(cur[ci+xx])-static_cast<int>(prev[pi+xx]);
+                out.residual_yuv420[oi+xx]=static_cast<Byte>(d & 0xff);
+            }
+        }
     };
 
     struct CandidateCost { std::uint32_t idx; std::uint64_t cost; };
@@ -351,14 +379,27 @@ Bytes AuroraVideoMotion::decode_mc8r4(ByteView motion,ByteView residual,ByteView
     auto reconstruct=[&](std::size_t prev_off,std::size_t res_off,std::size_t out_off,
                          std::uint32_t stride,std::uint32_t x,std::uint32_t y,
                          std::uint32_t bs,int dx,int dy) {
-        for(std::uint32_t yy=0;yy<bs;++yy)
-            for(std::uint32_t xx=0;xx<bs;++xx) {
-                const auto oi=out_off+static_cast<std::size_t>(y+yy)*stride+(x+xx);
-                const auto pi=prev_off+static_cast<std::size_t>(static_cast<int>(y)+dy+static_cast<int>(yy))*stride+
-                              static_cast<std::size_t>(static_cast<int>(x)+dx+static_cast<int>(xx));
-                const auto ri=res_off+static_cast<std::size_t>(y+yy)*stride+(x+xx);
-                out[oi]=static_cast<Byte>((static_cast<unsigned>(prev[pi])+residual[ri])&0xffu);
+        for(std::uint32_t yy=0;yy<bs;++yy) {
+            const auto oi=out_off+static_cast<std::size_t>(y+yy)*stride+x;
+            const auto pi=prev_off+
+                static_cast<std::size_t>(static_cast<int>(y)+dy+static_cast<int>(yy))*stride+
+                static_cast<std::size_t>(static_cast<int>(x)+dx);
+            const auto ri=res_off+static_cast<std::size_t>(y+yy)*stride+x;
+#if defined(__SSE2__) && !defined(AURORA_DISABLE_RESIDUAL_SIMD)
+            if(bs==8) {
+                const __m128i p=_mm_loadl_epi64(
+                    reinterpret_cast<const __m128i*>(prev.data()+pi));
+                const __m128i r=_mm_loadl_epi64(
+                    reinterpret_cast<const __m128i*>(residual.data()+ri));
+                const __m128i v=_mm_add_epi8(p,r);
+                _mm_storel_epi64(reinterpret_cast<__m128i*>(out.data()+oi),v);
+                continue;
             }
+#endif
+            for(std::uint32_t xx=0;xx<bs;++xx)
+                out[oi+xx]=static_cast<Byte>(
+                    (static_cast<unsigned>(prev[pi+xx])+residual[ri+xx])&0xffu);
+        }
     };
 
     std::size_t mi=0;
