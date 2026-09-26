@@ -536,7 +536,51 @@ This finding defines EXP-81.
 
 ---
 
-## 12. Current validated facts
+## 12. EXP-81 — Direction-Preserving Uncertainty Router
+
+Status:
+
+**REJECTED**
+
+EXP-81 attempted to stop content diversity from overriding a near-tie FLAT decision at stage 1.
+
+The stage-1 correction worked conceptually, but the same asymmetric SMART override still existed after the stage-2 probe.
+
+Result:
+
+```text
+Correct selections: 7 / 8
+Selection accuracy: 87.5%
+Total regret:       178 bytes
+Routing time:       54.11 s aggregate
+SHA roundtrip:      PASS on all datasets
+```
+
+The same `mixed_content` workload remained wrong:
+
+```text
+selected: SMART
+oracle:   FLAT
+regret:   178 B
+```
+
+and routing cost increased materially because the dataset was escalated to stage 2 before being incorrectly flipped back to SMART.
+
+Conclusion:
+
+The diversity signal must never choose SMART by itself.
+
+New invariant:
+
+> Content diversity is a sample-confidence signal, not a layout preference.
+
+If a sufficiently diverse bounded sample is representative, the router should preserve the measured direction, whether that direction is SMART or FLAT.
+
+This defines EXP-82.
+
+---
+
+## 13. Current validated facts
 
 At the present checkpoint:
 
@@ -554,7 +598,7 @@ At the present checkpoint:
 
 ---
 
-## 13. Current product architecture priority
+## 14. Current product architecture priority
 
 The current production path now contains both the native Content Analyzer and the native Global Router:
 
@@ -574,7 +618,7 @@ The next architectural task is to validate this decision layer over a broader wo
 
 ---
 
-## 14. Validation matrix still required
+## 15. Validation matrix still required
 
 Before EXP-79 can be declared the final production Global Router, it must be tested on:
 
@@ -603,7 +647,7 @@ For every workload, record:
 
 ---
 
-## 15. Current engineering rules
+## 16. Current engineering rules
 
 Every future milestone must follow:
 
@@ -628,43 +672,46 @@ Production functionality should progressively migrate into the native KEPHIR 2 C
 
 ---
 
-## 16. Immediate next milestone
+## 17. Immediate next milestone
 
-**EXP-81 — Direction-Preserving Uncertainty Router**
+**EXP-82 — Representative-Sample Direction Router**
 
 Goal:
 
-Fix the only EXP-80 routing error without regressing the seven correct selections.
+Make content diversity symmetric and use it only to establish whether the bounded sample is representative.
 
-New policy:
+Policy:
 
 ```text
-strong probe margin
-    → trust measured winner
+full-input stage 1
+    → trust measured direction
 
-near-tie + measured SMART + heterogeneous content
-    → SMART
+strong stage-1 margin
+    → trust measured direction
 
-near-tie + measured FLAT + heterogeneous content
-    → do not override
-    → escalate to bounded stage-2 probe
+near-tie + representative content diversity
+    → trust measured direction
+       (SMART or FLAT)
 
-non-diverse ambiguous sample
-    → bounded stage-2 probe
+near-tie + non-representative/homogeneous sample
+    → stage-2 bounded probe
+
+stage 2
+    → trust measured direction
 ```
 
 Acceptance criteria:
 
-- 8/8 correct selections on the EXP-80 matrix;
+- 8/8 correct selections on the validation matrix;
 - aggregate regret 0 B;
-- all SMART/FLAT oracle runs SHA PASS;
-- no regression on repository or Silesia;
-- routing overhead remains bounded;
-- native router policy updated only after CI success.
+- all full-layout runs SHA PASS;
+- lower routing cost than EXP-81;
+- no regression on Silesia;
+- native router updated only after successful CI.
 
 ---
 
-## 17. Current checkpoint summary
+## 18. Current checkpoint summary
 
 ```text
 KEPHIR 1.0
@@ -686,13 +733,14 @@ KEPHIR 2
             ├── EXP-78 ................. REJECTED AS FINAL ROUTER
             ├── EXP-79 ................. PROMOTED PRINCIPLE
             ├── EXP-80 ................. 7/8 correct, 178 B regret
+            ├── EXP-81 ................. REJECTED, 7/8, 54.11 s routing
             ├── Routing SHA ............ PASS all 8 datasets
-            └── Next ................... EXP-81 direction-preserving router
+            └── Next ................... EXP-82 representative-sample router
 ```
 
 ---
 
-## 18. Update policy
+## 19. Update policy
 
 This document is mandatory project state.
 
