@@ -1,0 +1,138 @@
+name: AURORA Media KHEPRI Depth Matrix
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["research/khepri-stream-codec"]
+  push:
+    branches: ["feature/aurora-media-khepri-depth-matrix"]
+    paths:
+      - ".github/workflows/aurora_media_khepri_depth_matrix.yml"
+      - "research/video/experiments/make_aurora_media_exp37_depth.py"
+      - "benchmarks/major_codecs/aurora_khepri_media_depth_matrix.cpp"
+
+jobs:
+  matrix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+
+      - name: Generate canonical EXP-37A
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          python3 make_exp37_source.py
+          cp KEPHIR_2_EXP37_DUAL_MATCH.cpp EXP37_BASE.cpp
+          grep -n -E "#define (CHAIN_DEPTH|LAZY_DEPTH)" EXP37_BASE.cpp | head -4
+
+      - name: Build depth variants
+        run: |
+          set -e
+          FLAGS="-O3 -march=native -mtune=native -std=c++20 -DNDEBUG             -DNO_INTERNAL_VERIFY             -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3             -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1             -pthread -Wall -Wextra -Werror"
+
+          build_variant () {
+            ID="$1"; CHAIN="$2"; LAZY="$3"
+            AURORA_CHAIN_DEPTH="$CHAIN" AURORA_LAZY_DEPTH="$LAZY"               python3 research/video/experiments/make_aurora_media_exp37_depth.py
+            g++ $FLAGS -DAURORA_MEDIA_DEPTH_ID="$ID"               src/cpp/aurora_media/AuroraKhepriExp37MemoryAdapter.cpp               src/cpp/aurora_media/AuroraVideoMotion.cpp               src/cpp/aurora_media/AuroraVideoResidual.cpp               benchmarks/major_codecs/aurora_khepri_media_depth_matrix.cpp               -Isrc/cpp/aurora_media -o "media_depth_$ID"
+          }
+
+          # Explicit matrix. ID mapping is parsed below.
+          build_variant 0 42 19
+          build_variant 1 32 16
+          build_variant 2 24 12
+          build_variant 3 16 8
+          build_variant 4 12 6
+          build_variant 5 48 24
+          build_variant 6 64 32
+
+      - name: Run Media depth matrix
+        run: |
+          : > media_depth_matrix.txt
+          for ID in 0 1 2 3 4 5 6; do
+            echo "=== PROFILE_$ID ===" | tee -a media_depth_matrix.txt
+            "./media_depth_$ID" | tee -a media_depth_matrix.txt
+          done
+
+      - name: Summarize speed-ratio frontier
+        run: |
+          python3 - <<'PY' | tee media_depth_matrix_summary.txt
+          import re
+          from pathlib import Path
+
+          params={
+              0:(42,19),
+              1:(32,16),
+              2:(24,12),
+              3:(16,8),
+              4:(12,6),
+              5:(48,24),
+              6:(64,32),
+          }
+          rows={}
+          for line in Path("media_depth_matrix.txt").read_text().splitlines():
+              if not line.startswith("AURORA_KHEPRI_MEDIA_BACKEND_PASS "):
+                  continue
+              v=dict(re.findall(r"(\w+)=([^ ]+)",line))
+              rows[int(v["profile_id"])]=v
+
+          if set(rows)!=set(params):
+              raise SystemExit(f"incomplete matrix: {sorted(rows)}")
+
+          baseline=rows[0]
+          b_bytes=int(baseline["packed_bytes"])
+          b_enc=float(baseline["encode_ms"])
+          b_dec=float(baseline["decode_ms"])
+          input_fp=baseline["input_fingerprint"]
+
+          print("AURORA_MEDIA_KHEPRI_DEPTH_MATRIX")
+          frontier=[]
+          for i in sorted(rows):
+              r=rows[i]
+              if r["input_fingerprint"]!=input_fp:
+                  raise SystemExit("input corpus mismatch")
+              pbytes=int(r["packed_bytes"])
+              enc=float(r["encode_ms"])
+              dec=float(r["decode_ms"])
+              chain,lazy=params[i]
+              payload_delta=(pbytes/b_bytes-1.0)*100.0
+              speed=b_enc/enc
+              d_speed=b_dec/dec
+              print(
+                  f"id={i} chain={chain} lazy={lazy} "
+                  f"bytes={pbytes} payload_delta_pct={payload_delta:.6f} "
+                  f"encode_ms={enc:.6f} encode_speedup_x={speed:.3f} "
+                  f"decode_ms={dec:.6f} decode_speedup_x={d_speed:.3f}"
+              )
+              frontier.append((i,payload_delta,speed))
+
+          # Informational profile candidates, not automatic promotion.
+          balanced=[
+              x for x in frontier
+              if x[1] <= 1.0
+          ]
+          streaming=[
+              x for x in frontier
+              if x[1] <= 3.0
+          ]
+          best_balanced=max(balanced,key=lambda x:x[2]) if balanced else None
+          best_streaming=max(streaming,key=lambda x:x[2]) if streaming else None
+          print("BEST_WITHIN_1PCT",best_balanced)
+          print("BEST_WITHIN_3PCT",best_streaming)
+          print("LOSSLESS_ROUNDTRIP=PASS")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-media-khepri-depth-matrix
+          path: |
+            media_depth_matrix.txt
+            media_depth_matrix_summary.txt
