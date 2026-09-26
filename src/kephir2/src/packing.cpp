@@ -1,6 +1,7 @@
 #include "kephir2/packing.hpp"
 
 #include <algorithm>
+#include <fstream>
 #include <limits>
 #include <map>
 #include <stdexcept>
@@ -92,6 +93,108 @@ DirectoryPackingPlan build_directory_packing_plan(
 
     plan.manifest = encode_manifest(manifest_records);
     return plan;
+}
+
+PackedGroupSource::PackedGroupSource(
+    std::filesystem::path root,
+    const DirectoryPackingPlan& plan,
+    std::size_t group_index)
+    : root_(std::move(root)) {
+
+    if (group_index >= plan.groups.size()) {
+        throw std::out_of_range("packing group index out of range");
+    }
+
+    const auto& group = plan.groups[group_index];
+    size_ = group.raw_length;
+    segments_.reserve(group.file_indices.size());
+
+    for (const auto file_index : group.file_indices) {
+        if (file_index >= plan.files.size()) {
+            throw std::runtime_error("packing plan contains invalid file index");
+        }
+
+        const auto& file = plan.files[file_index];
+        if (file.group_id != group_index) {
+            throw std::runtime_error("packing plan group/file mismatch");
+        }
+
+        segments_.push_back({
+            std::filesystem::u8path(file.path.begin(), file.path.end()),
+            file.group_offset,
+            file.size
+        });
+    }
+}
+
+std::uint64_t PackedGroupSource::size() const noexcept {
+    return size_;
+}
+
+std::size_t PackedGroupSource::read(
+    std::uint64_t offset,
+    std::span<std::uint8_t> destination) const {
+
+    if (destination.empty() || offset >= size_) {
+        return 0;
+    }
+
+    const auto remaining_total = size_ - offset;
+    const auto target = static_cast<std::size_t>(
+        std::min<std::uint64_t>(remaining_total, destination.size()));
+
+    std::size_t written = 0;
+    const std::uint64_t request_end = offset + target;
+
+    for (const auto& segment : segments_) {
+        const std::uint64_t segment_begin = segment.logical_offset;
+        const std::uint64_t segment_end = segment.logical_offset + segment.size;
+
+        if (segment_end <= offset) {
+            continue;
+        }
+        if (segment_begin >= request_end) {
+            break;
+        }
+
+        const std::uint64_t copy_begin = std::max(offset, segment_begin);
+        const std::uint64_t copy_end = std::min(request_end, segment_end);
+        if (copy_end <= copy_begin) {
+            continue;
+        }
+
+        const auto local_offset = copy_begin - segment_begin;
+        const auto bytes = static_cast<std::size_t>(copy_end - copy_begin);
+
+        std::ifstream in(root_ / segment.relative_path, std::ios::binary);
+        if (!in) {
+            throw std::runtime_error("unable to open packed group source file");
+        }
+
+        in.seekg(static_cast<std::streamoff>(local_offset), std::ios::beg);
+        if (!in) {
+            throw std::runtime_error("unable to seek packed group source file");
+        }
+
+        in.read(
+            reinterpret_cast<char*>(destination.data() + written),
+            static_cast<std::streamsize>(bytes));
+
+        if (in.gcount() != static_cast<std::streamsize>(bytes)) {
+            throw std::runtime_error("short read from packed group source file");
+        }
+
+        written += bytes;
+        if (written == target) {
+            break;
+        }
+    }
+
+    if (written != target) {
+        throw std::runtime_error("packed group source logical range is incomplete");
+    }
+
+    return written;
 }
 
 } // namespace kephir2
