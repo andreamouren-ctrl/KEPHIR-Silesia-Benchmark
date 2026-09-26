@@ -571,3 +571,27 @@ Decision:
 - no global MC8R6 promotion;
 - do not invest in an R4/R6 classifier because the perfect-selection opportunity is <1%;
 - next compression experiment: KSV-14 global translation + local motion.
+
+
+## 2026-09-26 KSV-15 dual-reference checkpoint
+
+Run 36231942150:
+- baseline: 24,782,482 bytes
+- dual-reference: 24,575,364 bytes
+- oracle: 24,571,058 bytes
+- dual-reference improvement: 0.8357%
+- maximum oracle improvement: 0.8531%
+- all streams bit-exact
+
+Per-source dual-reference delta:
+- container: +0.0828%
+- coastguard: +0.0270%
+- mobile: -2.8102%
+- football: -0.4159%
+- stefan: -0.3992%
+
+Decision:
+- research checkpoint accepted;
+- no production promotion;
+- temporal reference diversity helps mobile materially but does not explain the aggregate gap;
+- next experiment: KSV-16 block hybrid inter/intra prediction.
