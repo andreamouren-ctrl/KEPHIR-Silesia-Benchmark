@@ -1267,7 +1267,82 @@ Compression/extraction intentionally return `BACKEND_UNAVAILABLE` until the nati
 
 ---
 
-## 27. Current validated facts
+## 27. Native Group Source / Sink v1
+
+Status:
+
+**PROMOTED**
+
+The SMART packing plan can now expose each content group as one logical byte stream without concatenating the complete group into RAM.
+
+Implemented:
+
+- `PackedGroupSource` random/sequential bounded reads;
+- reads crossing physical file boundaries;
+- exact logical group size;
+- `PackedGroupSink` extraction writes across logical file boundaries;
+- path-safe target creation;
+- group raw-length validation;
+- source → irregular chunks → sink reconstruction.
+
+Validation:
+
+```text
+Packing manifest parity:      PASS
+Packing record parity:        PASS
+Packing group parity:         PASS
+Group source byte parity:     PASS
+Tracked snapshot:             319 files / 5 groups PASS
+```
+
+Decision:
+
+**The packing/backend boundary is now stream-oriented and no longer requires Python-style full-group bytearray concatenation.**
+
+---
+
+## 28. Native Archive Executor + Native K75 Candidate
+
+Status:
+
+**END-TO-END NATIVE ROUNDTRIP PASS / BACKEND CANDIDATE**
+
+The native execution layer now connects:
+
+```text
+File / Directory
+    → Native Packing
+    → ByteSource
+    → CompressionBackend
+    → KPF1 Envelope
+    → CompressionBackend decode
+    → ByteSink
+    → Restored File / Directory
+```
+
+A `NativeK75Backend` adapter now runs the EXP-37 lineage in-process with no Python subprocess during compression/decompression.
+
+Current milestone result:
+
+```text
+C++ test suite:              10 / 10 PASS
+Native file roundtrip:       PASS
+Native directory roundtrip:  PASS
+KPF1 framing:                PASS
+Analyzer parity:             331 files PASS
+```
+
+Important limitation:
+
+The first NativeK75 adapter currently materializes each logical backend input/output in memory around the in-memory native37 blob wrapper.
+
+This is accepted only as a functional integration milestone. It is not the final large-archive memory architecture.
+
+The backend is therefore a **candidate**, not yet the qualified production replacement.
+
+---
+
+## 29. Current validated facts
 
 At the present checkpoint:
 
@@ -1285,7 +1360,7 @@ At the present checkpoint:
 
 ---
 
-## 28. Current product architecture priority
+## 30. Current product architecture priority
 
 The current production path now contains both the native Content Analyzer and the native Global Router:
 
@@ -1305,7 +1380,7 @@ The next architectural task is to validate this decision layer over a broader wo
 
 ---
 
-## 29. Validation matrix still required
+## 31. Validation matrix still required
 
 Before EXP-79 can be declared the final production Global Router, it must be tested on:
 
@@ -1334,7 +1409,7 @@ For every workload, record:
 
 ---
 
-## 30. Current engineering rules
+## 32. Current engineering rules
 
 Every future milestone must follow:
 
@@ -1359,32 +1434,30 @@ Production functionality should progressively migrate into the native KEPHIR 2 C
 
 ---
 
-## 31. Immediate next milestone
+## 33. Immediate next milestone
 
-**Native Group Source v1**
+**Native FLAT KPF1 Layout + Production Layout Requalification**
 
 Goal:
 
-Expose each SMART group as a logical byte source without concatenating the complete group into memory.
+Make the native execution layer capable of executing both layout decisions required by AUTO.
 
-Required behavior:
+Implement:
 
-- group byte size from the promoted Packing Plan;
-- sequential and random bounded reads across file boundaries;
-- exact logical concatenation compatibility with Python `groups[g].extend(raw)`;
-- no full-group RAM allocation;
-- read-only deterministic source suitable for the future native compression backend.
+- one-group FLAT directory packing;
+- deterministic file ordering and offsets;
+- KPF1-compatible single-group envelope;
+- native FLAT roundtrip;
+- explicit SMART/FLAT selection in ArchiveExecutor.
 
-Validation:
+Then requalify the AUTO router against the actual production KPF1 SMART and KPF1 FLAT representations using the native backend.
 
-- reconstruct group bytes through small irregular read sizes;
-- compare SHA/bytes with Python concatenation;
-- test reads that cross file boundaries;
-- test empty/tiny files;
-- test invalid ranges.
+Reason:
+
+The research FLAT framing and production KPF1 FLAT framing have slightly different metadata overhead. Because some historical layout wins were only tens or hundreds of bytes, the production oracle must be measured again before AUTO is exposed through the application API.
 
 ---
-## 32. Current checkpoint summary
+## 34. Current checkpoint summary
 
 ```text
 KEPHIR 1.0
@@ -1427,16 +1500,19 @@ KEPHIR 2
             ├── Native Packing Plan .... PROMOTED
             ├── Packing parity ......... 304 tracked files PASS
             ├── App C ABI v1 ........... BUILD/SMOKE PASS
+            ├── Group Source/Sink ....... PROMOTED
+            ├── Native Executor ......... ROUNDTRIP PASS
+            ├── Native K75 candidate .... FILE+DIR PASS
             ├── Router Matrix v1 ....... FROZEN
             ├── Router Matrix v2 ....... HOLDOUT ESTABLISHED
             ├── Native EXP-84 policy ... PASS
             ├── Routing SHA ............ PASS
-            └── Next ................... Native Group Source v1
+            └── Next ................... Native FLAT + layout requalification
 ```
 
 ---
 
-## 33. Update policy
+## 35. Update policy
 
 This document is mandatory project state.
 
