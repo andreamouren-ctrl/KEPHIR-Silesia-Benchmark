@@ -262,3 +262,34 @@ Decision:
 - promote the wiring fix;
 - invalidate KASH-02 predictor conclusions collected on the generalized frontend;
 - rerun adaptive recovery prediction only on this restored canonical path.
+
+
+## 2026-09-26 KASH-02 canonical adaptive recovery checkpoint
+
+Validation:
+- GitHub Actions run 36224542571
+- all AUM outputs bit-exact
+- production duplicate candidate encodes: 0
+
+Canonical fixed 2-second baseline:
+- 5,546,982 bytes
+
+Research oracle:
+- 5,541,642 bytes
+- 5,340 bytes smaller than fixed 2 s
+- approximately 0.0963% gain
+- oracle search cost: 27.475330 s
+
+Cheap PCM predictor:
+- rule: diff_change >= 2.0409084219
+- 5,543,634 bytes
+- 3,348 bytes smaller than fixed 2 s
+- approximately 0.0604% gain
+- recovers 62.697% of oracle gain
+- PCM decision cost: 0.039369 s
+- approximately 698x cheaper than oracle search
+
+Decision:
+- research result accepted;
+- rule is not yet a production baseline because it was learned/evaluated on one source family;
+- next gate: KASH-03 multi-corpus unseen validation.
