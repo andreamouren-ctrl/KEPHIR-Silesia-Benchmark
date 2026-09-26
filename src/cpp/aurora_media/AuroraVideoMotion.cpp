@@ -54,7 +54,7 @@ void sad8x8_grid25_sse2(ByteView cur,ByteView prev,
                         std::uint32_t stride,
                         std::uint32_t bx,std::uint32_t by,
                         std::uint64_t (&costs)[25]) {
-    std::fill(std::begin(costs),std::end(costs),0ull);
+    std::fill(costs,costs+25,0ull);
 
     constexpr int dys[5]{-4,-2,0,2,4};
 
@@ -179,6 +179,9 @@ MotionResidual AuroraVideoMotion::encode_mc8r4_limited_impl(
         std::uint32_t w,std::uint32_t h,
         std::size_t max_candidates,
         bool enable_grid25_simd) {
+#if defined(AURORA_DISABLE_GRID25_SIMD)
+    (void)enable_grid25_simd;
+#endif
     constexpr std::uint32_t block=8;
     constexpr int radius=4;
     if(w==0 || h==0 || (w%block)!=0 || (h%block)!=0 || (w%2)!=0 || (h%2)!=0)
