@@ -2,15 +2,14 @@
 """
 EXP-79 — Uncertainty-Aware Layout Router
 
-KEPHIR 2 Global Router research: confidence-aware routing.
+KEPHIR 2 Global Router research.
 
-Single conceptual change from EXP-77:
-replace the metadata-only SMART/FLAT rule with a bounded representative
-compression probe.
+Single conceptual change from EXP-78:
+do not let a near-tie sample decide the archive layout.
 
-The probe never scales linearly with the full archive:
-- stage 1: up to 2 MiB of representative content
-- stage 2: up to 12 MiB when the archive is larger/uncertain
+A strong probe margin is trusted directly. An ambiguous probe is resolved with
+content-class diversity measured from the same bounded sample. Only genuinely
+inconclusive cases escalate to the larger stage-2 probe.
 
 The full SMART and FLAT encodes are still executed by EXP-77 afterwards only
 to measure the oracle and selection regret. They are evaluation work, not part
@@ -322,7 +321,6 @@ def route_with_probe(root,label):
     total=logical_bytes(root)
     stage1=run_probe(root,label+"_s1",min(STAGE1_BUDGET,total))
 
-    # A full-input probe is exact for the current directory.
     if stage1["sampled_bytes"]>=total:
         return {
             "selected_layout":stage1["selected_layout"],
@@ -331,8 +329,6 @@ def route_with_probe(root,label):
             "stages":[stage1],
         }
 
-    # Trust only a material difference. Tiny sampled deltas are not predictive
-    # enough for a full archive and were the failure mode observed in EXP-78.
     if stage1["relative_margin"]>=STAGE1_CONFIDENCE:
         return {
             "selected_layout":stage1["selected_layout"],
@@ -341,9 +337,6 @@ def route_with_probe(root,label):
             "stages":[stage1],
         }
 
-    # If the sample is ambiguous but clearly contains several substantial
-    # content families, prefer SMART grouping. This is not extension-based:
-    # classes come from KEPHIR's content-first byte classifier.
     if diversity_prefers_smart(stage1["diversity"],total):
         return {
             "selected_layout":"smart",
@@ -352,7 +345,6 @@ def route_with_probe(root,label):
             "stages":[stage1],
         }
 
-    # Otherwise spend the larger bounded budget.
     stage2=run_probe(root,label+"_s2",min(STAGE2_BUDGET,total))
     if stage2["relative_margin"]>=STAGE2_CONFIDENCE:
         selected=stage2["selected_layout"]
@@ -371,3 +363,78 @@ def route_with_probe(root,label):
         "stages":[stage1,stage2],
     }
 
+
+os.environ["KEPHIR_WORKERS"]="16"
+
+repo=tracked_snapshot()
+silesia=ROOT/"corpora"/"silesia"
+if not silesia.exists():
+    raise SystemExit("Silesia missing")
+
+routes={
+    "repository":route_with_probe(repo,"repository"),
+    "silesia":route_with_probe(silesia,"silesia"),
+}
+
+# Run EXP-77 as the full-layout oracle/evaluation harness. This is deliberately
+# separate from the bounded proposed routing path above.
+subprocess.run(
+    [sys.executable,"research/packaging/exp77_adaptive_layout.py"],
+    check=True,
+)
+exp77=json.loads(Path("exp77_results.json").read_text())
+
+result={
+    "experiment":"EXP-79",
+    "change":"uncertainty-aware-content-diversity-router",
+    "stage1_budget_bytes":STAGE1_BUDGET,
+    "stage2_budget_bytes":STAGE2_BUDGET,
+    "datasets":{},
+}
+
+old_total=0
+new_total=0
+for label,route in routes.items():
+    full=exp77["datasets"][label]
+    selected=route["selected_layout"]
+    oracle=full["oracle_layout"]
+    oracle_bytes=full[oracle]["archive_bytes"]
+    selected_bytes=full[selected]["archive_bytes"]
+    new_regret=selected_bytes-oracle_bytes
+    old_regret=full["selection_regret_bytes"]
+    old_total+=old_regret
+    new_total+=new_regret
+
+    result["datasets"][label]={
+        "logical_bytes":full["meta"]["logical_bytes"],
+        "probe":route,
+        "exp77_selected_layout":full["selected_layout"],
+        "probe_selected_layout":selected,
+        "oracle_layout":oracle,
+        "exp77_regret_bytes":old_regret,
+        "probe_regret_bytes":new_regret,
+        "regret_improvement_bytes":old_regret-new_regret,
+        "full_smart":{
+            "archive_bytes":full["smart"]["archive_bytes"],
+            "ratio":full["smart"]["ratio"],
+            "comp_time_s":full["smart"]["comp_time_s"],
+            "dec_time_s":full["smart"]["dec_time_s"],
+            "sha_ok":full["smart"]["sha_ok"],
+        },
+        "full_flat":{
+            "archive_bytes":full["flat"]["archive_bytes"],
+            "ratio":full["flat"]["ratio"],
+            "comp_time_s":full["flat"]["comp_time_s"],
+            "dec_time_s":full["flat"]["dec_time_s"],
+            "sha_ok":full["flat"]["sha_ok"],
+        },
+    }
+
+result["aggregate"]={
+    "exp77_regret_bytes":old_total,
+    "probe_regret_bytes":new_total,
+    "regret_improvement_bytes":old_total-new_total,
+}
+
+Path("exp79_results.json").write_text(json.dumps(result,indent=2,sort_keys=True))
+print("EXP79_RESULTS",json.dumps(result,sort_keys=True),flush=True)
