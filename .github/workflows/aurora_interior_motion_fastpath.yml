@@ -1,0 +1,109 @@
+name: AURORA Interior Motion Fast Path
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["research/khepri-stream-codec"]
+  push:
+    branches: ["feature/aurora-media-interior-motion-fastpath"]
+    paths:
+      - ".github/workflows/aurora_interior_motion_fastpath.yml"
+      - "src/cpp/aurora_media/AuroraVideoMotion.cpp"
+      - "benchmarks/major_codecs/aurora_exact_motion_fastpath.cpp"
+      - "tests/cpp/test_aurora_video_motion.cpp"
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build regression test
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            src/cpp/aurora_media/AuroraVideoResidual.cpp \
+            tests/cpp/test_aurora_video_motion.cpp \
+            -Isrc/cpp/aurora_media \
+            -o test_motion
+
+      - name: Run regression test
+        run: ./test_motion | tee regression.txt
+
+      - name: Build checked-bound baseline
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -DAURORA_DISABLE_INTERIOR_MOTION_FASTPATH \
+            -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            benchmarks/major_codecs/aurora_exact_motion_fastpath.cpp \
+            -Isrc/cpp/aurora_media \
+            -o bench_checked
+
+      - name: Build interior fast path
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            benchmarks/major_codecs/aurora_exact_motion_fastpath.cpp \
+            -Isrc/cpp/aurora_media \
+            -o bench_interior
+
+      - name: Run A/B benchmark
+        run: |
+          echo "=== CHECKED ===" | tee interior_motion_ab.txt
+          ./bench_checked | tee -a interior_motion_ab.txt
+          echo "=== INTERIOR ===" | tee -a interior_motion_ab.txt
+          ./bench_interior | tee -a interior_motion_ab.txt
+
+      - name: Validate equivalence and summarize
+        run: |
+          python3 - <<'PY' | tee interior_motion_summary.txt
+          import re
+          from pathlib import Path
+
+          text = Path("interior_motion_ab.txt").read_text()
+          parts = text.split("=== INTERIOR ===")
+          if len(parts) != 2:
+              raise SystemExit("missing A/B sections")
+
+          def parse(section):
+              rows = {}
+              for line in section.splitlines():
+                  if not line.startswith("MOTION_BENCH "):
+                      continue
+                  vals = dict(re.findall(r"(\w+)=([^ ]+)", line))
+                  rows[vals["name"]] = vals
+              return rows
+
+          base=parse(parts[0])
+          fast=parse(parts[1])
+          if base.keys()!=fast.keys():
+              raise SystemExit("scenario mismatch")
+
+          print("AURORA_INTERIOR_MOTION_FASTPATH_AB")
+          for name in sorted(base):
+              b,f=base[name],fast[name]
+              for key in ("fingerprint","motion_bytes","residual_bytes"):
+                  if b[key]!=f[key]:
+                      raise SystemExit(f"{name}: output mismatch in {key}")
+              b_ms=float(b["ms"])
+              f_ms=float(f["ms"])
+              speed=b_ms/f_ms if f_ms else 0.0
+              saving=(1.0-f_ms/b_ms)*100.0 if b_ms else 0.0
+              print(
+                  f"{name}: checked_ms={b_ms:.6f} interior_ms={f_ms:.6f} "
+                  f"speedup_x={speed:.3f} time_reduction_pct={saving:.2f}"
+              )
+          print("BITSTREAM_EQUIVALENCE=PASS")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-interior-motion-fastpath
+          path: |
+            regression.txt
+            interior_motion_ab.txt
+            interior_motion_summary.txt
