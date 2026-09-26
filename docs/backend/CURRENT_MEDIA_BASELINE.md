@@ -695,3 +695,23 @@ Decision:
 - H2 is close but below the 90% quality-recovery gate;
 - hierarchical multi-center refinement remains the preferred production direction;
 - next experiment: KSV-20 H3 refinement around the top three sparse-even candidates.
+
+
+## 2026-09-26 KSV-20 H3 hierarchical dense checkpoint
+
+Run 36236999632:
+- sparse baseline: 24,782,482 bytes
+- H3: 24,300,942 bytes
+- exhaustive dense: 24,264,464 bytes
+- H3 improvement: 1.9431%
+- dense improvement: 2.0903%
+- dense gain recovered: 92.958%
+- H3/dense research-time ratio: 0.7059
+- mean H3 candidate evaluations: 39.412/block
+- all streams bit-exact
+
+Decision:
+- H3 passes the production-direction gate;
+- do not prioritize H4;
+- move H3 into the native C++ AURORA Media core;
+- next checkpoint: KSV-21 native H3 implementation and conformance/performance validation.
