@@ -63,6 +63,7 @@ def fine_bucket(parent):
 
 
 def exact_sizes(parent,tmp,tag):
+    tag="".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in tag)
     candidates=[]
     if len(parent)>128*1024:
         candidates.append(128*1024)
