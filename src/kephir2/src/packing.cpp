@@ -4,6 +4,7 @@
 #include <fstream>
 #include <limits>
 #include <map>
+#include <set>
 #include <stdexcept>
 #include <string>
 
@@ -195,6 +196,128 @@ std::size_t PackedGroupSource::read(
     }
 
     return written;
+}
+
+PackedGroupSink::PackedGroupSink(
+    std::filesystem::path root,
+    std::span<const ManifestRecord> records,
+    std::uint64_t group_id,
+    std::uint64_t expected_raw_length)
+    : size_(expected_raw_length) {
+
+    std::filesystem::create_directories(root);
+
+    std::uint64_t cursor = 0;
+    std::set<std::filesystem::path> seen_targets;
+
+    for (const auto& record : records) {
+        if (record.group_id != group_id) {
+            continue;
+        }
+
+        if (record.size > std::numeric_limits<std::uint64_t>::max() - cursor) {
+            throw std::runtime_error("extraction group raw length overflow");
+        }
+
+        const auto target = safe_archive_target(root, record.path);
+        if (!seen_targets.insert(target).second) {
+            throw std::runtime_error("duplicate archive output path");
+        }
+
+        std::filesystem::create_directories(target.parent_path());
+
+        {
+            std::ofstream out(target, std::ios::binary | std::ios::trunc);
+            if (!out) {
+                throw std::runtime_error("unable to create extraction target");
+            }
+        }
+
+        std::error_code ec;
+        std::filesystem::resize_file(target, record.size, ec);
+        if (ec) {
+            throw std::runtime_error("unable to size extraction target");
+        }
+
+        segments_.push_back({target, cursor, record.size});
+        cursor += record.size;
+    }
+
+    if (cursor != expected_raw_length) {
+        throw std::runtime_error("extraction group raw length mismatch");
+    }
+}
+
+void PackedGroupSink::write(
+    std::uint64_t offset,
+    std::span<const std::uint8_t> source) {
+
+    if (source.empty()) {
+        if (offset > size_) {
+            throw std::out_of_range("extraction sink write offset out of range");
+        }
+        return;
+    }
+
+    if (offset >= size_ || source.size() > size_ - offset) {
+        throw std::out_of_range("extraction sink write range out of bounds");
+    }
+
+    std::size_t consumed = 0;
+    const std::uint64_t request_end = offset + source.size();
+
+    for (const auto& segment : segments_) {
+        const std::uint64_t segment_begin = segment.logical_offset;
+        const std::uint64_t segment_end = segment.logical_offset + segment.size;
+
+        if (segment_end <= offset) {
+            continue;
+        }
+        if (segment_begin >= request_end) {
+            break;
+        }
+
+        const std::uint64_t write_begin = std::max(offset, segment_begin);
+        const std::uint64_t write_end = std::min(request_end, segment_end);
+        if (write_end <= write_begin) {
+            continue;
+        }
+
+        const auto local_offset = write_begin - segment_begin;
+        const auto bytes = static_cast<std::size_t>(write_end - write_begin);
+
+        std::fstream out(
+            segment.target_path,
+            std::ios::binary | std::ios::in | std::ios::out);
+        if (!out) {
+            throw std::runtime_error("unable to open extraction target for write");
+        }
+
+        out.seekp(static_cast<std::streamoff>(local_offset), std::ios::beg);
+        if (!out) {
+            throw std::runtime_error("unable to seek extraction target");
+        }
+
+        out.write(
+            reinterpret_cast<const char*>(source.data() + consumed),
+            static_cast<std::streamsize>(bytes));
+        if (!out) {
+            throw std::runtime_error("unable to write extraction target");
+        }
+
+        consumed += bytes;
+        if (consumed == source.size()) {
+            break;
+        }
+    }
+
+    if (consumed != source.size()) {
+        throw std::runtime_error("extraction sink logical range is incomplete");
+    }
+}
+
+std::uint64_t PackedGroupSink::size() const noexcept {
+    return size_;
 }
 
 } // namespace kephir2
