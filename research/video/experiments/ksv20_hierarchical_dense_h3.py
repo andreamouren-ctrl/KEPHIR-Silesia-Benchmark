@@ -17,7 +17,7 @@ so KSV-20 H3 reuses the K17D wire format and decoder unchanged.
 
 Policies emitted:
 - baseline: TEMP / sparse MC8R4 MOD8 / sparse MC8R4 ZZ;
-- h2: TEMP / H3 FLOOR+TRUNC, each MOD8+ZZ;
+- h3: TEMP / H3 FLOOR+TRUNC, each MOD8+ZZ;
 - dense: TEMP / exhaustive KSV-17 FLOOR+TRUNC, each MOD8+ZZ.
 
 All emitted streams are decoded and SHA verified.
@@ -439,7 +439,7 @@ def decode_outer(src: Path, dst: Path, exe: Path):
     pos = OUTER_HDR.size
     out = bytearray()
 
-    with tempfile.TemporaryDirectory(prefix="ksv19_dec_") as td:
+    with tempfile.TemporaryDirectory(prefix="ksv20_dec_") as td:
         tmp = Path(td)
         index = 0
 
@@ -557,7 +557,7 @@ def encode_source(
     h3_research_seconds = 0.0
     dense_research_seconds = 0.0
 
-    with tempfile.TemporaryDirectory(prefix="ksv19_enc_") as td:
+    with tempfile.TemporaryDirectory(prefix="ksv20_enc_") as td:
         tmp = Path(td)
 
         for window_index, off in enumerate(range(0, total, route_span)):
@@ -594,7 +594,7 @@ def encode_source(
             h3_research_seconds += temp_cost + h3_cost
             dense_research_seconds += temp_cost + dense_cost
 
-            best_h2 = choose(h3_rows)
+            best_h3 = choose(h3_rows)
             best_dense = choose(dense)
 
             windows.append({
@@ -605,12 +605,12 @@ def encode_source(
                 "dense_selected": dense_policy["label"],
                 "h3_bytes": len(h3_policy["payload"]),
                 "dense_bytes": len(dense_policy["payload"]),
-                "h3_search_seconds": best_h2["search_seconds"],
+                "h3_search_seconds": best_h3["search_seconds"],
                 "dense_search_seconds": best_dense["search_seconds"],
                 "h3_mean_candidate_evaluations": best_h2[
                     "mean_candidate_evaluations"
                 ],
-                "h3_mean_odd_fraction": best_h2["mean_odd_fraction"],
+                "h3_mean_odd_fraction": best_h3["mean_odd_fraction"],
                 "dense_mean_odd_fraction": best_dense["mean_odd_fraction"],
             })
 
