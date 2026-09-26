@@ -25,3 +25,7 @@ jobs:
 
       - name: Python-native analyzer parity
         run: python3 src/kephir2/tests/analyzer_parity.py build/kephir2/kephir2_analyzer_dump
+
+
+      - name: Python-native archive parity
+        run: python3 src/kephir2/tests/archive_parity.py build/kephir2/kephir2_archive_dump
