@@ -114,6 +114,61 @@ jobs:
           print("HIGH_MOTION_PROMOTION_GATE=PASS")
           PY
 
+      - name: Build 4K high-motion reference
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -DAURORA_DISABLE_AVX2_BATCH_SAD \
+            -Wall -Wextra -Werror -pthread \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            benchmarks/major_codecs/aurora_4k_highmotion_motion.cpp \
+            -Isrc/cpp/aurora_media \
+            -o bench_4k_reference
+
+      - name: Build 4K high-motion AVX2
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -Wall -Wextra -Werror -pthread \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            benchmarks/major_codecs/aurora_4k_highmotion_motion.cpp \
+            -Isrc/cpp/aurora_media \
+            -o bench_4k_avx2
+
+      - name: Run 4K high-motion A/B
+        run: |
+          echo "=== 4K_REFERENCE ===" | tee avx2_4k_highmotion.txt
+          ./bench_4k_reference | tee -a avx2_4k_highmotion.txt
+          echo "=== 4K_AVX2 ===" | tee -a avx2_4k_highmotion.txt
+          ./bench_4k_avx2 | tee -a avx2_4k_highmotion.txt
+
+      - name: Validate 4K high-motion result
+        run: |
+          python3 - <<'PY' | tee avx2_4k_highmotion_summary.txt
+          import re
+          from pathlib import Path
+          text=Path("avx2_4k_highmotion.txt").read_text()
+          rows=[]
+          for line in text.splitlines():
+              if line.startswith("AURORA_4K_HIGHMOTION_MOTION_PASS"):
+                  rows.append(dict(re.findall(r"(\w+)=([^ ]+)",line)))
+          if len(rows)!=2:
+              raise SystemExit("expected two 4K benchmark rows")
+          base,fast=rows
+          if base["fingerprint"]!=fast["fingerprint"]:
+              raise SystemExit("4K high-motion fingerprint mismatch")
+          bm=float(base["encode_ms"]); fm=float(fast["encode_ms"])
+          speed=bm/fm
+          saving=(1.0-fm/bm)*100.0
+          print("AURORA_AVX2_4K_HIGHMOTION_AB")
+          print(
+              f"reference_ms={bm:.6f} avx2_ms={fm:.6f} "
+              f"speedup_x={speed:.3f} time_reduction_pct={saving:.2f}"
+          )
+          print("BITSTREAM_EQUIVALENCE_4K=PASS")
+          if speed < 1.03:
+              raise SystemExit(f"4K high-motion gain below 3%: {speed:.3f}x")
+          print("HIGH_MOTION_4K_PROMOTION_GATE=PASS")
+          PY
+
       - uses: actions/upload-artifact@v4
         with:
           name: aurora-avx2-batch-sad
@@ -121,3 +176,5 @@ jobs:
             regression.txt
             avx2_batch_sad_ab.txt
             avx2_batch_sad_summary.txt
+            avx2_4k_highmotion.txt
+            avx2_4k_highmotion_summary.txt
