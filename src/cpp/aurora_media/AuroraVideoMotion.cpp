@@ -202,7 +202,7 @@ MotionResidual AuroraVideoMotion::encode_mc8r4_h3(
             std::array<bool,81> evaluated{};
             std::array<bool,81> refine{};
 
-            for(const auto [dx,dy]:sparse) {
+            for(const auto& [dx,dy]:sparse) {
                 const int sx=static_cast<int>(bx)+dx;
                 const int sy=static_cast<int>(by)+dy;
                 if(sx<0 || sy<0 ||
