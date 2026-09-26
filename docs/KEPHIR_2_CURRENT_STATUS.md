@@ -1188,7 +1188,86 @@ The compression backend remains unchanged and its output is still treated as an 
 
 ---
 
-## 25. Current validated facts
+## 25. Native Directory Packing Plan v1
+
+Status:
+
+**PROMOTED**
+
+Native files:
+
+```text
+src/kephir2/include/kephir2/packing.hpp
+src/kephir2/src/packing.cpp
+src/kephir2/tests/packing_smoke.cpp
+src/kephir2/tests/packing_dump.cpp
+src/kephir2/tests/packing_parity.py
+```
+
+Implemented:
+
+- deterministic recursive file order;
+- native content-first class assignment;
+- sorted group-name table compatible with Python;
+- stable group-id assignment;
+- per-file group offsets;
+- exact per-group raw lengths;
+- native manifest generation;
+- no concatenation of complete group payloads required during planning.
+
+Validation:
+
+```text
+C++ tests:                  6/6 PASS
+Analyzer parity:            316 files PASS
+Fixture packing parity:     6 files / 6 groups PASS
+Tracked snapshot parity:    304 files / 5 groups PASS
+Manifest parity:            PASS
+Record/order parity:        PASS
+Group-id/raw-length parity: PASS
+```
+
+Decision:
+
+**KPF1 SMART directory planning is now migrated into the native KEPHIR 2 core.**
+
+---
+
+## 26. Application Integration Boundary v1
+
+Status:
+
+**FROZEN CANDIDATE / BUILD PASS**
+
+A stable host-engine boundary now exists:
+
+```text
+docs/architecture/KEPHIR_2_APP_INTEGRATION_CONTRACT.md
+src/kephir2/include/kephir2/kephir2_c.h
+src/kephir2/src/kephir2_c.cpp
+```
+
+The application-facing design uses a versioned C ABI exported by a shared native library.
+
+Current public concepts:
+
+- API version;
+- engine create/destroy;
+- AUTO / FAST / BALANCED / MAX;
+- compression/extraction entry points;
+- stable progress phases;
+- progress callback;
+- cancellation callback;
+- stable result/error codes;
+- worker/integrity/overwrite options.
+
+The API smoke test is **PASS**.
+
+Compression/extraction intentionally return `BACKEND_UNAVAILABLE` until the native execution backend is connected, preventing the application from accidentally treating an incomplete engine as production-ready.
+
+---
+
+## 27. Current validated facts
 
 At the present checkpoint:
 
@@ -1206,7 +1285,7 @@ At the present checkpoint:
 
 ---
 
-## 26. Current product architecture priority
+## 28. Current product architecture priority
 
 The current production path now contains both the native Content Analyzer and the native Global Router:
 
@@ -1226,7 +1305,7 @@ The next architectural task is to validate this decision layer over a broader wo
 
 ---
 
-## 27. Validation matrix still required
+## 29. Validation matrix still required
 
 Before EXP-79 can be declared the final production Global Router, it must be tested on:
 
@@ -1255,7 +1334,7 @@ For every workload, record:
 
 ---
 
-## 28. Current engineering rules
+## 30. Current engineering rules
 
 Every future milestone must follow:
 
@@ -1280,30 +1359,32 @@ Production functionality should progressively migrate into the native KEPHIR 2 C
 
 ---
 
-## 29. Immediate next milestone
+## 31. Immediate next milestone
 
-**Native Directory Packing Plan v1**
+**Native Group Source v1**
 
 Goal:
 
-Migrate KPF1 SMART directory planning from Python into C++ without changing the backend.
+Expose each SMART group as a logical byte source without concatenating the complete group into memory.
 
-Implement:
+Required behavior:
 
-- deterministic recursive file discovery;
-- content-first class assignment per file;
-- sorted group-name table matching Python behavior;
-- group-id assignment;
-- exact per-group raw byte totals;
-- prefix-compressed manifest generation using the promoted native archive layer;
-- no requirement to concatenate entire groups in RAM.
+- group byte size from the promoted Packing Plan;
+- sequential and random bounded reads across file boundaries;
+- exact logical concatenation compatibility with Python `groups[g].extend(raw)`;
+- no full-group RAM allocation;
+- read-only deterministic source suitable for the future native compression backend.
 
-Validation target:
+Validation:
 
-- Python↔C++ parity for file order, content group, group id, file size, group raw length and manifest bytes on deterministic fixtures and repository samples.
+- reconstruct group bytes through small irregular read sizes;
+- compare SHA/bytes with Python concatenation;
+- test reads that cross file boundaries;
+- test empty/tiny files;
+- test invalid ranges.
 
 ---
-## 30. Current checkpoint summary
+## 32. Current checkpoint summary
 
 ```text
 KEPHIR 1.0
@@ -1343,16 +1424,19 @@ KEPHIR 2
             ├── Manifest parity ........ PASS
             ├── Native KPF1 envelope ... PROMOTED
             ├── KPF1 byte parity ....... PASS
+            ├── Native Packing Plan .... PROMOTED
+            ├── Packing parity ......... 304 tracked files PASS
+            ├── App C ABI v1 ........... BUILD/SMOKE PASS
             ├── Router Matrix v1 ....... FROZEN
             ├── Router Matrix v2 ....... HOLDOUT ESTABLISHED
             ├── Native EXP-84 policy ... PASS
             ├── Routing SHA ............ PASS
-            └── Next ................... Native Directory Packing Plan v1
+            └── Next ................... Native Group Source v1
 ```
 
 ---
 
-## 31. Update policy
+## 33. Update policy
 
 This document is mandatory project state.
 
