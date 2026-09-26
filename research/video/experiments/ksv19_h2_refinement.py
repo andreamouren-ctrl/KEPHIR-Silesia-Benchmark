@@ -8,8 +8,8 @@ all 81 motion vectors for every 8x8 block.
 
 H2 search:
 1. evaluate the existing 25 sparse-even MC8R4 candidates;
-2. take the best sparse vector;
-3. evaluate the unique 3x3 integer neighborhood around that vector;
+2. retain the two best sparse vectors;
+3. evaluate the union of their unique 3x3 integer neighborhoods;
 4. choose the best evaluated vector using the same dense candidate tie order.
 
 The emitted motion map uses the exact KSV-17 dense 0..80 candidate indexing,
