@@ -130,6 +130,54 @@ int main() {
         decode_manifest(plan.manifest, plan.groups.size());
     assert(manifest_records.size() == plan.files.size());
 
+    // Native reconstruction path: logical group source -> irregular chunks ->
+    // logical group sink -> original file tree.
+    const auto extracted =
+        std::filesystem::temp_directory_path() / "kephir2_packing_extract_smoke";
+    std::filesystem::remove_all(extracted);
+    std::filesystem::create_directories(extracted);
+
+    for (std::size_t group_index = 0; group_index < plan.groups.size(); ++group_index) {
+        PackedGroupSource source(root, plan, group_index);
+        PackedGroupSink sink(
+            extracted,
+            manifest_records,
+            group_index,
+            plan.groups[group_index].raw_length);
+
+        std::array<std::uint8_t, 13> chunk{};
+        std::uint64_t offset = 0;
+        while (offset < source.size()) {
+            const auto got = source.read(offset, chunk);
+            assert(got > 0);
+            sink.write(
+                offset,
+                std::span<const std::uint8_t>(chunk.data(), got));
+            offset += got;
+        }
+        assert(offset == source.size());
+        assert(sink.size() == source.size());
+    }
+
+    for (const auto& file : plan.files) {
+        const auto original =
+            root / std::filesystem::u8path(file.path.begin(), file.path.end());
+        const auto restored =
+            extracted / std::filesystem::u8path(file.path.begin(), file.path.end());
+
+        std::ifstream a(original, std::ios::binary);
+        std::ifstream b(restored, std::ios::binary);
+        const std::vector<std::uint8_t> av(
+            std::istreambuf_iterator<char>(a),
+            std::istreambuf_iterator<char>());
+        const std::vector<std::uint8_t> bv(
+            std::istreambuf_iterator<char>(b),
+            std::istreambuf_iterator<char>());
+        assert(av == bv);
+    }
+
+    std::filesystem::remove_all(extracted);
+
     for (std::size_t i = 0; i < plan.files.size(); ++i) {
         assert(manifest_records[i].path == plan.files[i].path);
         assert(manifest_records[i].group_id == plan.files[i].group_id);
