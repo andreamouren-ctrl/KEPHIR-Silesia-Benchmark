@@ -1,0 +1,56 @@
+name: AURORA Zero Copy Motion
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["research/khepri-stream-codec"]
+  push:
+    branches: ["feature/aurora-media-zero-copy-motion"]
+    paths:
+      - ".github/workflows/aurora_zero_copy_motion.yml"
+      - "src/cpp/aurora_media/AuroraVideoMotion.*"
+      - "tests/cpp/test_aurora_video_motion_zero_copy.cpp"
+      - "benchmarks/major_codecs/aurora_zero_copy_motion.cpp"
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build zero-copy equivalence test
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            tests/cpp/test_aurora_video_motion_zero_copy.cpp \
+            -Isrc/cpp/aurora_media \
+            -o test_zero_copy_motion
+
+      - name: Run zero-copy equivalence test
+        run: ./test_zero_copy_motion | tee zero_copy_equivalence.txt
+
+      - name: Build 4K A/B benchmark
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            benchmarks/major_codecs/aurora_zero_copy_motion.cpp \
+            -Isrc/cpp/aurora_media \
+            -o bench_zero_copy_motion
+
+      - name: Run 4K A/B benchmark
+        run: ./bench_zero_copy_motion | tee zero_copy_benchmark.txt
+
+      - name: Validate markers
+        run: |
+          grep -q "AURORA_ZERO_COPY_MOTION_EQUIVALENCE_PASS" zero_copy_equivalence.txt
+          grep -q "AURORA_ZERO_COPY_MOTION_BENCH_PASS" zero_copy_benchmark.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-zero-copy-motion
+          path: |
+            zero_copy_equivalence.txt
+            zero_copy_benchmark.txt
