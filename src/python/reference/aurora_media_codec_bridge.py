@@ -6,7 +6,8 @@ Connects the current proprietary AURORA/KHEPRI research codec paths to the
 AURORA Media container without any external muxer/demuxer.
 
 Audio packet:
-  PCM s16le -> KMRL FULL256 TAIL16 -> KHEPRI EXP-37A -> packet payload
+  signed PCM 16/24/32-bit LE -> KMRL v2 adaptive residual geometry
+  -> KHEPRI EXP-37A -> packet payload
 
 Video packet:
   raw YUV420p8 -> KSV-05 TEMP/MC8R4 routing -> KHEPRI EXP-37A -> packet payload
@@ -17,25 +18,16 @@ from __future__ import annotations
 from pathlib import Path
 import shutil, tempfile
 
-import kstream_kmrl_lab as lab
-from ks06_plane_sparsity import enc_tail16, dec_tail16
+import kstream_kmrl_frontend as kmrl
 import ksv09c_cached_motion_router as ksv09c
 
-def _audio_front_encode(raw:Path,front:Path,channels:int,rate:int,block_ms:int=20):
-    oe,od=lab.enc_fullplanes,lab.dec_fullplanes
-    lab.enc_fullplanes,lab.dec_fullplanes=enc_tail16,dec_tail16
-    try:
-        lab.encode_file(raw,front,channels,rate,block_ms,2)
-    finally:
-        lab.enc_fullplanes,lab.dec_fullplanes=oe,od
+def _audio_front_encode(raw:Path,front:Path,channels:int,rate:int,
+                        bits:int=16,block_ms:int=20):
+    """Encode one independently recoverable AURORA audio packet with KMRL v2."""
+    kmrl.encode_file(raw,front,channels,rate,bits,block_ms,"adaptive")
 
 def _audio_front_decode(front:Path,raw:Path):
-    oe,od=lab.enc_fullplanes,lab.dec_fullplanes
-    lab.enc_fullplanes,lab.dec_fullplanes=enc_tail16,dec_tail16
-    try:
-        lab.decode_file(front,raw)
-    finally:
-        lab.enc_fullplanes,lab.dec_fullplanes=oe,od
+    kmrl.decode_file(front,raw)
 
 def _khepri_encode(exe:Path,src:Path,arc:Path):
     import subprocess
@@ -51,16 +43,18 @@ def _khepri_decode(exe:Path,arc:Path,outdir:Path)->Path:
     if len(files)!=1: raise RuntimeError("unexpected KHEPRI decode output")
     return files[0]
 
-def encode_audio_packet(raw_pcm:bytes,exe:Path,channels:int,rate:int)->bytes:
-    with tempfile.TemporaryDirectory(prefix="aua1_") as td:
+def encode_audio_packet(raw_pcm:bytes,exe:Path,channels:int,rate:int,bits:int=16)->bytes:
+    if bits not in (16,24,32):
+        raise ValueError("AURORA audio supports signed PCM 16/24/32-bit")
+    with tempfile.TemporaryDirectory(prefix="aua2_") as td:
         t=Path(td); raw=t/"packet.pcm"; front=t/"packet.kmrl"; arc=t/"packet.aur"
         raw.write_bytes(raw_pcm)
-        _audio_front_encode(raw,front,channels,rate)
+        _audio_front_encode(raw,front,channels,rate,bits)
         _khepri_encode(exe,front,arc)
         return arc.read_bytes()
 
 def decode_audio_packet(payload:bytes,exe:Path)->bytes:
-    with tempfile.TemporaryDirectory(prefix="aua1d_") as td:
+    with tempfile.TemporaryDirectory(prefix="aua2d_") as td:
         t=Path(td); arc=t/"packet.aur"; out=t/"kout"; raw=t/"packet.pcm"
         arc.write_bytes(payload)
         front=_khepri_decode(exe,arc,out)
