@@ -5,7 +5,7 @@ on:
   pull_request:
     branches: ["research/khepri-stream-codec"]
   push:
-    branches: ["feature/aurora-media-natural-video-corpus-v1"]
+    branches: ["feature/aurora-media-natural-video-corpus-v1-rebase"]
     paths:
       - ".github/workflows/aurora_natural_video_corpus_v1.yml"
       - "benchmarks/major_codecs/benchmark_natural_video_corpus_v01.py"
@@ -32,11 +32,13 @@ jobs:
           python3 make_exp31_source.py
           python3 make_exp33_source.py
           python3 make_exp37_source.py
+          python3 make_exp40_source.py
           g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
             -DNO_INTERNAL_VERIFY \
             -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 \
-            -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 -pthread \
-            KEPHIR_2_EXP37_DUAL_MATCH.cpp -o kephir37
+            -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 \
+            -DK2_SHARED_MATCH_CACHE_MODE=1 -pthread \
+            KEPHIR_2_EXP40_SHARED_MATCH_CACHE.cpp -o kephir40
 
       - name: Download Xiph uncompressed Y4M sources
         run: |
