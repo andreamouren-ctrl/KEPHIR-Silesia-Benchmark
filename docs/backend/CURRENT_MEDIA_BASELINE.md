@@ -191,3 +191,40 @@ Next exact-speed targets:
 - lower-instruction SSE2 SAD evaluation;
 - SIMD residual generation/reconstruction;
 - re-run native 4K full-pipeline throughput after each isolated promotion.
+
+
+## 2026-09-26 residual SIMD checkpoint
+
+Validation:
+- isolated benchmark run 36219419153
+- full native pipeline run 36219468195
+- bitstream/output fingerprint equivalence: PASS
+- full-pipeline payload equivalence: PASS
+
+Optimization:
+- SSE2 byte-wise luma residual subtraction in the encoder;
+- SSE2 byte-wise luma reconstruction addition in the decoder;
+- modulo-256 behavior is exactly preserved;
+- chroma remains scalar.
+
+Isolated 256x240 tile speedup:
+- static: 1.741x encode / 2.111x decode / 1.899x combined;
+- low motion: 1.331x / 2.080x / 1.533x;
+- noise/high activity: 1.276x / 2.114x / 1.447x.
+
+Full native 4K / 4-worker pipeline:
+- scalar residual: 5.9476 fps encode, 51.1203 fps decode, 5.32774 fps total;
+- SSE2 residual: 6.04301 fps encode, 59.2361 fps decode, 5.48360 fps total;
+- speedup: 1.016x encode, 1.159x decode, 1.029x total;
+- payload unchanged: 256,727 bytes.
+
+Decision:
+- promote residual SIMD.
+
+Rejected during the same cycle:
+- paired-row SSE2 SAD (run 36219312895);
+- bitstream correct but -11.28% low-motion and -16.59% noise performance;
+- retain one-row SSE2 SAD.
+
+Current primary performance bottleneck:
+- encode-side MC8R4 motion search.
