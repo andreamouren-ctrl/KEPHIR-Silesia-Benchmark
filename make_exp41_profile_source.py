@@ -1,4 +1,4 @@
-from pathlib import Path
+# EXP-41 profile trigger: instrumentation-only, no bitstream change\nfrom pathlib import Path
 
 p=Path("KEPHIR_2_EXP40_SHARED_MATCH_CACHE.cpp")
 s=p.read_text()
