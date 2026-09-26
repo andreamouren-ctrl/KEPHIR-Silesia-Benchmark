@@ -881,7 +881,58 @@ It is **not promoted yet** because the decision thresholds were derived from a s
 
 ---
 
-## 19. Current validated facts
+## 19. EXP-87 — Groupability Holdout Validation
+
+Status:
+
+**REJECTED AS FINAL ROUTER / RETAINED AS RISK GATE**
+
+EXP-87 froze all EXP-86 thresholds and evaluated them on eight unseen holdout workloads.
+
+Holdout result:
+
+```text
+Correct selections: 4 / 8
+Selection accuracy: 50%
+Total regret:       262 bytes
+Routing time:       0.171 s
+SHA roundtrip:      PASS
+```
+
+Combined Matrix v1 + holdout v2:
+
+```text
+Correct selections: 12 / 16
+Selection accuracy: 75%
+Total regret:       262 bytes
+Routing time:       1.776 s
+```
+
+All four holdout failures were false SMART selections:
+
+```text
+two_large_repeated_classes      SMART → oracle FLAT   regret 49 B
+dominant_large_with_minorities  SMART → oracle FLAT   regret 81 B
+two_groups_balanced_large       SMART → oracle FLAT   regret 49 B
+three_groups_balanced_large     SMART → oracle FLAT   regret 83 B
+```
+
+No observed EXP-87 FLAT prediction was wrong on the current 16-workload matrix.
+
+Conclusion:
+
+The cheap estimator is not robust enough to choose SMART directly.
+
+However, it is useful as a low-cost **risk gate**:
+
+- cheap estimator says FLAT → accept FLAT directly;
+- cheap estimator says SMART → require EXP-84 bounded compression evidence.
+
+This defines EXP-88.
+
+---
+
+## 20. Current validated facts
 
 At the present checkpoint:
 
@@ -899,7 +950,7 @@ At the present checkpoint:
 
 ---
 
-## 20. Current product architecture priority
+## 21. Current product architecture priority
 
 The current production path now contains both the native Content Analyzer and the native Global Router:
 
@@ -919,7 +970,7 @@ The next architectural task is to validate this decision layer over a broader wo
 
 ---
 
-## 21. Validation matrix still required
+## 22. Validation matrix still required
 
 Before EXP-79 can be declared the final production Global Router, it must be tested on:
 
@@ -948,7 +999,7 @@ For every workload, record:
 
 ---
 
-## 22. Current engineering rules
+## 23. Current engineering rules
 
 Every future milestone must follow:
 
@@ -973,35 +1024,38 @@ Production functionality should progressively migrate into the native KEPHIR 2 C
 
 ---
 
-## 23. Immediate next milestone
+## 24. Immediate next milestone
 
-**EXP-87 — Groupability Holdout Validation**
+**EXP-88 — Hybrid Groupability Gate**
 
 Goal:
 
-Test the EXP-86 no-compression-probe estimator against unseen workload shapes rather than tuning further on Router Matrix v1.
+Use EXP-86 only as a cheap gate and retain EXP-84 as the final authority for SMART candidates.
 
-Router Matrix v2 holdout must add cases such as:
+Policy:
 
-- two large repeated content classes;
-- large one-file-per-class directory;
-- balanced medium repeated classes;
-- dominant class plus large minority classes;
-- many medium files split across several classes;
-- imbalanced two-class large directory.
+```text
+single content class
+    → FLAT directly
 
-EXP-86 thresholds remain frozen during the first holdout run.
+EXP-86 groupability says FLAT
+    → FLAT directly
 
-Acceptance criteria:
+EXP-86 groupability says SMART
+    → run EXP-84 bounded probe
+    → preserve measured SMART/FLAT direction
+```
 
-- record oracle SMART/FLAT for every new workload;
-- no threshold tuning before first result;
-- SHA PASS on every oracle run;
-- report correct selections and regret separately for Matrix v1 and holdout v2;
-- only promote the estimator natively if holdout behavior is robust.
+Acceptance criteria on Matrix v1 + holdout v2:
+
+- 16/16 correct selections;
+- 0 B aggregate regret;
+- SHA PASS;
+- routing materially below running EXP-84 on every heterogeneous workload;
+- no threshold tuning from holdout labels.
 
 ---
-## 24. Current checkpoint summary
+## 25. Current checkpoint summary
 
 ```text
 KEPHIR 1.0
@@ -1030,16 +1084,18 @@ KEPHIR 2
             ├── EXP-84 ................. CANONICAL AUTO, 8/8, 0 B
             ├── EXP-84 routing ......... 3.91 s aggregate
             ├── EXP-85 ................. 8/8, 0 B, 5.71 s, not selected
-            ├── EXP-86 ................. 8/8, 0 B, 1.60 s, HOLDOUT REQUIRED
+            ├── EXP-86 ................. 8/8 v1, overfit
+            ├── EXP-87 holdout ......... 4/8, 262 B regret
             ├── Router Matrix v1 ....... FROZEN
+            ├── Router Matrix v2 ....... HOLDOUT ESTABLISHED
             ├── Native EXP-84 policy ... PASS
             ├── Routing SHA ............ PASS
-            └── Next ................... EXP-87 groupability holdout validation
+            └── Next ................... EXP-88 hybrid groupability gate
 ```
 
 ---
 
-## 25. Update policy
+## 26. Update policy
 
 This document is mandatory project state.
 
