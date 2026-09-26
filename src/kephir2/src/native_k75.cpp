@@ -390,7 +390,18 @@ std::uint32_t NativeK75Backend::format_version() const noexcept {
 
 BackendEncodeResult NativeK75Backend::encode(
     const ByteSource& input,
-    const BackendOptions&) {
+    const BackendOptions& options) {
+
+    if (options.operation) {
+        options.operation->throw_if_cancelled();
+        options.operation->report({
+            OperationPhase::Compressing,
+            0.0,
+            0,
+            input.size(),
+            {}
+        });
+    }
 
     std::vector<EncodedEntry> entries;
     std::vector<std::uint8_t> parent(kParentBytes);
@@ -405,16 +416,35 @@ BackendEncodeResult NativeK75Backend::encode(
         if (got != want)
             throw std::runtime_error("short read from K75 byte source");
 
+        if (options.operation) {
+            options.operation->throw_if_cancelled();
+        }
+
         const auto parent_span =
             std::span<const std::uint8_t>(parent.data(), got);
         const auto grain = choose_grain(parent_span);
         if (!grain) throw std::runtime_error("invalid zero K75 grain");
 
         for (std::size_t local = 0; local < got; local += grain) {
+            if (options.operation) {
+                options.operation->throw_if_cancelled();
+            }
+
             const auto bytes = std::min(grain, got - local);
             entries.push_back(encode_entry(parent_span.subspan(local, bytes)));
         }
+
         offset += got;
+
+        if (options.operation) {
+            options.operation->report({
+                OperationPhase::Compressing,
+                input.size() ? static_cast<double>(offset) / static_cast<double>(input.size()) : 1.0,
+                offset,
+                input.size(),
+                {}
+            });
+        }
     }
 
     if (entries.size() > std::numeric_limits<std::uint32_t>::max())
@@ -445,7 +475,11 @@ BackendStats NativeK75Backend::decode(
     std::span<const std::uint8_t> blob,
     std::uint64_t expected_raw_bytes,
     ByteSink& output,
-    const BackendOptions&) {
+    const BackendOptions& options) {
+
+    if (options.operation) {
+        options.operation->throw_if_cancelled();
+    }
 
     if (blob.size() < 16
         || blob[0] != 'K' || blob[1] != '7'
@@ -460,7 +494,22 @@ BackendStats NativeK75Backend::decode(
         throw std::runtime_error("K75 expected raw length mismatch");
 
     std::uint64_t output_offset = 0;
+
+    if (options.operation) {
+        options.operation->report({
+            OperationPhase::Extracting,
+            0.0,
+            0,
+            total_raw,
+            {}
+        });
+    }
+
     for (std::uint32_t i = 0; i < count; ++i) {
+        if (options.operation) {
+            options.operation->throw_if_cancelled();
+        }
+
         if (pos >= blob.size()) throw std::runtime_error("truncated K75 entry");
         const auto mode = blob[pos++];
         const auto raw_size = get_u32(blob, pos);
@@ -480,6 +529,16 @@ BackendStats NativeK75Backend::decode(
 
         output.write(output_offset, raw);
         output_offset += raw.size();
+
+        if (options.operation) {
+            options.operation->report({
+                OperationPhase::Extracting,
+                total_raw ? static_cast<double>(output_offset) / static_cast<double>(total_raw) : 1.0,
+                output_offset,
+                total_raw,
+                {}
+            });
+        }
     }
 
     if (output_offset != total_raw)
