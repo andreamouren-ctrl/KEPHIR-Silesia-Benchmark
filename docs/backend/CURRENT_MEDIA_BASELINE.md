@@ -132,3 +132,27 @@ Next backend gate:
 - expose actual EXP-37A encode/decode through IKhepriBackend using memory buffers;
 - connect native video tile motion/residual output directly to that in-process backend;
 - run first native 4K raw YUV420p smoke benchmark.
+
+
+## 2026-09-26 exact motion fast-path checkpoint
+
+Validation:
+- GitHub Actions run 36215128505
+- result: PASS
+- exhaustive-equivalence regression: PASS
+- benchmark fingerprints: identical
+
+MC8R4 optimization:
+- terminate ordered candidate search when SAD reaches 0;
+- preserves the exhaustive winner because SAD cannot be negative;
+- preserves the historical first-minimum tie rule;
+- A/B reference path remains available through `AURORA_DISABLE_EXACT_MOTION_FASTPATH`.
+
+Measured native tile-motion speed:
+- static: 2.775x, 63.97% time reduction;
+- low motion: 1.613x, 37.99% time reduction;
+- noise: 0.989x, approximately neutral.
+
+Decision:
+- promote Exact Motion Fast Path to the AURORA Media research baseline;
+- next exact-speed target: remove tile extraction/copy overhead through reference-view/zero-copy motion input.
