@@ -315,20 +315,29 @@ ArchiveFeatures ContentAnalyzer::analyze_directory(
 
     std::uint64_t dominant_files = 0;
     std::uint64_t dominant_bytes = 0;
+    std::uint64_t repeatable_bytes = 0;
     std::uint32_t groups = 0;
+    std::uint32_t multi_file_groups = 0;
     for (std::size_t i = 0; i < class_files.size(); ++i) {
         if (class_files[i] != 0) {
             ++groups;
+        }
+        if (class_files[i] >= 2) {
+            ++multi_file_groups;
+            repeatable_bytes += class_bytes[i];
         }
         dominant_files = std::max(dominant_files, class_files[i]);
         dominant_bytes = std::max(dominant_bytes, class_bytes[i]);
     }
 
     out.sampled_content_groups = groups;
+    out.multi_file_content_groups = multi_file_groups;
     out.sampled_dominant_file_fraction =
         static_cast<double>(dominant_files) / file_count;
     out.sampled_dominant_byte_fraction =
         out.logical_bytes ? static_cast<double>(dominant_bytes) / static_cast<double>(out.logical_bytes) : 0.0;
+    out.repeatable_content_byte_fraction =
+        out.logical_bytes ? static_cast<double>(repeatable_bytes) / static_cast<double>(out.logical_bytes) : 0.0;
 
     if (aggregate_sampled != 0) {
         const double n = static_cast<double>(aggregate_sampled);
