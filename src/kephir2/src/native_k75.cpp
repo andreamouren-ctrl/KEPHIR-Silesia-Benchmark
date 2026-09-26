@@ -1,6 +1,7 @@
 #include "kephir2/native_k75.hpp"
 
 #include "kephir2/native37_blob.hpp"
+#include "kephir2/factory_grain_v1.hpp"
 
 #include <algorithm>
 #include <array>
@@ -9,6 +10,7 @@
 #include <cstdint>
 #include <limits>
 #include <stdexcept>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -311,6 +313,99 @@ std::size_t choose_grain(std::span<const std::uint8_t> parent) {
     return parent.size();
 }
 
+std::string grain_feature_bucket(std::span<const std::uint8_t> parent) {
+    if (parent.empty()) return "empty";
+
+    std::vector<std::uint8_t> sample;
+    sample.reserve((parent.size() + 63u) / 64u);
+
+    std::uint64_t zero = 0;
+    std::uint64_t printable = 0;
+
+    for (std::size_t i = 0; i < parent.size(); i += 64u) {
+        const auto b = parent[i];
+        sample.push_back(b);
+        zero += b == 0 ? 1u : 0u;
+        printable +=
+            (b == 9 || b == 10 || b == 13 || (b >= 32 && b < 127))
+            ? 1u : 0u;
+    }
+
+    const double h = entropy_values(sample);
+    const double zero_fraction =
+        static_cast<double>(zero) / sample.size();
+    const double printable_fraction =
+        static_cast<double>(printable) / sample.size();
+
+    std::vector<double> parts;
+    constexpr std::size_t q = 128u * 1024u;
+    for (std::size_t offset = 0; offset < parent.size(); offset += q) {
+        const auto bytes = std::min(q, parent.size() - offset);
+        parts.push_back(sample_entropy(parent.subspan(offset, bytes), 32));
+    }
+
+    const auto [min_it, max_it] =
+        std::minmax_element(parts.begin(), parts.end());
+    const double spread =
+        parts.empty() ? 0.0 : (*max_it - *min_it);
+
+    const auto hb = std::min(7, static_cast<int>(h));
+    const auto zb = std::min(4, static_cast<int>(zero_fraction * 10.0));
+    const auto pb = std::min(4, static_cast<int>(printable_fraction * 5.0));
+    const auto sp = std::min(7, static_cast<int>(spread * 4.0));
+    const int lb =
+        parent.size() < 256u * 1024u ? 0
+        : (parent.size() < kParentBytes ? 1 : 2);
+
+    return "l" + std::to_string(lb)
+        + ":h" + std::to_string(hb)
+        + ":z" + std::to_string(zb)
+        + ":p" + std::to_string(pb)
+        + ":s" + std::to_string(sp);
+}
+
+bool valid_grain_candidate(
+    std::size_t parent_size,
+    std::size_t grain) noexcept {
+
+    if (grain == parent_size) return true;
+    if (parent_size > 128u * 1024u && grain == 128u * 1024u) return true;
+    if (parent_size > 256u * 1024u && grain == 256u * 1024u) return true;
+    return false;
+}
+
+std::size_t trusted_factory_grain(
+    std::span<const std::uint8_t> parent) {
+
+    const auto baseline = choose_grain(parent);
+    const auto key = grain_feature_bucket(parent);
+
+    double best_score = -1.0;
+    std::uint32_t best_trials = 0;
+    std::size_t best_grain = baseline;
+
+    for (const auto& rule : factory_grain::kRules) {
+        if (rule.key != key) continue;
+        if (!valid_grain_candidate(parent.size(), rule.grain)) continue;
+
+        const double trials = static_cast<double>(rule.trials);
+        const double win_rate =
+            static_cast<double>(rule.wins) / trials;
+        const double average_gain =
+            static_cast<double>(rule.gain) / trials;
+
+        const double score = average_gain * win_rate;
+        if (score > best_score
+            || (score == best_score && rule.trials > best_trials)) {
+            best_score = score;
+            best_trials = rule.trials;
+            best_grain = rule.grain;
+        }
+    }
+
+    return best_grain;
+}
+
 std::vector<std::uint8_t> transform(
     std::span<const std::uint8_t> input,
     std::uint8_t mode) {
@@ -425,7 +520,7 @@ BackendEncodeResult NativeK75Backend::encode(
 
         const auto parent_span =
             std::span<const std::uint8_t>(parent.data(), got);
-        const auto grain = choose_grain(parent_span);
+        const auto grain = trusted_factory_grain(parent_span);
         if (!grain) throw std::runtime_error("invalid zero K75 grain");
 
         for (std::size_t local = 0; local < got; local += grain) {
