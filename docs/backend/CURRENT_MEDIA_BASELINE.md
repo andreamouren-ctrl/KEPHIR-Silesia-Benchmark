@@ -412,3 +412,35 @@ Decision:
 - promote the audio format-support capability gate;
 - synthetic compression ratios from this matrix are not product claims;
 - 24/32-bit correctness is validated, but compression maturity still requires a real high-resolution corpus.
+
+
+## 2026-09-26 EXP-40 exact shared-match-cache checkpoint
+
+Validation:
+- GitHub Actions run 36226718173
+- five alternating isolated backend trials
+- three alternating 4K / 4-worker full-pipeline trials
+- K37M bitstream identity: PASS
+
+Isolated backend median:
+- EXP-37 encode: 436.207 ms
+- EXP-40 encode: 423.404 ms
+- speedup: 1.030x
+- encode time reduction: 2.94%
+- packed bytes unchanged: 126,992
+- payload fingerprint unchanged: 645283052499814098
+
+Full 4K pipeline median:
+- EXP-37 encode: 6.05345 fps
+- EXP-40 encode: 6.13279 fps
+- encode speedup: 1.013x
+- EXP-37 total: 5.48423 fps
+- EXP-40 total: 5.54564 fps
+- total speedup: 1.011x
+- payload unchanged: 256,727 bytes
+
+Decision:
+- promote shared-match-cache optimization;
+- keep K37M as the wire format;
+- treat EXP-40 as an encoder implementation optimization, not a new incompatible codec version;
+- next backend work must prioritize exact/bitstream-preserving reductions in parser cost.
