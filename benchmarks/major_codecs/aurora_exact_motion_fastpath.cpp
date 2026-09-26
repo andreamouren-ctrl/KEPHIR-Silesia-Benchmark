@@ -1,4 +1,5 @@
 #include "AuroraVideoMotion.h"
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <iostream>
