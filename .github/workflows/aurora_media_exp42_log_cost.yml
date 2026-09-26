@@ -1,0 +1,154 @@
+name: AURORA Media EXP42 Log Cost Cache
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["research/khepri-stream-codec"]
+  push:
+    branches: ["feature/aurora-media-exp42-log-cost-cache"]
+    paths:
+      - ".github/workflows/aurora_media_exp42_log_cost.yml"
+      - "make_exp42_source.py"
+      - "src/cpp/aurora_media/AuroraKhepriExp42MemoryAdapter.*"
+      - "benchmarks/major_codecs/aurora_khepri_exp42_backend_ab.cpp"
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+
+      - name: Generate EXP-40 and EXP-42
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          python3 make_exp37_source.py
+          python3 make_exp40_source.py
+          python3 make_exp42_source.py
+
+      - name: Build EXP-40 baseline
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -DNO_INTERNAL_VERIFY \
+            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 \
+            -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 \
+            -DK2_SHARED_MATCH_CACHE_MODE=1 \
+            -pthread -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraKhepriExp40MemoryAdapter.cpp \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            src/cpp/aurora_media/AuroraVideoResidual.cpp \
+            benchmarks/major_codecs/aurora_khepri_exp42_backend_ab.cpp \
+            -Isrc/cpp/aurora_media -o media_exp40
+
+      - name: Build EXP-42 exact log-cost-cache candidate
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -DNO_INTERNAL_VERIFY -DAURORA_KHEPRI_EXP42 \
+            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 \
+            -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 \
+            -DK2_SHARED_MATCH_CACHE_MODE=1 \
+            -pthread -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraKhepriExp42MemoryAdapter.cpp \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            src/cpp/aurora_media/AuroraVideoResidual.cpp \
+            benchmarks/major_codecs/aurora_khepri_exp42_backend_ab.cpp \
+            -Isrc/cpp/aurora_media -o media_exp42
+
+      - name: Run repeated alternating backend A/B
+        run: |
+          : > exp42_backend_ab.txt
+          for i in 1 2 3 4 5 6 7; do
+            echo "=== ROUND $i ===" | tee -a exp42_backend_ab.txt
+            if [ $((i % 2)) -eq 1 ]; then
+              ./media_exp40 | tee -a exp42_backend_ab.txt
+              ./media_exp42 | tee -a exp42_backend_ab.txt
+            else
+              ./media_exp42 | tee -a exp42_backend_ab.txt
+              ./media_exp40 | tee -a exp42_backend_ab.txt
+            fi
+          done
+
+      - name: Validate K37M byte identity and summarize
+        run: |
+          python3 - <<'PY' | tee exp42_backend_summary.txt
+          import re
+          import statistics
+          from pathlib import Path
+
+          rows=[]
+          for line in Path("exp42_backend_ab.txt").read_text().splitlines():
+              if line.startswith("AURORA_KHEPRI_MEDIA_BACKEND_PASS "):
+                  rows.append(dict(re.findall(r"(\w+)=([^ ]+)",line)))
+
+          groups={}
+          for row in rows:
+              groups.setdefault(row["backend"],[]).append(row)
+
+          base=groups.get("EXP37_DUAL",[])
+          cand=groups.get("EXP42_LOG_COST_CACHE",[])
+
+          # The baseline executable uses the EXP-40 adapter but the benchmark
+          # source historically labels the non-candidate side EXP37_DUAL.
+          if len(base)!=7 or len(cand)!=7:
+              raise SystemExit(
+                  f"expected 7 trials/backend, got {len(base)} and {len(cand)}; "
+                  f"labels={list(groups)}"
+              )
+
+          reference=base[0]
+          for row in base+cand:
+              for key in ("tiles","input_bytes","input_fingerprint"):
+                  if row[key]!=reference[key]:
+                      raise SystemExit(f"input mismatch: {key}")
+              if row["packed_bytes"]!=reference["packed_bytes"]:
+                  raise SystemExit("packed byte count changed")
+              if row["payload_fingerprint"]!=reference["payload_fingerprint"]:
+                  raise SystemExit("payload fingerprint changed")
+
+          def med(group,key):
+              return statistics.median(float(x[key]) for x in group)
+
+          b_enc=med(base,"encode_ms")
+          c_enc=med(cand,"encode_ms")
+          b_dec=med(base,"decode_ms")
+          c_dec=med(cand,"decode_ms")
+          speed=b_enc/c_enc
+          enc_reduction=(1.0-c_enc/b_enc)*100.0
+          dec_delta=(c_dec/b_dec-1.0)*100.0
+
+          print("AURORA_MEDIA_EXP42_REPEATED_AB")
+          print("BITSTREAM_IDENTITY=PASS")
+          print(
+              "encode_median",
+              f"exp40_ms={b_enc:.6f}",
+              f"exp42_ms={c_enc:.6f}",
+              f"speedup_x={speed:.3f}",
+              f"time_reduction_pct={enc_reduction:.2f}",
+          )
+          print(
+              "decode_median",
+              f"exp40_ms={b_dec:.6f}",
+              f"exp42_ms={c_dec:.6f}",
+              f"delta_pct={dec_delta:.2f}",
+          )
+
+          candidate=(c_enc <= b_enc*0.985 and c_dec <= b_dec*1.03)
+          print("EXP42_MEDIA_CANDIDATE",str(candidate).lower())
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-media-exp42-log-cost
+          path: |
+            exp42_backend_ab.txt
+            exp42_backend_summary.txt
