@@ -8,10 +8,12 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <future>
 #include <limits>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -675,12 +677,57 @@ BackendStats NativeK75Backend::decode(
         || blob[2] != '5' || blob[3] != 'U')
         throw std::runtime_error("not a K75U backend blob");
 
+    struct EntryView {
+        std::uint8_t mode{0};
+        std::uint32_t raw_size{0};
+        std::size_t compressed_offset{0};
+        std::uint32_t compressed_size{0};
+    };
+
     std::size_t pos = 4;
     const auto total_raw = get_u64(blob, pos);
     const auto count = get_u32(blob, pos);
 
     if (expected_raw_bytes != 0 && expected_raw_bytes != total_raw)
         throw std::runtime_error("K75 expected raw length mismatch");
+
+    std::vector<EntryView> entries;
+    entries.reserve(count);
+
+    std::uint64_t declared_raw = 0;
+    for (std::uint32_t i = 0; i < count; ++i) {
+        if (pos >= blob.size())
+            throw std::runtime_error("truncated K75 entry");
+
+        EntryView entry;
+        entry.mode = blob[pos++];
+        entry.raw_size = get_u32(blob, pos);
+        entry.compressed_size = get_u32(blob, pos);
+
+        if (entry.compressed_size > blob.size() - pos)
+            throw std::runtime_error("truncated K75 compressed payload");
+
+        entry.compressed_offset = pos;
+        pos += entry.compressed_size;
+
+        if (entry.raw_size > total_raw - declared_raw)
+            throw std::runtime_error("K75 declared raw length overflow");
+        declared_raw += entry.raw_size;
+        entries.push_back(entry);
+    }
+
+    if (declared_raw != total_raw)
+        throw std::runtime_error("K75 declared total length mismatch");
+    if (pos != blob.size())
+        throw std::runtime_error("K75 trailing bytes");
+
+    std::size_t workers = options.workers;
+    if (workers == 0) {
+        workers = std::thread::hardware_concurrency();
+        if (workers == 0) workers = 1;
+    }
+    workers = std::clamp<std::size_t>(workers, 1, 16);
+    workers = std::min<std::size_t>(workers, entries.size() ? entries.size() : 1);
 
     std::uint64_t output_offset = 0;
 
@@ -694,51 +741,73 @@ BackendStats NativeK75Backend::decode(
         });
     }
 
-    for (std::uint32_t i = 0; i < count; ++i) {
+    for (std::size_t batch = 0; batch < entries.size(); batch += workers) {
         if (options.operation) {
             options.operation->throw_if_cancelled();
         }
 
-        if (pos >= blob.size()) throw std::runtime_error("truncated K75 entry");
-        const auto mode = blob[pos++];
-        const auto raw_size = get_u32(blob, pos);
-        const auto compressed_size = get_u32(blob, pos);
-        if (compressed_size > blob.size() - pos)
-            throw std::runtime_error("truncated K75 compressed payload");
+        const auto batch_count =
+            std::min<std::size_t>(workers, entries.size() - batch);
 
-        const auto compressed = blob.subspan(pos, compressed_size);
-        pos += compressed_size;
+        std::vector<std::future<std::vector<std::uint8_t>>> futures;
+        futures.reserve(batch_count);
 
-        auto transformed = native37::decode_aur2_blob(compressed);
-        auto raw = inverse(transformed, mode, raw_size);
-        if (raw.size() != raw_size)
-            throw std::runtime_error("K75 inverse transform length mismatch");
-        if (output_offset > total_raw || raw.size() > total_raw - output_offset)
-            throw std::runtime_error("K75 decoded output overflow");
+        for (std::size_t j = 0; j < batch_count; ++j) {
+            const auto entry = entries[batch + j];
+            futures.push_back(std::async(
+                std::launch::async,
+                [blob, entry]() {
+                    const auto compressed = blob.subspan(
+                        entry.compressed_offset,
+                        entry.compressed_size);
+                    auto transformed =
+                        native37::decode_aur2_blob(compressed);
+                    auto raw =
+                        inverse(transformed, entry.mode, entry.raw_size);
+                    if (raw.size() != entry.raw_size)
+                        throw std::runtime_error(
+                            "K75 inverse transform length mismatch");
+                    return raw;
+                }));
+        }
 
-        output.write(output_offset, raw);
-        output_offset += raw.size();
+        for (auto& future : futures) {
+            if (options.operation) {
+                options.operation->throw_if_cancelled();
+            }
 
-        if (options.operation) {
-            options.operation->report({
-                OperationPhase::Extracting,
-                total_raw ? static_cast<double>(output_offset) / static_cast<double>(total_raw) : 1.0,
-                output_offset,
-                total_raw,
-                {}
-            });
+            auto raw = future.get();
+
+            if (output_offset > total_raw
+                || raw.size() > total_raw - output_offset) {
+                throw std::runtime_error("K75 decoded output overflow");
+            }
+
+            output.write(output_offset, raw);
+            output_offset += raw.size();
+
+            if (options.operation) {
+                options.operation->report({
+                    OperationPhase::Extracting,
+                    total_raw
+                        ? static_cast<double>(output_offset)
+                            / static_cast<double>(total_raw)
+                        : 1.0,
+                    output_offset,
+                    total_raw,
+                    {}
+                });
+            }
         }
     }
 
     if (output_offset != total_raw)
         throw std::runtime_error("K75 decoded total length mismatch");
-    if (pos != blob.size())
-        throw std::runtime_error("K75 trailing bytes");
 
     BackendStats stats;
     stats.input_bytes = blob.size();
     stats.output_bytes = total_raw;
-    stats.workers_used = count ? 1 : 0;
+    stats.workers_used = entries.empty() ? 0 : workers;
     return stats;
 }
 
