@@ -1,4 +1,5 @@
 name: KASH-03 Multi-Corpus Validation
+# Frozen-rule validation: the KASH-02 threshold is not retrained here.
 
 on:
   workflow_dispatch:
