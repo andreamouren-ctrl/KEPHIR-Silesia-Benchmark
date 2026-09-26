@@ -44,8 +44,10 @@ struct ArchiveFeatures {
 
     // Content-first diversity from the bounded sample.
     std::uint32_t sampled_content_groups{0};
+    std::uint32_t multi_file_content_groups{0};
     double sampled_dominant_file_fraction{1.0};
     double sampled_dominant_byte_fraction{1.0};
+    double repeatable_content_byte_fraction{0.0};
 };
 
 struct LayoutProbe {
