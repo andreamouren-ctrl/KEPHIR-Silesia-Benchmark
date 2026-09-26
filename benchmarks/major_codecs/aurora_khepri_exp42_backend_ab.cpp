@@ -3,9 +3,9 @@
 using Backend = aurora::media::AuroraKhepriExp42MemoryAdapter;
 static constexpr const char* kBackendName = "EXP42_LOG_COST_CACHE";
 #else
-#include "AuroraKhepriExp37MemoryAdapter.h"
-using Backend = aurora::media::AuroraKhepriExp37MemoryAdapter;
-static constexpr const char* kBackendName = "EXP37_DUAL";
+#include "AuroraKhepriExp40MemoryAdapter.h"
+using Backend = aurora::media::AuroraKhepriExp40MemoryAdapter;
+static constexpr const char* kBackendName = "EXP40_SHARED_CACHE";
 #endif
 
 #include "AuroraVideoMotion.h"
