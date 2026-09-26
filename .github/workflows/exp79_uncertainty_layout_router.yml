@@ -53,7 +53,7 @@ jobs:
         run: |
           python3 - <<'PY'
           import json
-          d=json.load(open("exp78_results.json"))
+          d=json.load(open("exp79_results.json"))
           for name,ds in d["datasets"].items():
               assert ds["full_smart"]["sha_ok"]
               assert ds["full_flat"]["sha_ok"]
@@ -83,5 +83,5 @@ jobs:
         with:
           name: exp79-uncertainty-router-results
           path: |
-            exp78_results.json
+            exp79_results.json
             exp77_results.json
