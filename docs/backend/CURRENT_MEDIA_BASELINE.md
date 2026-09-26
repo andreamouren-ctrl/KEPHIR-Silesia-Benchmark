@@ -621,3 +621,39 @@ New priority:
 - current MC8R4 samples displacement at 2-pixel increments only;
 - radius 4 therefore evaluates 25 even-coordinate vectors and never tests odd integer displacement;
 - next experiment: KSV-17 dense integer motion, 81 vectors in the same one-byte motion map.
+
+
+## 2026-09-26 KSV-17 dense integer motion checkpoint
+
+Run 36235092271:
+- sparse baseline: 24,782,482 bytes
+- dense integer MC8R4: 24,264,464 bytes
+- sparse+dense oracle: 24,263,769 bytes
+- dense improvement: 518,018 bytes / 2.0903%
+- oracle improvement: 518,713 bytes / 2.0931%
+- all streams bit-exact
+
+Per-source dense delta:
+- container: +0.0162% regression
+- coastguard: -1.4940%
+- mobile: -5.7857%
+- football: -0.5702%
+- stefan: -1.4441%
+
+Mean fraction of dense-selected blocks using at least one odd displacement component:
+- container 7.10%
+- coastguard 36.63%
+- mobile 67.48%
+- football 46.62%
+- stefan 29.14%
+
+Research encode cost:
+- baseline path: 64.257 s
+- dense path: 161.367 s
+- approximately 2.51x baseline
+
+Decision:
+- exhaustive 81-candidate dense search is not production-ready;
+- dense integer motion becomes the new compression-quality target;
+- next experiment: KSV-18 hierarchical dense refinement around the best sparse-even vector;
+- promotion target: recover >=90% of KSV-17 gain at materially lower search cost.
