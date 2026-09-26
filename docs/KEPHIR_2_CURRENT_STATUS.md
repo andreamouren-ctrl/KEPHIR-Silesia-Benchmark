@@ -780,9 +780,17 @@ Correctness:    8/8 → 8/8
 Regret:         0 B → 0 B
 ```
 
-The single-content-class dominance rule is also promoted into the native C++ Global Router and the full native Core Smoke suite remains **PASS**.
+The complete EXP-84 probe policy is now promoted into the native C++ Global Router and Compression Planner contract.
 
-EXP-84 is the current AUTO router candidate pending comparison with the parallel EXP-85 adaptive-budget run and further workload expansion.
+Native AUTO decisions can now explicitly return:
+- no probe for single-content-class FLAT dominance;
+- full-input probe for heterogeneous directories <= 1 MiB;
+- 512 KiB initial probe for larger heterogeneous directories;
+- 2 MiB maximum extended probe for unresolved cases.
+
+The full native Core Smoke suite remains **PASS** after this promotion.
+
+EXP-84 is the canonical AUTO router policy.
 
 ---
 
@@ -965,9 +973,9 @@ KEPHIR 2
             ├── EXP-84 routing ......... 3.91 s aggregate
             ├── EXP-85 ................. 8/8, 0 B, 5.71 s, not selected
             ├── Router Matrix v1 ....... FROZEN
-            ├── Native EXP-82 policy ... PASS
+            ├── Native EXP-84 policy ... PASS
             ├── Routing SHA ............ PASS
-            └── Next ................... EXP-84 deterministic-dominance router
+            └── Next ................... EXP-86 cheap groupability estimator
 ```
 
 ---
