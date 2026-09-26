@@ -17,7 +17,7 @@ so KSV-19 H2 reuses the K17D wire format and decoder unchanged.
 
 Policies emitted:
 - baseline: TEMP / sparse MC8R4 MOD8 / sparse MC8R4 ZZ;
-- h1: TEMP / H2 FLOOR+TRUNC, each MOD8+ZZ;
+- h2: TEMP / H2 FLOOR+TRUNC, each MOD8+ZZ;
 - dense: TEMP / exhaustive KSV-17 FLOOR+TRUNC, each MOD8+ZZ.
 
 All emitted streams are decoded and SHA verified.
@@ -567,7 +567,7 @@ def encode_source(
             temp, sparse, sparse_seconds = baseline_candidates(
                 chunk, exe, tmp, w, h, fpsn, fpsd, gop, f"w{window_index}"
             )
-            h1, h2_seconds = h2_candidates_for_window(
+            h2_rows, h2_seconds = h2_candidates_for_window(
                 chunk, exe, tmp, w, h, fpsn, fpsd, gop, f"w{window_index}"
             )
             dense, dense_seconds = dense_candidates(
@@ -575,7 +575,7 @@ def encode_source(
             )
 
             baseline = choose([temp, *sparse])
-            h2_policy = choose([temp, *h1])
+            h2_policy = choose([temp, *h2_rows])
             dense_policy = choose([temp, *dense])
 
             for e in (baseline, h2_policy, dense_policy):
@@ -587,14 +587,14 @@ def encode_source(
 
             temp_cost = temp["frontend_seconds"] + temp["backend_seconds"]
             sparse_cost = sparse_seconds + sum(x["backend_seconds"] for x in sparse)
-            h2_cost = h2_seconds + sum(x["backend_seconds"] for x in h1)
+            h2_cost = h2_seconds + sum(x["backend_seconds"] for x in h2_rows)
             dense_cost = dense_seconds + sum(x["backend_seconds"] for x in dense)
 
             baseline_research_seconds += temp_cost + sparse_cost
             h2_research_seconds += temp_cost + h2_cost
             dense_research_seconds += temp_cost + dense_cost
 
-            best_h1 = choose(h1)
+            best_h2 = choose(h2_rows)
             best_dense = choose(dense)
 
             windows.append({
@@ -605,19 +605,19 @@ def encode_source(
                 "dense_selected": dense_policy["label"],
                 "h2_bytes": len(h2_policy["payload"]),
                 "dense_bytes": len(dense_policy["payload"]),
-                "h2_search_seconds": best_h1["search_seconds"],
+                "h2_search_seconds": best_h2["search_seconds"],
                 "dense_search_seconds": best_dense["search_seconds"],
                 "h2_mean_candidate_evaluations": best_h1[
                     "mean_candidate_evaluations"
                 ],
-                "h2_mean_odd_fraction": best_h1["mean_odd_fraction"],
+                "h2_mean_odd_fraction": best_h2["mean_odd_fraction"],
                 "dense_mean_odd_fraction": best_dense["mean_odd_fraction"],
             })
 
     paths = {
-        "baseline": prefix.with_suffix(".baseline.k18"),
-        "h2": prefix.with_suffix(".h1.k18"),
-        "dense": prefix.with_suffix(".dense.k18"),
+        "baseline": prefix.with_suffix(".baseline.k19"),
+        "h2": prefix.with_suffix(".h2.k19"),
+        "dense": prefix.with_suffix(".dense.k19"),
     }
 
     for key, entries in (
@@ -786,7 +786,7 @@ def main():
         ],
     }
 
-    (OUT / "KSV18_RESULTS.json").write_text(json.dumps(result, indent=2))
+    (OUT / "KSV19_RESULTS.json").write_text(json.dumps(result, indent=2))
 
     print("KSV19_HIERARCHICAL_DENSE_H2_PASS")
     print(
