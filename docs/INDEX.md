@@ -22,3 +22,9 @@
 ## Product split
 - general-purpose compressor → `project/aurora-compressor`
 - audio/video codec → `project/aurora-media`
+
+
+## KEPHIR 2 active development
+
+- `KEPHIR_2_CURRENT_STATUS.md` — canonical live checkpoint for KEPHIR 2. Updated after every meaningful milestone with current architecture, promoted/rejected experiments, verified benchmark results, regressions, and the immediate next objective.
+- `architecture/KEPHIR_2_PRODUCT_PLAN.md` — long-term product engineering direction and commercial architecture plan.
