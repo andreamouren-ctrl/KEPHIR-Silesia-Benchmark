@@ -6,6 +6,7 @@ Layouts:
   1 CARRY_PACKED       - KMRL-0 style fields, predictor history carried inside a chunk.
   2 FULL_256_PLANES    - residual bytes transposed into 256-position planes.
   3 CLASS_FULL_PLANES  - full planes plus an explicit 256-byte residual-class plane.
+  4 FULL256_TAIL16     - promoted FULL256 geometry with 16-byte tail trimming.
 
 All prediction state resets at the outer stream chunk boundary.
 """
@@ -187,6 +188,58 @@ def dec_fullplanes(buf,pos,n,with_class):
     return us,pos
 
 
+def enc_tail16(us):
+    """FULL256 plane layout with lossless 16-byte tail trimming."""
+    pc=plane_count(us)
+    out=bytearray([pc])
+    n=len(us)
+    for sh in range(0,8*pc,8):
+        plane=bytearray((u>>sh)&255 for u in us)
+        if n<TILE:
+            plane.extend(b"\0"*(TILE-n))
+        last=-1
+        for i in range(TILE-1,-1,-1):
+            if plane[i]:
+                last=i
+                break
+        units=0 if last<0 else ((last+16)//16)
+        if units>16:
+            units=16
+        out.append(units)
+        out.extend(plane[:units*16])
+    return bytes(out)
+
+
+def dec_tail16(buf,pos,n):
+    """Decode FULL256 TAIL16 planes and restore implicit zero tails."""
+    if pos>=len(buf):
+        raise ValueError("truncated plane count")
+    pc=buf[pos]; pos+=1
+    if pc<1 or pc>4:
+        raise ValueError("bad plane count")
+    planes=[]
+    for _ in range(pc):
+        if pos>=len(buf):
+            raise ValueError("truncated tail16 length")
+        units=buf[pos]; pos+=1
+        if units>16:
+            raise ValueError("bad tail16 units")
+        take=units*16
+        if pos+take>len(buf):
+            raise ValueError("truncated tail16 plane")
+        plane=bytearray(TILE)
+        plane[:take]=buf[pos:pos+take]
+        pos+=take
+        planes.append(plane)
+    us=[]
+    for i in range(n):
+        u=0
+        for p in range(pc):
+            u |= planes[p][i] << (8*p)
+        us.append(u)
+    return us,pos
+
+
 def components(samples,channels):
     if channels==2:
         a=[];b=[]
@@ -234,6 +287,8 @@ def encode_payload(samples,channels,frames,layout):
                 out.extend(enc_fullplanes(us,False))
             elif layout==3:
                 out.extend(enc_fullplanes(us,True))
+            elif layout==4:
+                out.extend(enc_tail16(us))
             else:
                 raise ValueError("bad layout")
             histories[c].extend(vals)
@@ -258,6 +313,8 @@ def decode_payload(payload,channels,frames,layout):
                 us,pos=dec_fullplanes(payload,pos,n,False)
             elif layout==3:
                 us,pos=dec_fullplanes(payload,pos,n,True)
+            elif layout==4:
+                us,pos=dec_tail16(payload,pos,n)
             else:
                 raise ValueError("bad layout")
             hist=list(histories[c])
@@ -294,7 +351,7 @@ def decode_file(src:Path,dst:Path):
     data=src.read_bytes()
     if len(data)<HDR.size: raise SystemExit("truncated")
     magic,ver,layout,ch,bits,rate,bms,total=HDR.unpack_from(data,0)
-    if magic!=MAGIC or ver!=VERSION or layout not in (1,2,3) or bits!=16: raise SystemExit("unsupported")
+    if magic!=MAGIC or ver!=VERSION or layout not in (1,2,3,4) or bits!=16: raise SystemExit("unsupported")
     pos=HDR.size;got=0;out=bytearray()
     while got<total:
         if pos+CHUNK.size>len(data): raise SystemExit("truncated chunk")
@@ -313,7 +370,7 @@ def main():
     sp=ap.add_subparsers(dest="cmd",required=True)
     e=sp.add_parser("encode");e.add_argument("src",type=Path);e.add_argument("dst",type=Path)
     e.add_argument("--channels",type=int,required=True);e.add_argument("--rate",type=int,required=True)
-    e.add_argument("--block-ms",type=int,default=20);e.add_argument("--layout",type=int,choices=(1,2,3),required=True)
+    e.add_argument("--block-ms",type=int,default=20);e.add_argument("--layout",type=int,choices=(1,2,3,4),required=True)
     d=sp.add_parser("decode");d.add_argument("src",type=Path);d.add_argument("dst",type=Path)
     a=ap.parse_args()
     if a.cmd=="encode": encode_file(a.src,a.dst,a.channels,a.rate,a.block_ms,a.layout)
