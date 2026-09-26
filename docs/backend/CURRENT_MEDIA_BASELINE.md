@@ -514,3 +514,37 @@ Decision:
 - keep K37M as the wire format;
 - treat EXP-40 as an encoder implementation optimization, not a new incompatible codec version;
 - next backend work must prioritize exact/bitstream-preserving reductions in parser cost.
+
+
+## 2026-09-26 natural video corpus v1 checkpoint
+
+Validation:
+- GitHub Actions run 36228719982
+- five real uncompressed Xiph video sources
+- 60 frames/source
+- all available codec outputs SHA-256 verified
+
+Aggregate raw:
+- 44,098,560 bytes
+
+Aggregate final sizes:
+- AV1 lossless: 18,279,836 bytes / 41.452%
+- VP9 lossless: 18,705,614 bytes / 42.418%
+- HEVC lossless: 18,802,467 bytes / 42.637%
+- H.264 lossless: 18,943,463 bytes / 42.957%
+- FFV1: 21,939,299 bytes / 49.751%
+- AURORA Media: 24,821,317 bytes / 56.286%
+
+AURORA versus FFV1:
+- aggregate: +13.136% larger
+- container low-motion: -7.064% smaller
+- coastguard camera-motion: +8.095% larger
+- mobile texture/pan: +9.282% larger
+- football high-motion: +41.637% larger
+- stefan human-motion: +14.219% larger
+
+Decision:
+- natural-content validation becomes a required promotion gate;
+- do not claim broad video compression superiority;
+- current primary compression weakness is motion prediction on medium/high-motion content;
+- next experiment: KSV-13 radius-4 versus radius-6 natural-corpus sweep before designing a hierarchical wide-motion search.
