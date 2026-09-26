@@ -24,7 +24,7 @@ constexpr std::size_t kParentBytes = 512u * 1024u;
 constexpr std::array<std::string_view, 32> kTextTokens{
     " the "," and ","ing","tion"," of "," to "," in "," that ",
     " is "," for ","ed ","er ","re ","en ","on ","at ",
-    "\n","</","/>","http","www.","=\"","<!--","-->",
+    "\\n","</","/>","http","www.","=\"","<!--","-->",
     "data","this","with","from","have","not "," as "," by "
 };
 
