@@ -20,10 +20,28 @@ constexpr double kGroupabilityMinAverageFileBytes = 512.0 * 1024.0;
 constexpr double kGroupabilityMinRepeatableByteFraction = 0.60;
 constexpr double kGroupabilityMaxDominantByteFraction = 0.75;
 
+constexpr double kMediumGroupabilityMinAverageFileBytes = 32.0 * 1024.0;
+constexpr std::uint64_t kMediumGroupabilityMinFiles = 16;
+constexpr std::uint32_t kMediumGroupabilityMinMultiGroups = 3;
+constexpr double kMediumGroupabilityMinRepeatableByteFraction = 0.75;
+constexpr double kMediumGroupabilityMinMixedParentFraction = 0.05;
+
 bool groupability_smart_candidate(const ArchiveFeatures& features) noexcept {
-    return features.average_file_bytes >= kGroupabilityMinAverageFileBytes
+    const bool large_repeated =
+        features.average_file_bytes >= kGroupabilityMinAverageFileBytes
         && features.repeatable_content_byte_fraction >= kGroupabilityMinRepeatableByteFraction
         && features.sampled_dominant_byte_fraction <= kGroupabilityMaxDominantByteFraction;
+
+    const bool medium_repeated_mixing =
+        features.file_count >= kMediumGroupabilityMinFiles
+        && features.average_file_bytes >= kMediumGroupabilityMinAverageFileBytes
+        && features.multi_file_content_groups >= kMediumGroupabilityMinMultiGroups
+        && features.repeatable_content_byte_fraction
+            >= kMediumGroupabilityMinRepeatableByteFraction
+        && features.flat_mixed_parent_byte_fraction
+            >= kMediumGroupabilityMinMixedParentFraction;
+
+    return large_repeated || medium_repeated_mixing;
 }
 
 bool sample_is_representative(const ArchiveFeatures& features) noexcept {
@@ -69,6 +87,12 @@ StrategyPlan GlobalRouter::plan(
     if (features.file_count == 0) {
         out.layout = Layout::Flat;
     } else if (features.sampled_content_groups == 1) {
+        out.layout = Layout::Flat;
+    } else if (features.flat_parent_count != 0
+        && features.flat_mixed_parent_count == 0) {
+        // EXP-94 structural dominance for the current 512 KiB parent backend:
+        // every FLAT parent is already content-pure. SMART cannot gain from
+        // class separation and only adds directory-group framing overhead.
         out.layout = Layout::Flat;
     } else if (probe && probe->valid()) {
         const auto measured_layout = (probe->smart_archive_bytes < probe->flat_archive_bytes)
