@@ -350,3 +350,36 @@ Decision:
 - fixed 2-second recovery remains the canonical production baseline;
 - KASH stays research-only until a substantially broader corpus exists;
 - do not increase classifier complexity on the current small corpus.
+
+
+## 2026-09-26 hardware-adaptive worker autotune checkpoint
+
+Validation:
+- GitHub Actions run 36224964385
+- unit policy test: PASS
+- full native 4K pipeline: PASS
+- payload unchanged: 256,727 bytes
+
+Runner:
+- hardware_concurrency: 4
+- Balanced profile cap: 6
+- valid probe candidates: 1, 2, 4
+
+Measured 4K autotune probes:
+- 1 worker: 1.96857 total fps
+- 2 workers: 3.89652 total fps
+- 4 workers: 5.58908 total fps
+
+Selection:
+- selected: 4 workers
+- fastest valid candidate: 4 workers
+- selection overhead versus fastest: 0.000%
+
+A separate manual 8-worker run reached 5.63084 total fps, only ~0.75% above four workers while
+oversubscribing the runner's reported four hardware threads.
+
+Decision:
+- promote Worker Autotune infrastructure;
+- do not hard-code a universal worker count;
+- production policy is to probe a small bounded candidate set per machine/profile and select the
+  fastest non-oversubscribed configuration, preferring fewer workers when timings are effectively tied.
