@@ -824,7 +824,64 @@ Decision:
 
 ---
 
-## 18. Current validated facts
+## 18. EXP-86 — Cheap Cross-File Groupability Estimator
+
+Status:
+
+**VALIDATED ON MATRIX v1 / HOLDOUT REQUIRED**
+
+EXP-86 removes SMART/FLAT compression probes from the routing decision.
+
+Cheap structural features:
+
+- number of content families;
+- average file size;
+- fraction of bytes in families represented by at least two files;
+- dominant-family byte fraction.
+
+Current experimental SMART gate:
+
+```text
+average file size >= 512 KiB
+AND repeatable-family bytes >= 60%
+AND dominant family <= 75%
+```
+
+Single-content-family directories retain deterministic FLAT dominance.
+
+Result on Canonical Router Matrix v1:
+
+```text
+Correct selections: 8 / 8
+Selection accuracy: 100%
+Total regret:       0 bytes
+Routing time:       1.60 s aggregate
+SHA roundtrip:      PASS
+```
+
+Routing examples:
+
+```text
+repository      0.205 s  FLAT
+Silesia         0.054 s  SMART
+mixed_content   0.014 s  FLAT
+```
+
+Comparison:
+
+```text
+EXP-82 routing: 41.96 s
+EXP-84 routing:  3.91 s
+EXP-86 routing:  1.60 s
+```
+
+EXP-86 is approximately 2.4x faster than EXP-84 on Matrix v1 while preserving zero regret.
+
+It is **not promoted yet** because the decision thresholds were derived from a small workload set. A new holdout matrix is required before native promotion.
+
+---
+
+## 19. Current validated facts
 
 At the present checkpoint:
 
@@ -842,7 +899,7 @@ At the present checkpoint:
 
 ---
 
-## 19. Current product architecture priority
+## 20. Current product architecture priority
 
 The current production path now contains both the native Content Analyzer and the native Global Router:
 
@@ -862,7 +919,7 @@ The next architectural task is to validate this decision layer over a broader wo
 
 ---
 
-## 20. Validation matrix still required
+## 21. Validation matrix still required
 
 Before EXP-79 can be declared the final production Global Router, it must be tested on:
 
@@ -891,7 +948,7 @@ For every workload, record:
 
 ---
 
-## 21. Current engineering rules
+## 22. Current engineering rules
 
 Every future milestone must follow:
 
@@ -916,34 +973,35 @@ Production functionality should progressively migrate into the native KEPHIR 2 C
 
 ---
 
-## 22. Immediate next milestone
+## 23. Immediate next milestone
 
-**Native EXP-84 Probe Policy + EXP-86 Cheap Groupability Estimator**
+**EXP-87 — Groupability Holdout Validation**
 
-Immediate production task:
+Goal:
 
-Expose EXP-84 probe requirements through the native Compression Planner:
+Test the EXP-86 no-compression-probe estimator against unseen workload shapes rather than tuning further on Router Matrix v1.
 
-- single content class → no probe / FLAT;
-- <=1 MiB heterogeneous → full-input probe;
-- larger heterogeneous → 512 KiB initial probe;
-- maximum extended probe → 2 MiB.
+Router Matrix v2 holdout must add cases such as:
 
-Research task:
+- two large repeated content classes;
+- large one-file-per-class directory;
+- balanced medium repeated classes;
+- dominant class plus large minority classes;
+- many medium files split across several classes;
+- imbalanced two-class large directory.
 
-Develop EXP-86 to replace the remaining expensive KEPHIR micro-compression probes on heterogeneous workloads with a much cheaper groupability/predictive estimator.
+EXP-86 thresholds remain frozen during the first holdout run.
 
-Acceptance criteria for EXP-86:
+Acceptance criteria:
 
-- preserve 8/8 correctness on Canonical Router Matrix v1;
-- preserve 0 B regret;
-- all SHA PASS for oracle verification;
-- routing materially below EXP-84's 3.91 s;
-- no filename/extension dependence.
+- record oracle SMART/FLAT for every new workload;
+- no threshold tuning before first result;
+- SHA PASS on every oracle run;
+- report correct selections and regret separately for Matrix v1 and holdout v2;
+- only promote the estimator natively if holdout behavior is robust.
 
 ---
-
-## 23. Current checkpoint summary
+## 24. Current checkpoint summary
 
 ```text
 KEPHIR 1.0
@@ -972,15 +1030,16 @@ KEPHIR 2
             ├── EXP-84 ................. CANONICAL AUTO, 8/8, 0 B
             ├── EXP-84 routing ......... 3.91 s aggregate
             ├── EXP-85 ................. 8/8, 0 B, 5.71 s, not selected
+            ├── EXP-86 ................. 8/8, 0 B, 1.60 s, HOLDOUT REQUIRED
             ├── Router Matrix v1 ....... FROZEN
             ├── Native EXP-84 policy ... PASS
             ├── Routing SHA ............ PASS
-            └── Next ................... EXP-86 cheap groupability estimator
+            └── Next ................... EXP-87 groupability holdout validation
 ```
 
 ---
 
-## 24. Update policy
+## 25. Update policy
 
 This document is mandatory project state.
 
