@@ -932,7 +932,69 @@ This defines EXP-88.
 
 ---
 
-## 20. Current validated facts
+## 20. EXP-88 — Hybrid Groupability Gate
+
+Status:
+
+**PROMOTED**
+
+EXP-88 combines the cheap EXP-86 groupability estimator with EXP-84 measured evidence.
+
+Policy:
+
+```text
+single content class
+    → FLAT directly
+
+cheap groupability gate says FLAT
+    → FLAT directly
+
+cheap groupability gate says SMART candidate
+    → require EXP-84 bounded probe
+    → preserve measured direction
+```
+
+The cheap gate is therefore asymmetric by design:
+
+> It may eliminate a probe for a conservative FLAT decision, but it may never authorize SMART without measured compression evidence.
+
+Validation on Matrix v1 + holdout v2:
+
+```text
+Correct selections: 16 / 16
+Selection accuracy: 100%
+Total regret:       0 bytes
+Routing time:       3.707 s aggregate
+SHA roundtrip:      PASS on all 16 datasets
+```
+
+Breakdown:
+
+```text
+Matrix v1:  8/8 correct, 0 B regret, 1.296 s routing
+Holdout v2: 8/8 correct, 0 B regret, 2.411 s routing
+```
+
+EXP-88 correctly recovered all four false-SMART failures from EXP-87 by requiring the measured EXP-84 probe.
+
+Native promotion:
+
+- `ArchiveFeatures` now includes multi-file content-group count and repeatable-content byte fraction;
+- Native Content Analyzer computes the new groupability statistics;
+- Native Global Router contains the EXP-88 conservative FLAT gate;
+- positive SMART candidates still request the EXP-84 bounded probe;
+- regression tests cover false-SMART holdout behavior;
+- full Core Smoke and Python↔C++ classifier parity remain **PASS**.
+
+Decision:
+
+**EXP-88 is now the canonical KEPHIR 2 AUTO pre-routing policy.**
+
+EXP-84 remains the measured authority whenever EXP-88 cannot safely finalize FLAT.
+
+---
+
+## 21. Current validated facts
 
 At the present checkpoint:
 
@@ -950,7 +1012,7 @@ At the present checkpoint:
 
 ---
 
-## 21. Current product architecture priority
+## 22. Current product architecture priority
 
 The current production path now contains both the native Content Analyzer and the native Global Router:
 
@@ -970,7 +1032,7 @@ The next architectural task is to validate this decision layer over a broader wo
 
 ---
 
-## 22. Validation matrix still required
+## 23. Validation matrix still required
 
 Before EXP-79 can be declared the final production Global Router, it must be tested on:
 
@@ -999,7 +1061,7 @@ For every workload, record:
 
 ---
 
-## 23. Current engineering rules
+## 24. Current engineering rules
 
 Every future milestone must follow:
 
@@ -1024,38 +1086,35 @@ Production functionality should progressively migrate into the native KEPHIR 2 C
 
 ---
 
-## 24. Immediate next milestone
+## 25. Immediate next milestone
 
-**EXP-88 — Hybrid Groupability Gate**
+**EXP-89 — Native Planner Gate Parity & Performance**
 
 Goal:
 
-Use EXP-86 only as a cheap gate and retain EXP-84 as the final authority for SMART candidates.
+Measure the actual C++ ContentAnalyzer + GlobalRouter gate on Matrix v1 + holdout v2.
 
-Policy:
+The test must compare the native initial action against the validated EXP-88 policy:
 
-```text
-single content class
-    → FLAT directly
+- final FLAT;
+- or request bounded probe.
 
-EXP-86 groupability says FLAT
-    → FLAT directly
+Metrics:
 
-EXP-86 groupability says SMART
-    → run EXP-84 bounded probe
-    → preserve measured SMART/FLAT direction
-```
+- action parity across all 16 workloads;
+- native analysis/planning time per workload;
+- aggregate native planning time;
+- groupability feature parity where practical.
 
-Acceptance criteria on Matrix v1 + holdout v2:
+Acceptance criteria:
 
-- 16/16 correct selections;
-- 0 B aggregate regret;
-- SHA PASS;
-- routing materially below running EXP-84 on every heterogeneous workload;
-- no threshold tuning from holdout labels.
+- 16/16 initial-action parity with EXP-88;
+- Native Core Smoke PASS;
+- no Python dependency in the measured planner path itself;
+- use the result to decide whether ContentAnalyzer optimization is required before native archive/execution integration.
 
 ---
-## 25. Current checkpoint summary
+## 26. Current checkpoint summary
 
 ```text
 KEPHIR 1.0
@@ -1086,16 +1145,17 @@ KEPHIR 2
             ├── EXP-85 ................. 8/8, 0 B, 5.71 s, not selected
             ├── EXP-86 ................. 8/8 v1, overfit
             ├── EXP-87 holdout ......... 4/8, 262 B regret
+            ├── EXP-88 ................. PROMOTED, 16/16, 0 B
             ├── Router Matrix v1 ....... FROZEN
             ├── Router Matrix v2 ....... HOLDOUT ESTABLISHED
             ├── Native EXP-84 policy ... PASS
             ├── Routing SHA ............ PASS
-            └── Next ................... EXP-88 hybrid groupability gate
+            └── Next ................... EXP-89 native planner benchmark
 ```
 
 ---
 
-## 26. Update policy
+## 27. Update policy
 
 This document is mandatory project state.
 
