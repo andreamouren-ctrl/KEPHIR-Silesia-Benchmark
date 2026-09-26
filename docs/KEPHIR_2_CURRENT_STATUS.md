@@ -95,9 +95,10 @@ src/kephir2/
     └── strategy_smoke.cpp
 ```
 
-Current implemented native component:
+Current implemented native components:
 
-**Global Strategy Router**
+- **Global Strategy Router**
+- **Native Content Analyzer v1**
 
 Current native capabilities:
 
@@ -124,7 +125,10 @@ Current CI status:
 
 **PASS**
 
-The native KEPHIR 2 core currently compiles and passes its strategy smoke tests.
+The native KEPHIR 2 core currently compiles and passes:
+- strategy smoke tests;
+- analyzer smoke tests;
+- Python↔C++ analyzer parity validation.
 
 ---
 
@@ -335,7 +339,98 @@ It currently has zero regret on the two workloads that exposed the EXP-77 failur
 
 ---
 
-## 9. Current validated facts
+## 9. Native Content Analyzer v1
+
+Status:
+
+**PROMOTED**
+
+The content-first classifier used by KEPHIR 1.0 / EXP-79 has now been reproduced in native C++.
+
+Native files:
+
+```text
+src/kephir2/include/kephir2/analyzer.hpp
+src/kephir2/src/analyzer.cpp
+src/kephir2/tests/analyzer_smoke.cpp
+src/kephir2/tests/analyzer_dump.cpp
+src/kephir2/tests/analyzer_parity.py
+```
+
+The analyzer provides:
+
+- exact file count;
+- exact logical byte count;
+- average file size;
+- median file size;
+- small-file fraction;
+- bounded byte sampling;
+- sampled entropy;
+- printable fraction;
+- zero fraction;
+- content-first file classification;
+- content-family count;
+- dominant file-family fraction;
+- dominant byte-family fraction.
+
+Classifier families preserved from the qualified Python implementation:
+
+```text
+empty
+tiny-text
+tiny-binary
+encoded-text
+text-code
+text-config
+text-prose
+text-generic
+binary-zero
+binary-low
+binary-mid
+binary-high
+```
+
+The classifier remains extension-independent.
+
+### Python ↔ C++ parity result
+
+CI run validated:
+
+```text
+Files checked:              272
+Class mismatches:             0
+Metric mismatches:            0
+Native smoke tests:        PASS
+Strategy smoke tests:      PASS
+Parity gate:               PASS
+```
+
+All 12 content classes were represented in the parity matrix.
+
+Observed class distribution in the validation run:
+
+```text
+binary-high      1
+binary-low       1
+binary-mid       1
+binary-zero      1
+empty            1
+encoded-text     7
+text-code      222
+text-config     23
+text-generic     2
+text-prose      11
+tiny-binary      1
+tiny-text        1
+```
+
+Conclusion:
+
+The native analyzer is semantically compatible with the existing Python classifier on the current validation matrix and is promoted into the KEPHIR 2 production core.
+
+---
+
+## 10. Current validated facts
 
 At the present checkpoint:
 
@@ -353,15 +448,9 @@ At the present checkpoint:
 
 ---
 
-## 10. Current product architecture priority
+## 11. Current product architecture priority
 
-The next production component to migrate into native C++ is:
-
-**Content Analyzer**
-
-Its role will be to provide the Global Router with content-first features without relying on Python.
-
-Target native path:
+The current production path now contains both the native Content Analyzer and the native Global Router:
 
 ```text
 Directory
@@ -375,23 +464,11 @@ Strategy Plan
 Compression Pipeline
 ```
 
-The Content Analyzer must eventually provide at least:
-
-- file count;
-- logical bytes;
-- average file size;
-- median file size;
-- small-file fraction;
-- sampled entropy;
-- printable fraction;
-- zero fraction;
-- content-family distribution;
-- dominant family fractions;
-- bounded representative sample descriptors.
+The next architectural task is to validate this decision layer over a broader workload matrix and then connect the resulting Strategy Plan to a native archive/compression execution path.
 
 ---
 
-## 11. Validation matrix still required
+## 12. Validation matrix still required
 
 Before EXP-79 can be declared the final production Global Router, it must be tested on:
 
@@ -420,7 +497,7 @@ For every workload, record:
 
 ---
 
-## 12. Current engineering rules
+## 13. Current engineering rules
 
 Every future milestone must follow:
 
@@ -445,27 +522,38 @@ Production functionality should progressively migrate into the native KEPHIR 2 C
 
 ---
 
-## 13. Immediate next milestone
+## 14. Immediate next milestone
 
-**Native Content Analyzer v1**
+**EXP-80 — Global Router Validation Matrix**
 
 Goal:
 
-Reproduce the content signals needed by EXP-79 directly in C++ and connect them to the native Global Strategy Router.
+Stress the native Analyzer + EXP-79 routing principle across diverse directory shapes before declaring AUTO routing production-stable.
+
+Initial matrix:
+
+- many tiny source/config files;
+- homogeneous large files;
+- mixed text/binary directory;
+- incompressible/high-entropy data;
+- zero-rich structured data;
+- redundant backup-like data;
+- repository workload;
+- canonical Silesia.
 
 Acceptance criteria:
 
-- deterministic analysis;
-- no extension-based classification dependency;
-- bounded sampling;
-- native unit/smoke tests;
-- output compatible with the current `ArchiveFeatures` contract;
-- no regression in the current routing decisions;
+- exact lossless roundtrip for every full-layout oracle run;
+- selected layout recorded against oracle;
+- aggregate and per-dataset selection regret;
+- bounded routing overhead;
+- no hidden extension-based routing;
+- regression report against EXP-77;
 - CI PASS.
 
 ---
 
-## 14. Current checkpoint summary
+## 15. Current checkpoint summary
 
 ```text
 KEPHIR 1.0
@@ -479,16 +567,19 @@ KEPHIR 2
             ├── Native C++ core ........ PASS
             ├── CMake .................. PASS
             ├── Strategy smoke test .... PASS
+            ├── Analyzer smoke test .... PASS
+            ├── Analyzer parity ........ 272 files / 0 mismatches
+            ├── Native Analyzer v1 ..... PROMOTED
             ├── EXP-77 ................. SUPERSEDED
             ├── EXP-78 ................. REJECTED AS FINAL ROUTER
             ├── EXP-79 ................. PROMOTED PRINCIPLE
-            ├── Routing regret ......... 0 B on current matrix
-            └── Next ................... Native Content Analyzer v1
+            ├── Routing regret ......... 0 B on current 2-workload matrix
+            └── Next ................... EXP-80 validation matrix
 ```
 
 ---
 
-## 15. Update policy
+## 16. Update policy
 
 This document is mandatory project state.
 
