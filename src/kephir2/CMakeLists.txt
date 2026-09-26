@@ -4,6 +4,7 @@ project(kephir2_core LANGUAGES CXX)
 add_library(kephir2_core STATIC
     src/analyzer.cpp
     src/archive.cpp
+    src/packing.cpp
     src/planner.cpp
     src/strategy.cpp
 )
@@ -56,11 +57,22 @@ add_executable(kephir2_archive_dump
 )
 target_link_libraries(kephir2_archive_dump PRIVATE kephir2_core)
 
+add_executable(kephir2_packing_smoke
+    tests/packing_smoke.cpp
+)
+target_link_libraries(kephir2_packing_smoke PRIVATE kephir2_core)
+
+add_executable(kephir2_packing_dump
+    tests/packing_dump.cpp
+)
+target_link_libraries(kephir2_packing_dump PRIVATE kephir2_core)
+
 enable_testing()
 add_test(NAME kephir2_strategy_smoke COMMAND kephir2_strategy_smoke)
 add_test(NAME kephir2_analyzer_smoke COMMAND kephir2_analyzer_smoke)
 add_test(NAME kephir2_planner_smoke COMMAND kephir2_planner_smoke)
 add_test(NAME kephir2_archive_smoke COMMAND kephir2_archive_smoke)
+add_test(NAME kephir2_packing_smoke COMMAND kephir2_packing_smoke)
 
 
 add_library(kephir2_api SHARED
