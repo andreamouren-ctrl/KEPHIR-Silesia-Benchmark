@@ -1,0 +1,149 @@
+name: KSV-25 Conditional H3 Mapping Selector
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["research/khepri-stream-codec"]
+    paths:
+      - ".github/workflows/ksv25_conditional_mapping_selector.yml"
+      - "research/video/experiments/ksv25_conditional_mapping_selector.py"
+      - "research/video/experiments/ksv20_h3_refinement.py"
+      - "research/video/experiments/ksv17_dense_integer_motion.py"
+      - "research/video/experiments/ksv13_natural_radius_sweep.py"
+      - "make_exp40_source.py"
+  push:
+    branches: ["feature/aurora-media-ksv25-conditional-mapping"]
+    paths:
+      - ".github/workflows/ksv25_conditional_mapping_selector.yml"
+      - "research/video/experiments/ksv25_conditional_mapping_selector.py"
+
+jobs:
+  ksv25:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential ffmpeg curl python3-numpy
+
+      - name: Build optimized byte-identical KHEPRI EXP-40
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          python3 make_exp37_source.py
+          python3 make_exp40_source.py
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -DNO_INTERNAL_VERIFY \
+            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 \
+            -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 \
+            -DK2_SHARED_MATCH_CACHE_MODE=1 -pthread \
+            KEPHIR_2_EXP40_SHARED_MATCH_CACHE.cpp -o kephir40
+
+      - name: Download Xiph natural + holdout corpus
+        run: |
+          mkdir -p natural_sources
+          curl -L --fail --retry 4 -o natural_sources/container.y4m https://media.xiph.org/video/derf/y4m/container_cif.y4m
+          curl -L --fail --retry 4 -o natural_sources/coastguard.y4m https://media.xiph.org/video/derf/y4m/coastguard_cif.y4m
+          curl -L --fail --retry 4 -o natural_sources/mobile.y4m https://media.xiph.org/video/derf/y4m/mobile_cif.y4m
+          curl -L --fail --retry 4 -o natural_sources/football.y4m https://media.xiph.org/video/derf/y4m/football_cif.y4m
+          curl -L --fail --retry 4 -o natural_sources/stefan.y4m https://media.xiph.org/video/derf/y4m/stefan_sif.y4m
+          curl -L --fail --retry 4 -o natural_sources/akiyo.y4m https://media.xiph.org/video/derf/y4m/akiyo_cif.y4m
+          curl -L --fail --retry 4 -o natural_sources/foreman.y4m https://media.xiph.org/video/derf/y4m/foreman_cif.y4m
+          curl -L --fail --retry 4 -o natural_sources/bus.y4m https://media.xiph.org/video/derf/y4m/bus_cif.y4m
+
+      - name: Prepare deterministic 60-frame corpus
+        run: |
+          mkdir -p natural_raw
+          for name in container coastguard mobile football akiyo foreman bus; do
+            ffmpeg -hide_banner -loglevel error -y -i natural_sources/$name.y4m \
+              -frames:v 60 -pix_fmt yuv420p -f rawvideo natural_raw/$name.yuv
+          done
+          ffmpeg -hide_banner -loglevel error -y -i natural_sources/stefan.y4m \
+            -frames:v 60 -pix_fmt yuv420p -f rawvideo natural_raw/stefan.yuv
+
+      - name: Run KSV-25 selector
+        env:
+          PYTHONPATH: research/video/lab:research/video/experiments:research/backend
+        run: |
+          python3 research/video/experiments/ksv25_conditional_mapping_selector.py \
+            --kephir ./kephir40 \
+            --clip container:natural_raw/container.yuv:352:288:30:1 \
+            --clip coastguard:natural_raw/coastguard.yuv:352:288:30:1 \
+            --clip mobile:natural_raw/mobile.yuv:352:288:30:1 \
+            --clip football:natural_raw/football.yuv:352:288:30:1 \
+            --clip stefan:natural_raw/stefan.yuv:352:240:30:1 \
+            --clip akiyo:natural_raw/akiyo.yuv:352:288:30:1 \
+            --clip foreman:natural_raw/foreman.yuv:352:288:30:1 \
+            --clip bus:natural_raw/bus.yuv:352:288:30:1 \
+            | tee ksv25.log
+
+      - name: Validate KSV-25
+        run: |
+          grep -q "KSV25_RESIDUAL_MAPPING_SELECTOR_PASS" ksv25.log
+          python3 - <<'PY' | tee ksv25_summary.txt
+          import json
+          from pathlib import Path
+
+          r=json.loads(Path("results/video/ksv25_conditional_mapping_selector/KSV25_RESULTS.json").read_text())
+          assert r["production_candidate_duplicate_khepri_encodes"] == 0
+          assert len(r["rows"]) == 8
+          for row in r["rows"]:
+              assert row["selected"]["sha_ok"]
+              assert row["oracle"]["sha_ok"]
+
+          def group(names):
+              rows=[x for x in r["rows"] if x["name"] in names]
+              baseline=sum(x["baseline_bytes"] for x in rows)
+              selected=sum(x["selected"]["bytes"] for x in rows)
+              oracle=sum(x["oracle"]["bytes"] for x in rows)
+              oracle_gain=baseline-oracle
+              selected_gain=baseline-selected
+              recovered=(100.0*selected_gain/oracle_gain) if oracle_gain>0 else 100.0
+              delta=100.0*(selected/oracle-1.0)
+              matches=sum(w["mode_match"] for x in rows for w in x["windows"])
+              windows=sum(len(x["windows"]) for x in rows)
+              return baseline,selected,oracle,recovered,delta,matches,windows
+
+          original={"container","coastguard","mobile","football","stefan"}
+          holdout={"akiyo","foreman","bus"}
+
+          a=r["aggregate"]
+          o=group(original)
+          h=group(holdout)
+
+          print("KSV25_VALIDATION_PASS")
+          print("ALL_BASELINE_BYTES",a["baseline_bytes"])
+          print("ALL_SELECTED_BYTES",a["selected_bytes"])
+          print("ALL_ORACLE_BYTES",a["oracle_bytes"])
+          print("ALL_GAIN_RECOVERED_PCT",f'{a["gain_recovered_percent"]:.3f}')
+          print("ALL_DELTA_VS_ORACLE_PCT",f'{a["delta_vs_oracle_percent"]:.6f}')
+          print("ALL_MODE_MATCH_WINDOWS",a["mode_match_windows"],"/",a["window_count"])
+          print("ORIGINAL_GAIN_RECOVERED_PCT",f'{o[3]:.3f}')
+          print("ORIGINAL_DELTA_VS_ORACLE_PCT",f'{o[4]:.6f}')
+          print("ORIGINAL_MATCH_WINDOWS",o[5],"/",o[6])
+          print("HOLDOUT_GAIN_RECOVERED_PCT",f'{h[3]:.3f}')
+          print("HOLDOUT_DELTA_VS_ORACLE_PCT",f'{h[4]:.6f}')
+          print("HOLDOUT_MATCH_WINDOWS",h[5],"/",h[6])
+
+          candidate=(
+              o[3] >= 95.0 and o[4] <= 0.10
+              and h[3] >= 90.0 and h[4] <= 0.15
+              and a["gain_recovered_percent"] >= 95.0
+              and a["delta_vs_oracle_percent"] <= 0.10
+          )
+          print("KSV25_PRODUCTION_CANDIDATE",str(candidate).lower())
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ksv25-conditional-mapping-selector
+          path: |
+            results/video/ksv25_conditional_mapping_selector/KSV25_RESULTS.json
+            ksv25.log
+            ksv25_summary.txt
