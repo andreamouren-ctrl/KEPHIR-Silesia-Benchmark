@@ -59,6 +59,22 @@ int main() {
     auto ambiguous_plan = router.plan(homogeneous_large, Profile::Auto, ambiguous_probe);
     assert(ambiguous_plan.request_extended_probe);
 
+    ArchiveFeatures mixed_like{};
+    mixed_like.logical_bytes = 8u * 1024u * 1024u;
+    mixed_like.file_count = 8;
+    mixed_like.sampled_content_groups = 6;
+    mixed_like.sampled_dominant_file_fraction = 0.375;
+    mixed_like.sampled_dominant_byte_fraction = 0.375;
+
+    LayoutProbe mixed_probe{};
+    mixed_probe.sampled_bytes = 2u * 1024u * 1024u;
+    mixed_probe.flat_archive_bytes = 262'924;
+    mixed_probe.smart_archive_bytes = 263'260;
+
+    auto mixed_plan = router.plan(mixed_like, Profile::Auto, mixed_probe);
+    assert(mixed_plan.layout == Layout::Flat);
+    assert(!mixed_plan.request_extended_probe);
+
     auto fast_plan = router.plan(silesia_like, Profile::Fast, std::nullopt);
     assert(fast_plan.preferred_grain_bytes == 512u * 1024u);
     assert(!fast_plan.allow_structural_transforms);
