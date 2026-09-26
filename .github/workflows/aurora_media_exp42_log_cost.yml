@@ -94,11 +94,9 @@ jobs:
           for row in rows:
               groups.setdefault(row["backend"],[]).append(row)
 
-          base=groups.get("EXP37_DUAL",[])
+          base=groups.get("EXP40_SHARED_CACHE",[])
           cand=groups.get("EXP42_LOG_COST_CACHE",[])
 
-          # The baseline executable uses the EXP-40 adapter but the benchmark
-          # source historically labels the non-candidate side EXP37_DUAL.
           if len(base)!=7 or len(cand)!=7:
               raise SystemExit(
                   f"expected 7 trials/backend, got {len(base)} and {len(cand)}; "
