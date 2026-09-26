@@ -1,0 +1,59 @@
+name: KEPHIR 2 EXP-110 Context Decomposition
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - development/kephir-2-core
+    paths:
+      - "src/kephir2/**"
+      - "research/benchmarks/exp110_context_decomposition.py"
+      - ".github/workflows/exp110_context_decomposition.yml"
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build native KEPHIR
+        run: |
+          cmake -S src/kephir2 -B build/kephir2 -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/kephir2 --config Release --parallel
+
+      - name: Native test suite
+        run: ctest --test-dir build/kephir2 --output-on-failure
+
+      - name: Download canonical Silesia
+        run: |
+          mkdir -p corpora/silesia
+          curl -L --fail --retry 4 -o /tmp/silesia.zip             https://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip
+          echo "c240c17d6805fb8a0bde763f1b94cd99  /tmp/silesia.zip" | md5sum -c -
+          unzip -q /tmp/silesia.zip -d corpora/silesia
+          test "$(find corpora/silesia -type f -printf '%s\n' | awk '{s+=$1} END {print s}')" -eq 211938580
+
+      - name: Run EXP-110
+        run: |
+          python3 research/benchmarks/exp110_context_decomposition.py             build/kephir2/kephir2_native_k75_cli
+
+      - name: Validate result
+        run: |
+          python3 - <<'PY'
+          import json
+          d=json.load(open("exp110_results.json"))
+          rows=d["rows"]
+          assert len(rows) == 10
+          assert all(r["raw_bytes"] == 211938580 for r in rows)
+          assert all(r["sha_all_pass"] for r in rows)
+          baseline=rows[0]["archive_bytes"]
+          best=min(r["archive_bytes"] for r in rows)
+          assert best < baseline
+          print("EXP110_VALIDATION_PASS", "BASE",baseline,"BEST",best)
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exp110-context-decomposition
+          path: exp110_results.json
