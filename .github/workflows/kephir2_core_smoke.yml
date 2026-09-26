@@ -22,3 +22,6 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build/kephir2 --output-on-failure
+
+      - name: Python-native analyzer parity
+        run: python3 src/kephir2/tests/analyzer_parity.py build/kephir2/kephir2_analyzer_dump
