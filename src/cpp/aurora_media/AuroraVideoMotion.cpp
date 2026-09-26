@@ -85,17 +85,28 @@ MotionResidual AuroraVideoMotion::encode_mc8r4(ByteView cur,ByteView prev,
 double AuroraVideoMotion::sparse_luma_mad(ByteView cur,ByteView prev,
                                         std::uint32_t w,std::uint32_t h,
                                         std::uint32_t sample_step) {
-    if(w==0 || h==0 || sample_step==0)
-        throw AuroraMediaError(ErrorCode::InvalidArgument,"sparse MAD invalid geometry");
-    const auto fs=frame_size(w,h);
+    return sparse_luma_mad_region(cur,prev,w,h,0,0,w,h,sample_step);
+}
+
+double AuroraVideoMotion::sparse_luma_mad_region(ByteView cur,ByteView prev,
+                                                 std::uint32_t fw,std::uint32_t fh,
+                                                 std::uint32_t rx,std::uint32_t ry,
+                                                 std::uint32_t rw,std::uint32_t rh,
+                                                 std::uint32_t sample_step) {
+    if(fw==0 || fh==0 || (fw%2)!=0 || (fh%2)!=0 ||
+       rw==0 || rh==0 || sample_step==0 ||
+       (rx%2)!=0 || (ry%2)!=0 || (rw%2)!=0 || (rh%2)!=0 ||
+       rx>fw || ry>fh || rw>fw-rx || rh>fh-ry)
+        throw AuroraMediaError(ErrorCode::InvalidArgument,"sparse MAD invalid region");
+    const auto fs=frame_size(fw,fh);
     if(cur.size()!=fs || prev.size()!=fs)
         throw AuroraMediaError(ErrorCode::InvalidArgument,"sparse MAD frame size mismatch");
 
     std::uint64_t sum=0;
     std::uint64_t count=0;
-    for(std::uint32_t y=0;y<h;y+=sample_step) {
-        const auto row=static_cast<std::size_t>(y)*w;
-        for(std::uint32_t x=0;x<w;x+=sample_step) {
+    for(std::uint32_t y=0;y<rh;y+=sample_step) {
+        const auto row=static_cast<std::size_t>(ry+y)*fw+rx;
+        for(std::uint32_t x=0;x<rw;x+=sample_step) {
             sum += static_cast<std::uint64_t>(
                 std::abs(static_cast<int>(cur[row+x])-static_cast<int>(prev[row+x])));
             ++count;
@@ -108,55 +119,99 @@ MotionResidual AuroraVideoMotion::encode_mc8r4_adaptive(ByteView cur,ByteView pr
                                                         std::uint32_t w,std::uint32_t h,
                                                         double low_motion_threshold,
                                                         std::size_t low_motion_candidates) {
+    return encode_mc8r4_region_adaptive(
+        cur,prev,w,h,0,0,w,h,low_motion_threshold,low_motion_candidates);
+}
+
+MotionResidual AuroraVideoMotion::encode_mc8r4_region_adaptive(
+        ByteView cur,ByteView prev,
+        std::uint32_t fw,std::uint32_t fh,
+        std::uint32_t rx,std::uint32_t ry,
+        std::uint32_t rw,std::uint32_t rh,
+        double low_motion_threshold,
+        std::size_t low_motion_candidates) {
     if(low_motion_threshold<0.0)
         throw AuroraMediaError(ErrorCode::InvalidArgument,"adaptive threshold must be non-negative");
     if(low_motion_candidates==0 || low_motion_candidates>25)
         throw AuroraMediaError(ErrorCode::InvalidArgument,"adaptive candidate count must be 1..25");
 
-    const auto activity=sparse_luma_mad(cur,prev,w,h,8);
+    const auto activity=sparse_luma_mad_region(cur,prev,fw,fh,rx,ry,rw,rh,8);
     const auto limit=activity<=low_motion_threshold ? low_motion_candidates : 25u;
-    return encode_mc8r4_limited(cur,prev,w,h,limit);
+    return encode_mc8r4_region_limited(cur,prev,fw,fh,rx,ry,rw,rh,limit);
 }
 
 MotionResidual AuroraVideoMotion::encode_mc8r4_limited(ByteView cur,ByteView prev,
                                                        std::uint32_t w,std::uint32_t h,
                                                        std::size_t max_candidates) {
+    return encode_mc8r4_region_limited(cur,prev,w,h,0,0,w,h,max_candidates);
+}
+
+MotionResidual AuroraVideoMotion::encode_mc8r4_region(ByteView cur,ByteView prev,
+                                                      std::uint32_t fw,std::uint32_t fh,
+                                                      std::uint32_t rx,std::uint32_t ry,
+                                                      std::uint32_t rw,std::uint32_t rh) {
+    return encode_mc8r4_region_limited(cur,prev,fw,fh,rx,ry,rw,rh,25);
+}
+
+MotionResidual AuroraVideoMotion::encode_mc8r4_region_limited(
+        ByteView cur,ByteView prev,
+        std::uint32_t fw,std::uint32_t fh,
+        std::uint32_t rx,std::uint32_t ry,
+        std::uint32_t rw,std::uint32_t rh,
+        std::size_t max_candidates) {
     constexpr std::uint32_t block=8;
     constexpr int radius=4;
-    if(w==0 || h==0 || (w%block)!=0 || (h%block)!=0 || (w%2)!=0 || (h%2)!=0)
-        throw AuroraMediaError(ErrorCode::InvalidArgument,"MC8R4 invalid dimensions");
-    const auto fs=frame_size(w,h);
-    if(cur.size()!=fs || prev.size()!=fs)
+    if(fw==0 || fh==0 || (fw%2)!=0 || (fh%2)!=0 ||
+       rw==0 || rh==0 || (rw%block)!=0 || (rh%block)!=0 ||
+       (rx%2)!=0 || (ry%2)!=0 ||
+       rx>fw || ry>fh || rw>fw-rx || rh>fh-ry)
+        throw AuroraMediaError(ErrorCode::InvalidArgument,"MC8R4 invalid region geometry");
+
+    const auto full_fs=frame_size(fw,fh);
+    if(cur.size()!=full_fs || prev.size()!=full_fs)
         throw AuroraMediaError(ErrorCode::InvalidArgument,"MC8R4 frame size mismatch");
 
     static const auto cand=candidates(radius);
     if(max_candidates==0)
         throw AuroraMediaError(ErrorCode::InvalidArgument,"MC8R4 candidate limit must be positive");
     const auto candidate_count=std::min<std::size_t>(max_candidates,cand.size());
-    const auto ys=y_size(w,h);
-    const auto us=uv_size(w,h);
-    const auto cw=w/2;
+
+    const auto full_ys=y_size(fw,fh);
+    const auto full_us=uv_size(fw,fh);
+    const auto full_cw=fw/2;
+    const auto tile_ys=y_size(rw,rh);
+    const auto tile_us=uv_size(rw,rh);
+    const auto tile_cw=rw/2;
+    const auto tile_fs=frame_size(rw,rh);
 
     MotionResidual out;
-    out.motion_map.reserve(static_cast<std::size_t>(w/block)*(h/block));
-    out.residual_yuv420.resize(fs);
+    out.motion_map.reserve(static_cast<std::size_t>(rw/block)*(rh/block));
+    out.residual_yuv420.resize(tile_fs);
 
-    auto residual_plane=[&](std::size_t cur_off,std::size_t prev_off,std::size_t out_off,
-                            std::uint32_t stride,std::uint32_t x,std::uint32_t y,
+    auto residual_plane=[&](std::size_t in_off,std::size_t out_off,
+                            std::uint32_t in_stride,std::uint32_t out_stride,
+                            std::uint32_t origin_x,std::uint32_t origin_y,
+                            std::uint32_t x,std::uint32_t y,
                             std::uint32_t bs,int dx,int dy) {
         for(std::uint32_t yy=0;yy<bs;++yy)
             for(std::uint32_t xx=0;xx<bs;++xx) {
-                const auto ci=cur_off+static_cast<std::size_t>(y+yy)*stride+(x+xx);
-                const auto pi=prev_off+static_cast<std::size_t>(static_cast<int>(y)+dy+static_cast<int>(yy))*stride+
-                              static_cast<std::size_t>(static_cast<int>(x)+dx+static_cast<int>(xx));
+                const auto ci=in_off+
+                    static_cast<std::size_t>(origin_y+y+yy)*in_stride+
+                    (origin_x+x+xx);
+                const auto pi=in_off+
+                    static_cast<std::size_t>(
+                        static_cast<int>(origin_y+y)+dy+static_cast<int>(yy))*in_stride+
+                    static_cast<std::size_t>(
+                        static_cast<int>(origin_x+x)+dx+static_cast<int>(xx));
+                const auto oi=out_off+
+                    static_cast<std::size_t>(y+yy)*out_stride+(x+xx);
                 const int d=static_cast<int>(cur[ci])-static_cast<int>(prev[pi]);
-                out.residual_yuv420[out_off+static_cast<std::size_t>(y+yy)*stride+(x+xx)]
-                    = static_cast<Byte>(d & 0xff);
+                out.residual_yuv420[oi]=static_cast<Byte>(d & 0xff);
             }
     };
 
-    for(std::uint32_t by=0;by<h;by+=block) {
-        for(std::uint32_t bx=0;bx<w;bx+=block) {
+    for(std::uint32_t by=0;by<rh;by+=block) {
+        for(std::uint32_t bx=0;bx<rw;bx+=block) {
             int best_idx=-1;
             std::uint64_t best_cost=std::numeric_limits<std::uint64_t>::max();
 
@@ -164,22 +219,21 @@ MotionResidual AuroraVideoMotion::encode_mc8r4_limited(ByteView cur,ByteView pre
                 const auto [dx,dy]=cand[i];
                 const int sx=static_cast<int>(bx)+dx;
                 const int sy=static_cast<int>(by)+dy;
-                if(sx<0 || sy<0 || sx+static_cast<int>(block)>static_cast<int>(w) ||
-                   sy+static_cast<int>(block)>static_cast<int>(h)) continue;
+
+                // Preserve historical tile-local search bounds exactly.
+                if(sx<0 || sy<0 ||
+                   sx+static_cast<int>(block)>static_cast<int>(rw) ||
+                   sy+static_cast<int>(block)>static_cast<int>(rh))
+                    continue;
 
                 const std::uint64_t cost=sad8x8(
-                    cur,prev,w,bx,by,
-                    static_cast<std::uint32_t>(sx),
-                    static_cast<std::uint32_t>(sy));
+                    cur,prev,fw,
+                    rx+bx,ry+by,
+                    rx+static_cast<std::uint32_t>(sx),
+                    ry+static_cast<std::uint32_t>(sy));
                 if(cost<best_cost) {
                     best_cost=cost;
                     best_idx=static_cast<int>(i);
-
-                    // Exact fast path: SAD is non-negative, so zero is the
-                    // global optimum. Candidate order is the tie-break rule
-                    // (the encoder only accepts strictly lower costs), hence
-                    // stopping here is bitstream-identical to evaluating all
-                    // remaining candidates.
 #if !defined(AURORA_DISABLE_EXACT_MOTION_FASTPATH)
                     if(best_cost==0)
                         break;
@@ -193,15 +247,20 @@ MotionResidual AuroraVideoMotion::encode_mc8r4_limited(ByteView cur,ByteView pre
             out.motion_map.push_back(static_cast<Byte>(best_idx));
             const auto [dx,dy]=cand[static_cast<std::size_t>(best_idx)];
 
-            residual_plane(0,0,0,w,bx,by,block,dx,dy);
+            residual_plane(
+                0,0,fw,rw,rx,ry,bx,by,block,dx,dy);
 
             const auto cb=block/2;
             const auto cx=bx/2;
             const auto cy=by/2;
             const auto cdx=dx/2;
             const auto cdy=dy/2;
-            residual_plane(ys,ys,ys,cw,cx,cy,cb,cdx,cdy);
-            residual_plane(ys+us,ys+us,ys+us,cw,cx,cy,cb,cdx,cdy);
+            residual_plane(
+                full_ys,tile_ys,full_cw,tile_cw,
+                rx/2,ry/2,cx,cy,cb,cdx,cdy);
+            residual_plane(
+                full_ys+full_us,tile_ys+tile_us,full_cw,tile_cw,
+                rx/2,ry/2,cx,cy,cb,cdx,cdy);
         }
     }
     return out;
@@ -318,56 +377,89 @@ MotionResidual AuroraVideoMotion::encode_mc8r4_shortlist(ByteView cur,ByteView p
 
 Bytes AuroraVideoMotion::decode_mc8r4(ByteView motion,ByteView residual,ByteView prev,
                                       std::uint32_t w,std::uint32_t h) {
+    return decode_mc8r4_region(motion,residual,prev,w,h,0,0,w,h);
+}
+
+Bytes AuroraVideoMotion::decode_mc8r4_region(
+        ByteView motion,ByteView residual,ByteView prev,
+        std::uint32_t fw,std::uint32_t fh,
+        std::uint32_t rx,std::uint32_t ry,
+        std::uint32_t rw,std::uint32_t rh) {
     constexpr std::uint32_t block=8;
     constexpr int radius=4;
-    const auto fs=frame_size(w,h);
-    const auto blocks=static_cast<std::size_t>(w/block)*(h/block);
-    if(prev.size()!=fs || residual.size()!=fs || motion.size()!=blocks)
+    if(fw==0 || fh==0 || (fw%2)!=0 || (fh%2)!=0 ||
+       rw==0 || rh==0 || (rw%block)!=0 || (rh%block)!=0 ||
+       (rx%2)!=0 || (ry%2)!=0 ||
+       rx>fw || ry>fh || rw>fw-rx || rh>fh-ry)
+        throw AuroraMediaError(ErrorCode::InvalidArgument,"MC8R4 decode invalid region geometry");
+
+    const auto full_fs=frame_size(fw,fh);
+    const auto tile_fs=frame_size(rw,rh);
+    const auto blocks=static_cast<std::size_t>(rw/block)*(rh/block);
+    if(prev.size()!=full_fs || residual.size()!=tile_fs || motion.size()!=blocks)
         throw AuroraMediaError(ErrorCode::InvalidArgument,"MC8R4 decode size mismatch");
 
     static const auto cand=candidates(radius);
-    const auto ys=y_size(w,h);
-    const auto us=uv_size(w,h);
-    const auto cw=w/2;
-    Bytes out(fs);
+    const auto full_ys=y_size(fw,fh);
+    const auto full_us=uv_size(fw,fh);
+    const auto full_cw=fw/2;
+    const auto tile_ys=y_size(rw,rh);
+    const auto tile_us=uv_size(rw,rh);
+    const auto tile_cw=rw/2;
+    Bytes out(tile_fs);
 
     auto reconstruct=[&](std::size_t prev_off,std::size_t res_off,std::size_t out_off,
-                         std::uint32_t stride,std::uint32_t x,std::uint32_t y,
+                         std::uint32_t prev_stride,std::uint32_t local_stride,
+                         std::uint32_t origin_x,std::uint32_t origin_y,
+                         std::uint32_t x,std::uint32_t y,
                          std::uint32_t bs,int dx,int dy) {
         for(std::uint32_t yy=0;yy<bs;++yy)
             for(std::uint32_t xx=0;xx<bs;++xx) {
-                const auto oi=out_off+static_cast<std::size_t>(y+yy)*stride+(x+xx);
-                const auto pi=prev_off+static_cast<std::size_t>(static_cast<int>(y)+dy+static_cast<int>(yy))*stride+
-                              static_cast<std::size_t>(static_cast<int>(x)+dx+static_cast<int>(xx));
-                const auto ri=res_off+static_cast<std::size_t>(y+yy)*stride+(x+xx);
-                out[oi]=static_cast<Byte>((static_cast<unsigned>(prev[pi])+residual[ri])&0xffu);
+                const auto oi=out_off+
+                    static_cast<std::size_t>(y+yy)*local_stride+(x+xx);
+                const auto pi=prev_off+
+                    static_cast<std::size_t>(
+                        static_cast<int>(origin_y+y)+dy+static_cast<int>(yy))*prev_stride+
+                    static_cast<std::size_t>(
+                        static_cast<int>(origin_x+x)+dx+static_cast<int>(xx));
+                const auto ri=res_off+
+                    static_cast<std::size_t>(y+yy)*local_stride+(x+xx);
+                out[oi]=static_cast<Byte>(
+                    (static_cast<unsigned>(prev[pi])+residual[ri])&0xffu);
             }
     };
 
     std::size_t mi=0;
-    for(std::uint32_t by=0;by<h;by+=block) {
-        for(std::uint32_t bx=0;bx<w;bx+=block) {
+    for(std::uint32_t by=0;by<rh;by+=block) {
+        for(std::uint32_t bx=0;bx<rw;bx+=block) {
             const auto idx=motion[mi++];
             if(idx>=cand.size())
                 throw AuroraMediaError(ErrorCode::CorruptPacket,"MC8R4 bad motion index");
             const auto [dx,dy]=cand[idx];
             const int sx=static_cast<int>(bx)+dx;
             const int sy=static_cast<int>(by)+dy;
-            if(sx<0 || sy<0 || sx+static_cast<int>(block)>static_cast<int>(w) ||
-               sy+static_cast<int>(block)>static_cast<int>(h))
+            if(sx<0 || sy<0 ||
+               sx+static_cast<int>(block)>static_cast<int>(rw) ||
+               sy+static_cast<int>(block)>static_cast<int>(rh))
                 throw AuroraMediaError(ErrorCode::CorruptPacket,"MC8R4 vector out of bounds");
 
-            reconstruct(0,0,0,w,bx,by,block,dx,dy);
+            reconstruct(
+                0,0,0,fw,rw,rx,ry,bx,by,block,dx,dy);
             const auto cb=block/2;
             const auto cx=bx/2;
             const auto cy=by/2;
             const auto cdx=dx/2;
             const auto cdy=dy/2;
-            reconstruct(ys,ys,ys,cw,cx,cy,cb,cdx,cdy);
-            reconstruct(ys+us,ys+us,ys+us,cw,cx,cy,cb,cdx,cdy);
+            reconstruct(
+                full_ys,tile_ys,tile_ys,full_cw,tile_cw,
+                rx/2,ry/2,cx,cy,cb,cdx,cdy);
+            reconstruct(
+                full_ys+full_us,tile_ys+tile_us,tile_ys+tile_us,full_cw,tile_cw,
+                rx/2,ry/2,cx,cy,cb,cdx,cdy);
         }
     }
     return out;
 }
+
 
 } // namespace aurora::media
