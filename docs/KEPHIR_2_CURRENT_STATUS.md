@@ -2444,3 +2444,115 @@ Measure cheap features:
 Goal:
 
 Find a generalizable signal that separates high-value `mozilla` splits from random/incompressible parents without running a compression probe.
+
+
+---
+
+## 50. EXP-104 — Selective Exact Native Grain Probe
+
+Status:
+
+**PROMOTED**
+
+Goal:
+
+Close the remaining static grain-policy gap identified by EXP-103 without adding session learning or globally probing every parent.
+
+Implementation:
+
+- exact grain probing is restricted to three proven feature buckets:
+  - `l2:h7:z0:p1:s0`
+  - `l2:h5:z2:p1:s6`
+  - `l2:h5:z1:p3:s2`
+- candidate grains are 128 / 256 / 512 KiB when valid;
+- probe scoring mirrors the RC1 grain measurement path and excludes Word-XOR from the probe itself;
+- all other parents retain the fast factory/baseline path.
+
+Validation:
+
+### Mozilla
+
+Before EXP-104:
+
+`17,871,087 B`
+
+After EXP-104:
+
+`17,833,621 B`
+
+Python RC1:
+
+`17,833,792 B`
+
+Result:
+
+**Native is 171 B smaller than Python on mozilla.**
+
+### Full Silesia EXP-91
+
+```text
+Python RC1:       62,939,205 B   29.6969%
+Native EXP-104:  62,924,595 B   29.6900%
+Native advantage:    14,610 B
+SHA:              PASS 12/12
+```
+
+This is the first checkpoint where the fully native engine beats the qualified Python RC1 on aggregate Silesia size.
+
+Important per-file deltas:
+
+```text
+dickens:   -50 B
+mozilla:  -171 B
+mr:    -17,950 B
+nci:       -54 B
+ooffice:    -4 B
+osdb:      -10 B
+reymont:    -4 B
+samba:  +3,879 B
+sao:        -4 B
+webster:  -228 B
+x-ray:     -11 B
+xml:        -3 B
+```
+
+Tradeoff:
+
+The selective exact probes increase single-thread compression cost:
+
+```text
+Pre-EXP-104 native: ~4.47 MB/s
+EXP-104 native:     ~3.90 MB/s
+Python RC1:         ~3.01 MB/s
+```
+
+Decision:
+
+**EXP-104 PROMOTED for ratio correctness and aggregate superiority.**
+
+Follow-up requirement:
+
+Optimize exact-probe execution/reuse so the recovered ratio does not permanently cost this much single-thread throughput.
+
+---
+
+## 51. New canonical native baseline
+
+```text
+Silesia ratio:          29.6900%
+Archive bytes:        62,924,595 B
+Lossless:             SHA PASS 12/12
+Python RC1 delta:       -14,610 B
+Parallel encode peak*:  ~11.95 MB/s (pre-EXP-104 measured)
+Parallel decode peak:   ~118.6 MB/s
+```
+
+*EXP-104 parallel-encode scaling is being re-measured because selective exact probes add work.
+
+The parity-migration phase is now complete:
+
+**Native KEPHIR has surpassed the qualified Python RC1 in aggregate ratio.**
+
+The next engineering phase is no longer “port parity.” It is:
+
+**build a new native Pareto advantage beyond the legacy design.**
