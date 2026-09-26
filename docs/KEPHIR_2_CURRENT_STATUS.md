@@ -465,7 +465,78 @@ This is the first production-oriented end-to-end decision path in KEPHIR 2 that 
 
 ---
 
-## 11. Current validated facts
+## 11. EXP-80 — Global Router Validation Matrix
+
+Status:
+
+**PASS AS VALIDATION / ROUTER NOT YET FINAL**
+
+EXP-80 tested the EXP-79 routing principle on 8 workloads:
+
+- repository;
+- canonical Silesia;
+- many tiny source-like files;
+- homogeneous large files;
+- mixed content;
+- incompressible data;
+- zero-rich structured data;
+- redundant backup-like data.
+
+All SMART and FLAT full-layout runs passed exact roundtrip verification.
+
+Results:
+
+```text
+repository          selected FLAT   oracle FLAT   regret 0 B
+silesia             selected SMART  oracle SMART  regret 0 B
+many_tiny_source    selected FLAT   oracle FLAT   regret 0 B
+homogeneous_large   selected FLAT   oracle FLAT   regret 0 B
+mixed_content       selected SMART  oracle FLAT   regret 178 B
+incompressible      selected FLAT   oracle FLAT   regret 0 B
+zero_rich           selected FLAT   oracle FLAT   regret 0 B
+redundant_backup    selected FLAT   oracle FLAT   regret 0 B
+```
+
+Aggregate:
+
+```text
+Correct selections: 7 / 8
+Selection accuracy: 87.5%
+Total regret:       178 bytes
+SHA roundtrip:      PASS on all datasets
+```
+
+The single failure revealed a specific policy flaw.
+
+For `mixed_content` the stage-1 probe already favored FLAT:
+
+```text
+SMART sample: 263,260 B
+FLAT sample:  262,924 B
+margin:       ~0.1278%
+```
+
+but the content-diversity rule overrode the measured result and forced SMART.
+
+For Silesia the stage-1 probe already favored SMART:
+
+```text
+SMART sample: 753,646 B
+FLAT sample:  754,225 B
+margin:       ~0.0768%
+```
+
+and content diversity correctly reinforced that direction.
+
+Conclusion:
+
+Content diversity should be a confidence amplifier, not an unconditional layout override.
+
+This finding defines EXP-81.
+
+---
+
+## 12. Current validated facts
 
 At the present checkpoint:
 
@@ -483,7 +554,7 @@ At the present checkpoint:
 
 ---
 
-## 12. Current product architecture priority
+## 13. Current product architecture priority
 
 The current production path now contains both the native Content Analyzer and the native Global Router:
 
@@ -503,7 +574,7 @@ The next architectural task is to validate this decision layer over a broader wo
 
 ---
 
-## 13. Validation matrix still required
+## 14. Validation matrix still required
 
 Before EXP-79 can be declared the final production Global Router, it must be tested on:
 
@@ -532,7 +603,7 @@ For every workload, record:
 
 ---
 
-## 14. Current engineering rules
+## 15. Current engineering rules
 
 Every future milestone must follow:
 
@@ -557,38 +628,43 @@ Production functionality should progressively migrate into the native KEPHIR 2 C
 
 ---
 
-## 15. Immediate next milestone
+## 16. Immediate next milestone
 
-**EXP-80 — Global Router Validation Matrix**
+**EXP-81 — Direction-Preserving Uncertainty Router**
 
 Goal:
 
-Stress the native Analyzer + EXP-79 routing principle across diverse directory shapes before declaring AUTO routing production-stable.
+Fix the only EXP-80 routing error without regressing the seven correct selections.
 
-Initial matrix:
+New policy:
 
-- many tiny source/config files;
-- homogeneous large files;
-- mixed text/binary directory;
-- incompressible/high-entropy data;
-- zero-rich structured data;
-- redundant backup-like data;
-- repository workload;
-- canonical Silesia.
+```text
+strong probe margin
+    → trust measured winner
+
+near-tie + measured SMART + heterogeneous content
+    → SMART
+
+near-tie + measured FLAT + heterogeneous content
+    → do not override
+    → escalate to bounded stage-2 probe
+
+non-diverse ambiguous sample
+    → bounded stage-2 probe
+```
 
 Acceptance criteria:
 
-- exact lossless roundtrip for every full-layout oracle run;
-- selected layout recorded against oracle;
-- aggregate and per-dataset selection regret;
-- bounded routing overhead;
-- no hidden extension-based routing;
-- regression report against EXP-77;
-- CI PASS.
+- 8/8 correct selections on the EXP-80 matrix;
+- aggregate regret 0 B;
+- all SMART/FLAT oracle runs SHA PASS;
+- no regression on repository or Silesia;
+- routing overhead remains bounded;
+- native router policy updated only after CI success.
 
 ---
 
-## 16. Current checkpoint summary
+## 17. Current checkpoint summary
 
 ```text
 KEPHIR 1.0
@@ -609,13 +685,14 @@ KEPHIR 2
             ├── EXP-77 ................. SUPERSEDED
             ├── EXP-78 ................. REJECTED AS FINAL ROUTER
             ├── EXP-79 ................. PROMOTED PRINCIPLE
-            ├── Routing regret ......... 0 B on current 2-workload matrix
-            └── Next ................... EXP-80 validation matrix
+            ├── EXP-80 ................. 7/8 correct, 178 B regret
+            ├── Routing SHA ............ PASS all 8 datasets
+            └── Next ................... EXP-81 direction-preserving router
 ```
 
 ---
 
-## 17. Update policy
+## 18. Update policy
 
 This document is mandatory project state.
 
