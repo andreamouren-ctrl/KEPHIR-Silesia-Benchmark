@@ -2115,3 +2115,56 @@ The next core task is to make the in-process EXP-37 adapter reproduce the exact 
 4. improve `mozilla` grain selection without losing the native win on `mr`;
 5. rerun EXP-91 and EXP-97 after the next promoted ratio milestone;
 6. keep the first product target at **<28% ratio**, then raise throughput toward **20–30 MB/s compression / 150–200 MB/s decompression**.
+
+
+---
+
+## 46. EXP-102 — Native Text Token Parity Fix
+
+Status:
+
+**IN VALIDATION**
+
+Root cause identified by EXP-101 Transform Parity:
+
+- Python canonical token #17 is `b"\\n"`, i.e. two bytes: backslash + `n`;
+- native C++ token #17 was `"\n"`, i.e. one actual newline byte.
+
+Impact:
+
+- native mode-6 tokenization expanded every real newline from 1 byte to a 2-byte token;
+- `dickens`: all 20/20 mode-6 entries transformed differently;
+- `webster`: all 80/80 mode-6 entries transformed differently;
+- this explains most of the remaining text-path archive deficit;
+- decoder compatibility with legacy Python mode-6 archives was also semantically wrong for token #17.
+
+Observed first-entry examples before the fix:
+
+```text
+dickens:
+Python transformed: 469,057 B
+Native transformed: 477,994 B
+Delta:               +8,937 B
+
+webster:
+Python transformed: 502,900 B
+Native transformed: 514,292 B
+Delta:              +11,392 B
+```
+
+Fix applied:
+
+- native token #17 changed from actual newline to literal backslash+`n`;
+- no archive/container format change;
+- mode numbering unchanged.
+
+Required gates before promotion:
+
+1. EXP-101 transform parity must become byte-identical;
+2. Core Smoke must pass;
+3. Legacy Interop must pass;
+4. EXP-91 Silesia gap must improve with SHA PASS.
+
+Current decision:
+
+**Do not promote until all four gates pass.**
