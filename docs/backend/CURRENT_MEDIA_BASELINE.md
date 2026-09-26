@@ -548,3 +548,26 @@ Decision:
 - do not claim broad video compression superiority;
 - current primary compression weakness is motion prediction on medium/high-motion content;
 - next experiment: KSV-13 radius-4 versus radius-6 natural-corpus sweep before designing a hierarchical wide-motion search.
+
+
+## 2026-09-26 KSV-13 natural radius checkpoint
+
+Run 36229152022:
+- R4 aggregate: 24,782,497 bytes
+- R6 aggregate: 24,606,899 bytes
+- R4/R6 oracle: 24,601,701 bytes
+- R6 improvement: 0.7086%
+- maximum oracle improvement: 0.7295%
+- all R4/R6/oracle streams bit-exact
+
+Per-source R6 improvement:
+- container: regression +0.0317%
+- coastguard: regression +0.0273%
+- mobile: regression +0.0452%
+- football: improvement 2.1081%
+- stefan: improvement 1.2973%
+
+Decision:
+- no global MC8R6 promotion;
+- do not invest in an R4/R6 classifier because the perfect-selection opportunity is <1%;
+- next compression experiment: KSV-14 global translation + local motion.
