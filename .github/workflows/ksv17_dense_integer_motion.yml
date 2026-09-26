@@ -5,7 +5,7 @@ on:
   pull_request:
     branches: ["research/khepri-stream-codec"]
   push:
-    branches: ["feature/aurora-media-ksv17-dense-integer-motion"]
+    branches: ["feature/aurora-media-ksv17-dense-integer-motion-rebase"]
     paths:
       - ".github/workflows/ksv17_dense_integer_motion.yml"
       - "research/video/experiments/ksv17_dense_integer_motion.py"
