@@ -199,6 +199,11 @@ def encode_source(src,prefix,exe,w,h,fpsn,fpsd,gop=10,route_span=20):
         k20.write_outer(path,w,h,fpsn,fpsd,gop,route_span,entries[policy])
         paths[policy]=path
 
+    # Compare final-stream sizes consistently. The baseline candidate is not
+    # written because KSV-22 only needs it as a gain reference, but it would
+    # use the same fixed K20 outer header and one fixed-size entry per window.
+    baseline_bytes += k20.OUTER_HDR.size + len(summary) * k20.OUTER_ENT.size
+
     return {
         "paths":paths,
         "baseline_bytes":baseline_bytes,
