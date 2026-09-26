@@ -1,0 +1,69 @@
+name: KEPHIR 2 EXP-97 Competitor Benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - development/kephir-2-core
+    paths:
+      - "src/kephir2/**"
+      - "research/benchmarks/exp97_current_competitor_benchmark.py"
+      - ".github/workflows/exp97_competitor_benchmark.yml"
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install competitor compressors
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y             build-essential cmake python3 unzip curl             zstd xz-utils gzip bzip2 brotli lz4 p7zip-full
+
+      - name: Build current native KEPHIR
+        run: |
+          cmake -S src/kephir2 -B build/kephir2 -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/kephir2 --config Release --parallel
+
+      - name: Native test suite
+        run: |
+          ctest --test-dir build/kephir2 --output-on-failure
+
+      - name: Download canonical Silesia
+        run: |
+          mkdir -p corpora/silesia
+          curl -L --fail --retry 4             -o /tmp/silesia.zip             https://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip
+          echo "c240c17d6805fb8a0bde763f1b94cd99  /tmp/silesia.zip" | md5sum -c -
+          unzip -q /tmp/silesia.zip -d corpora/silesia
+          test "$(find corpora/silesia -type f | wc -l)" -eq 12
+          test "$(find corpora/silesia -type f -printf '%s\n' | awk '{s+=$1} END {print s}')" -eq 211938580
+
+      - name: Run EXP-97
+        run: |
+          python3 research/benchmarks/exp97_current_competitor_benchmark.py             build/kephir2/kephir2_native_k75_cli
+
+      - name: Validate benchmark
+        run: |
+          python3 - <<'PY'
+          import json
+          d=json.load(open("exp97_results.json"))
+          assert d["raw_bytes"] == 211938580
+          assert len(d["rows"]) >= 10
+          for r in d["rows"]:
+              assert r["raw_bytes"] == 211938580
+              assert r["archive_bytes"] > 0
+              assert r["sha_all_pass"] is True
+              assert r["comp_MBps"] > 0
+              assert r["dec_MBps"] > 0
+          print("EXP97_VALIDATION_PASS")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exp97-current-competitor-benchmark
+          path: exp97_results.json
