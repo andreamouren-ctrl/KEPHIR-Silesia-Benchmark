@@ -2109,11 +2109,11 @@ The next core task is to make the in-process EXP-37 adapter reproduce the exact 
 
 ## 45. Immediate backend priority
 
-1. preserve EXP-98 parallel decode;
-2. audit and reproduce legacy EXP-37 inner encoding exactly in-process;
-3. recover the ~49 KB text-path deficit on `dickens` + `webster`;
-4. improve `mozilla` grain selection without losing the native win on `mr`;
-5. rerun EXP-91 and EXP-97 after the next promoted ratio milestone;
+1. preserve EXP-98 parallel decode and EXP-100 parallel encode;
+2. keep EXP-102 text parity frozen;
+3. improve `mozilla` grain segmentation without losing the native win on `mr`;
+4. then address smaller residuals in `samba` and `x-ray`;
+5. rerun EXP-91 after each ratio milestone and EXP-97 after a material Pareto improvement;
 6. keep the first product target at **<28% ratio**, then raise throughput toward **20–30 MB/s compression / 150–200 MB/s decompression**.
 
 
@@ -2123,7 +2123,7 @@ The next core task is to make the in-process EXP-37 adapter reproduce the exact 
 
 Status:
 
-**IN VALIDATION**
+**PROMOTED**
 
 Root cause identified by EXP-101 Transform Parity:
 
@@ -2158,16 +2158,55 @@ Fix applied:
 - no archive/container format change;
 - mode numbering unchanged.
 
-Required gates before promotion:
+Validation gates:
 
-1. EXP-101 transform parity must become byte-identical;
-2. Core Smoke must pass;
-3. Legacy Interop must pass;
-4. EXP-91 Silesia gap must improve with SHA PASS.
+1. EXP-101 transform parity: **PASS**
+2. Core Smoke: **PASS**
+3. Legacy Interop: **PASS**
+4. EXP-91 Silesia gap: **PASS / IMPROVED**
 
-Current decision:
+Transform parity after the fix:
 
-**Do not promote until all four gates pass.**
+```text
+dickens: 20 / 20 entries byte-identical
+webster: 80 / 80 entries byte-identical
+Transform mismatches: 0
+```
+
+EXP-91 Silesia result after EXP-102:
+
+```text
+Python RC1 archive:   62,939,205 B
+Native archive:       62,963,178 B
+Remaining gap:            23,973 B
+Python ratio:          29.6969%
+Native ratio:          29.7082%
+```
+
+Previous native gap before EXP-102:
+
+`73,963 B`
+
+Recovered by EXP-102:
+
+`49,990 B (~67.6% of the remaining gap)`
+
+Per-file consequences:
+
+```text
+dickens:  -50 B native vs Python
+webster: -228 B native vs Python
+mozilla: +37,295 B
+samba:    +3,879 B
+x-ray:    +1,106 B
+mr:      -17,950 B native win
+```
+
+Decision:
+
+**EXP-102 PROMOTED.**
+
+The text-path parity problem is closed. The remaining ratio deficit is now dominated by `mozilla` grain segmentation, with smaller residuals in `samba` and `x-ray`.
 
 
 ---
