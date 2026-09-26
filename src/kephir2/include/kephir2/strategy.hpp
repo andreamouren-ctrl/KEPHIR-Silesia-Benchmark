@@ -48,6 +48,13 @@ struct ArchiveFeatures {
     double sampled_dominant_file_fraction{1.0};
     double sampled_dominant_byte_fraction{1.0};
     double repeatable_content_byte_fraction{0.0};
+
+    // Exact file-order boundary signal for the current 512 KiB production
+    // parent segmentation. A mixed parent contains bytes from more than one
+    // content class in FLAT order.
+    std::uint64_t flat_parent_count{0};
+    std::uint64_t flat_mixed_parent_count{0};
+    double flat_mixed_parent_byte_fraction{0.0};
 };
 
 struct LayoutProbe {
