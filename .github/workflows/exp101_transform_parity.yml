@@ -1,0 +1,52 @@
+name: KEPHIR 2 EXP-101 Transform Parity
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - development/kephir-2-core
+    paths:
+      - "src/kephir2/**"
+      - "release/kephir_final.py"
+      - "research/routers/exp75_lazy_wx_fingerprint.py"
+      - "research/benchmarks/exp101_transform_parity.py"
+      - ".github/workflows/exp101_transform_parity.yml"
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build native KEPHIR
+        run: |
+          cmake -S src/kephir2 -B build/kephir2 -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/kephir2 --config Release --parallel
+
+      - name: Build legacy EXP-37 executable
+        run: |
+          cat engine/source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 research/generators/general/make_exp26_source.py
+          python3 research/generators/general/make_exp27_source.py
+          python3 research/generators/general/make_exp31_source.py
+          python3 research/generators/general/make_exp33_source.py
+          python3 research/generators/general/make_exp37_source.py
+          g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY             -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3             -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1             -pthread KEPHIR_2_EXP37_DUAL_MATCH.cpp -o kephir37
+          chmod +x kephir37
+
+      - name: Download canonical Silesia
+        run: |
+          mkdir -p corpora/silesia
+          curl -L --fail --retry 4 -o /tmp/silesia.zip             https://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip
+          echo "c240c17d6805fb8a0bde763f1b94cd99  /tmp/silesia.zip" | md5sum -c -
+          unzip -q /tmp/silesia.zip -d corpora/silesia
+
+      - name: Run EXP-101
+        run: |
+          python3 research/benchmarks/exp101_transform_parity.py             build/kephir2/kephir2_native_k75_cli
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exp101-transform-parity
+          path: exp101_results.json
