@@ -60,7 +60,7 @@ def parse_cli(text):
 
 def run_native(cli,src,work,label):
     arc=work/f"{label}.native.kpf"
-    out=work/f"{label}.native.out"
+    out=work/f"{label}_native_out"
 
     cp=subprocess.run(
         [str(cli),"c",str(src),str(arc)],
@@ -91,7 +91,7 @@ def run_native(cli,src,work,label):
 
 def run_python(src,work,label,model):
     arc=work/f"{label}.python.kpf"
-    out=work/f"{label}.python.out"
+    out=work/f"{label}_python_out"
     tmp=work/f"{label}.python.tmp"
 
     if tmp.exists():
