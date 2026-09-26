@@ -2,6 +2,8 @@ name: AURORA EXP41 Parser Profile
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: ["research/khepri-stream-codec"]
   push:
     branches: ["feature/aurora-media-exp41-parser-profile-rebase"]
     paths:
