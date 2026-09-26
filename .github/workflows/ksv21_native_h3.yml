@@ -1,0 +1,206 @@
+# KSV21 push rerun checkpoint
+name: KSV-21 Native H3 Conformance
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["research/khepri-stream-codec"]
+  push:
+    branches: ["feature/aurora-media-ksv21-native-h3"]
+    paths:
+      - ".github/workflows/ksv21_native_h3.yml"
+      - "src/cpp/aurora_media/AuroraVideoMotion.*"
+      - "tests/cpp/test_aurora_video_motion_h3.cpp"
+      - "tests/cpp/test_aurora_video_h3_conformance.cpp"
+      - "benchmarks/major_codecs/aurora_native_h3_4k.cpp"
+      - "research/video/experiments/ksv21_emit_native_conformance.py"
+      - "research/video/experiments/ksv20_h3_refinement.py"
+      - "research/video/experiments/ksv17_dense_integer_motion.py"
+
+jobs:
+  conformance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential python3-numpy
+
+      - name: Build native H3 test
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            tests/cpp/test_aurora_video_motion_h3.cpp \
+            -Isrc/cpp/aurora_media \
+            -o test_native_h3
+
+      - name: Run native H3
+        run: ./test_native_h3 | tee native_h3.txt
+
+      - name: Generate Python KSV-20 reference fingerprints
+        env:
+          PYTHONPATH: research/video/lab:research/video/experiments:research/backend
+        run: |
+          python3 - <<'PY' | tee python_h3.txt
+          import ksv20_h3_refinement as k20
+
+          W,H=256,240
+
+          def fnv(data):
+              h=1469598103934665603
+              for b in data:
+                  h ^= b
+                  h = (h * 1099511628211) & ((1<<64)-1)
+              return h
+
+          def pattern(x,y,seed):
+              return (
+                  x*13+y*7+seed*19+
+                  ((x//11+seed)%7)*17+
+                  ((y//9+seed)%5)*23
+              ) & 255
+
+          ys=W*H
+          us=(W//2)*(H//2)
+          prev=bytearray(ys+2*us)
+
+          for y in range(H):
+              for x in range(W):
+                  prev[y*W+x]=pattern(x,y,1)
+
+          cw=W//2
+          ch=H//2
+          for y in range(ch):
+              for x in range(cw):
+                  i=y*cw+x
+                  prev[ys+i]=pattern(x,y,3)
+                  prev[ys+us+i]=pattern(x,y,5)
+
+          cur=bytearray(prev)
+          for y in range(H):
+              for x in range(1,W):
+                  cur[y*W+x]=prev[y*W+x-1]
+              cur[y*W]=pattern(0,y,9)
+
+          for y in range(ch):
+              for x in range(cw):
+                  i=y*cw+x
+                  cur[ys+i]=(prev[ys+i]+31)&255
+                  cur[ys+us+i]=(prev[ys+us+i]+47)&255
+
+          motion,residuals,stats=k20.h3_motion_residuals(
+              bytes(cur),bytes(prev),W,H
+          )
+
+          print(
+              "AURORA_PY_H3_REFERENCE",
+              "blocks",len(motion),
+              "motion_fp",fnv(motion),
+              "floor_residual_fp",fnv(residuals[k20.k17.CHROMA_FLOOR]),
+              "trunc_residual_fp",fnv(residuals[k20.k17.CHROMA_TRUNC]),
+              "odd_fraction",stats["odd_any_fraction"],
+          )
+          PY
+
+      - name: Validate C++ Python byte conformance
+        run: |
+          python3 - <<'PY' | tee h3_conformance_summary.txt
+          import re
+          from pathlib import Path
+
+          cpp_line=next(
+              x for x in Path("native_h3.txt").read_text().splitlines()
+              if x.startswith("AURORA_NATIVE_H3_PASS ")
+          )
+          py_line=next(
+              x for x in Path("python_h3.txt").read_text().splitlines()
+              if x.startswith("AURORA_PY_H3_REFERENCE ")
+          )
+
+          def vals(line):
+              return dict(re.findall(r"(\w+)=([^ ]+)",line))
+
+          cpp=vals(cpp_line)
+          py=vals(py_line)
+
+          for key in (
+              "blocks",
+              "motion_fp",
+              "floor_residual_fp",
+              "trunc_residual_fp",
+          ):
+              if cpp[key] != py[key]:
+                  raise SystemExit(
+                      f"H3 C++/Python mismatch {key}: {cpp[key]} != {py[key]}"
+                  )
+
+          if int(cpp["odd_blocks"]) <= 0:
+              raise SystemExit("native H3 did not select odd displacement")
+
+          print("AURORA_NATIVE_H3_CONFORMANCE_PASS")
+          print("blocks",cpp["blocks"])
+          print("odd_blocks",cpp["odd_blocks"])
+          print("motion_fp",cpp["motion_fp"])
+          print("floor_residual_fp",cpp["floor_residual_fp"])
+          print("trunc_residual_fp",cpp["trunc_residual_fp"])
+          PY
+
+      - name: Emit direct Python H3 binary vectors
+        env:
+          PYTHONPATH: research/video/lab:research/video/experiments:research/backend
+        run: |
+          python3 research/video/experiments/ksv21_emit_native_conformance.py \
+            --out ksv21_vectors | tee ksv21_python_vector.txt
+
+      - name: Build direct byte-for-byte H3 conformance
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            tests/cpp/test_aurora_video_h3_conformance.cpp \
+            -Isrc/cpp/aurora_media \
+            -o test_h3_direct
+
+      - name: Run direct byte-for-byte H3 conformance
+        run: |
+          ./test_h3_direct ksv21_vectors | tee ksv21_direct_conformance.txt
+
+      - name: Build native 4K H3 scaling benchmark
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -Wall -Wextra -Werror -pthread \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            benchmarks/major_codecs/aurora_native_h3_4k.cpp \
+            -Isrc/cpp/aurora_media \
+            -o bench_native_h3_4k
+
+      - name: Run native 4K H3 scaling benchmark
+        run: |
+          ./bench_native_h3_4k | tee ksv21_native_h3_4k.txt
+
+      - name: Validate native H3 extended gates
+        run: |
+          grep -q "KSV21_PYTHON_CONFORMANCE_VECTOR_PASS" ksv21_python_vector.txt
+          grep -q "AURORA_NATIVE_H3_CONFORMANCE_PASS" ksv21_direct_conformance.txt
+          grep -q "AURORA_NATIVE_H3_4K_PASS workers=1" ksv21_native_h3_4k.txt
+          grep -q "AURORA_NATIVE_H3_4K_PASS workers=2" ksv21_native_h3_4k.txt
+          grep -q "AURORA_NATIVE_H3_4K_PASS workers=4" ksv21_native_h3_4k.txt
+          grep -q "AURORA_NATIVE_H3_4K_PASS workers=8" ksv21_native_h3_4k.txt
+          echo "KSV21_NATIVE_H3_EXTENDED_PASS"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ksv21-native-h3-conformance
+          path: |
+            native_h3.txt
+            python_h3.txt
+            h3_conformance_summary.txt
+            ksv21_python_vector.txt
+            ksv21_direct_conformance.txt
+            ksv21_native_h3_4k.txt
+            ksv21_vectors/meta.json
