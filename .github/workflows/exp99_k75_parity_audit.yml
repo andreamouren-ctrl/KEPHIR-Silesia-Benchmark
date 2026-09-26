@@ -6,7 +6,6 @@ on:
     branches:
       - development/kephir-2-core
     paths:
-      - "src/kephir2/**"
       - "release/kephir_final.py"
       - "research/routers/exp75_lazy_wx_fingerprint.py"
       - "research/benchmarks/exp99_k75_parity_audit.py"
