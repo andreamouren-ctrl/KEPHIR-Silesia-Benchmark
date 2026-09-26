@@ -15,7 +15,7 @@ on:
       - "make_exp40_source.py"
 
 jobs:
-  ksv18:
+  ksv19:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
 
@@ -123,7 +123,7 @@ jobs:
                   "SOURCE",
                   row["name"],
                   "baseline",row["baseline"]["bytes"],
-                  "h1",row["h2"]["bytes"],
+                  "h2",row["h2"]["bytes"],
                   "dense",row["dense"]["bytes"],
                   "recovered_pct",f'{row["gain_recovered_percent"]:.3f}',
                   "mean_h2_evals",f'{sum(vals)/len(vals):.3f}',
@@ -132,7 +132,7 @@ jobs:
 
           candidate=(
               a["gain_recovered_percent"] >= 90.0
-              and a["h1"]["encode_research_seconds"]
+              and a["h2"]["encode_research_seconds"]
                   <= a["dense"]["encode_research_seconds"] * 0.80
           )
           print("KSV19_PRODUCTION_DIRECTION_CANDIDATE",str(candidate).lower())
