@@ -1984,3 +1984,134 @@ Acceptance direction:
 1. improve throughput without changing archive bytes;
 2. recover existing proven ratio before adding new algorithmic complexity;
 3. rerun EXP-97 only after a promoted backend milestone.
+
+
+---
+
+## 43. EXP-98 — Bounded Parallel Decode
+
+Status:
+
+**PROMOTED**
+
+Goal:
+
+Increase native decompression throughput without changing archive bytes, ratio, transforms, or lossless semantics.
+
+Implementation:
+
+- K75 entry table is parsed once;
+- independent entries are decoded in bounded parallel batches;
+- output ordering is preserved;
+- worker count is capped at 16;
+- cancellation/progress remain active;
+- KPF1/K75U archive representation is unchanged.
+
+Canonical Silesia scaling result:
+
+```text
+Workers   Decode MB/s   Speedup vs 1
+1            46.709        1.00x
+2            81.305        1.74x
+4           111.324        2.38x
+8           112.011        2.40x
+16          118.585        2.54x
+```
+
+Archive bytes:
+
+`63,013,168 B`
+
+Ratio:
+
+`29.7318%`
+
+SHA:
+
+**PASS at every worker count**
+
+Decision:
+
+**Promote bounded parallel decode.**
+
+This moves decompression from the previous ~46–57 MB/s region to about **118.6 MB/s** on the CI runner without any ratio regression.
+
+The next decode target remains 150–200 MB/s.
+
+---
+
+## 44. EXP-99 — Python RC1 vs Native K75 Structural Parity Audit
+
+Status:
+
+**DIAGNOSTIC COMPLETE**
+
+EXP-99 audited the files responsible for most of the remaining Python/native ratio gap.
+
+Key findings:
+
+### dickens
+
+```text
+Archive delta: +20,076 B native
+Entries:       20 vs 20
+Raw layout:    identical
+Modes:         mode 6 on all entries, identical
+```
+
+The native inner compressed payload is consistently slightly larger for the same raw region and same transform.
+
+### webster
+
+```text
+Archive delta: +28,679 B native
+Entries:       80 vs 80
+Raw layout:    identical
+Modes:         79× mode 6 + 1× mode 0, identical
+```
+
+Again the difference is inside the inner EXP-37/AUR2 compression path, not K75 segmentation or transform selection.
+
+### mozilla
+
+```text
+Archive delta: +37,295 B native
+Entries:       139 vs 139
+Raw layout:    different
+Mode counts:   identical aggregate distribution
+```
+
+The dominant difference is grain segmentation/order: Python and native choose different 128/256/512 KiB entry boundaries.
+
+### mr
+
+```text
+Archive delta: -17,950 B native
+Python entries: 36
+Native entries: 75
+```
+
+Here the native grain policy is actually better than the Python RC1 result.
+
+Conclusion:
+
+The remaining ratio gap is **not one problem**:
+
+1. **Text-path inner encoder parity** explains most of `dickens` + `webster`.
+2. **Factory/session grain parity** explains most of `mozilla`.
+3. Native grain decisions can already outperform Python on some data such as `mr`.
+
+This means the next work must not blindly copy all Python behavior.
+
+The next core task is to make the in-process EXP-37 adapter reproduce the exact legacy `kephir37 cp` chunk encoding path on identical payloads, then re-run the ratio baseline.
+
+---
+
+## 45. Immediate backend priority
+
+1. preserve EXP-98 parallel decode;
+2. audit and reproduce legacy EXP-37 inner encoding exactly in-process;
+3. recover the ~49 KB text-path deficit on `dickens` + `webster`;
+4. improve `mozilla` grain selection without losing the native win on `mr`;
+5. rerun EXP-91 and EXP-97 after the next promoted ratio milestone;
+6. keep the first product target at **<28% ratio**, then raise throughput toward **20–30 MB/s compression / 150–200 MB/s decompression**.
