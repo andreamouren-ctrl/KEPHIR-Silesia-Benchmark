@@ -35,3 +35,9 @@ print("EXP37_MAIN_CONTEXT_BEGIN")
 for i in range(start,end):
     print(f"{i+1}: {lines[i]}")
 print("EXP37_MAIN_CONTEXT_END")
+
+
+print("EXP37_CORE_CONTEXT_BEGIN")
+for i in range(690,min(len(lines),920)):
+    print(f"{i+1}: {lines[i]}")
+print("EXP37_CORE_CONTEXT_END")
