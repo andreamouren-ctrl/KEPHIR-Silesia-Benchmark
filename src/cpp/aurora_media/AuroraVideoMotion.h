@@ -11,6 +11,12 @@ struct MotionResidual {
     Bytes residual_yuv420;
 };
 
+struct H3ResidualVariants {
+    Bytes motion_map;
+    Bytes residual_floor_yuv420;
+    Bytes residual_trunc_yuv420;
+};
+
 enum class DenseChromaPolicy : std::uint8_t {
     Floor = 0,
     Trunc = 1,
@@ -27,6 +33,15 @@ public:
     // KSV-20/KSV-21 H3 search:
     // 25 sparse-even coarse candidates + unique 3x3 neighborhoods around
     // the three best sparse candidates, emitted using canonical dense indices.
+    // Computes H3 luma motion once and materializes both YUV420 chroma
+    // rounding variants. This is the production-policy entry point: a cheap
+    // selector can choose FLOOR/TRUNC without repeating motion search.
+    static H3ResidualVariants encode_mc8r4_h3_variants(
+                                          ByteView current_yuv420,
+                                          ByteView previous_yuv420,
+                                          std::uint32_t width,
+                                          std::uint32_t height);
+
     static MotionResidual encode_mc8r4_h3(ByteView current_yuv420,
                                           ByteView previous_yuv420,
                                           std::uint32_t width,

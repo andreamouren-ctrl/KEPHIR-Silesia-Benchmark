@@ -1,0 +1,76 @@
+name: KSV-23 Native H3 Variants
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["feature/aurora-media-ksv23-native-h3-variants"]
+    paths:
+      - ".github/workflows/ksv23_native_h3_variants.yml"
+      - "src/cpp/aurora_media/AuroraVideoMotion.*"
+      - "tests/cpp/test_aurora_video_h3_variants.cpp"
+      - "tests/cpp/test_aurora_video_motion_h3.cpp"
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+
+      - name: Build existing native H3 regression
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            tests/cpp/test_aurora_video_motion_h3.cpp \
+            -Isrc/cpp/aurora_media \
+            -o test_h3_regression
+
+      - name: Run existing native H3 regression
+        run: ./test_h3_regression | tee h3_regression.txt
+
+      - name: Build one-pass H3 variant test
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            tests/cpp/test_aurora_video_h3_variants.cpp \
+            -Isrc/cpp/aurora_media \
+            -o test_h3_variants
+
+      - name: Run one-pass H3 variant A/B
+        run: ./test_h3_variants | tee h3_variants.txt
+
+      - name: Validate KSV-23
+        run: |
+          grep -q "AURORA_NATIVE_H3_PASS" h3_regression.txt
+          grep -q "AURORA_H3_VARIANTS_PASS" h3_variants.txt
+          python3 - <<'PY' | tee h3_variants_summary.txt
+          import re
+          from pathlib import Path
+          line=next(
+              x for x in Path("h3_variants.txt").read_text().splitlines()
+              if x.startswith("AURORA_H3_VARIANTS_PASS ")
+          )
+          v=dict(re.findall(r"(\w+)=([^ ]+)",line))
+          speed=float(v["speedup_x"])
+          if speed < 1.50:
+              raise SystemExit(f"one-pass H3 speedup too small: {speed:.3f}x")
+          print("KSV23_NATIVE_H3_VARIANTS_VALIDATION_PASS")
+          print("one_pass_ms",v["one_pass_ms"])
+          print("two_search_ms",v["two_search_ms"])
+          print("speedup_x",v["speedup_x"])
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ksv23-native-h3-variants
+          path: |
+            h3_regression.txt
+            h3_variants.txt
+            h3_variants_summary.txt
