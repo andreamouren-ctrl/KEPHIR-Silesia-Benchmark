@@ -1584,3 +1584,178 @@ After every meaningful KEPHIR 2 development step, it must be updated with:
 This file should always answer the question:
 
 > **Where exactly is KEPHIR 2 right now?**
+
+
+---
+
+## 38. EXP-91 / EXP-93 Backend Gap Qualification
+
+Status:
+
+**MAJOR GAP REDUCTION / NATIVE BACKEND STILL CANDIDATE**
+
+Canonical Silesia raw bytes:
+
+```text
+211,938,580 B
+```
+
+Initial native candidate versus Python KEPHIR 1.0.0-rc1:
+
+```text
+Python RC1:       62,939,205 B  = 29.6969%
+Native pre-93:    63,503,992 B  = 29.9634%
+Gap:                 564,787 B
+```
+
+Performance:
+
+```text
+Python comp: 56.26 s
+Native comp: 37.59 s
+
+Python dec:  10.80 s
+Native dec:   4.24 s
+```
+
+EXP-93 embedded 72 trusted factory grain rules directly into C++ with no JSON/runtime Python dependency and no expensive new probe loop.
+
+Post EXP-93:
+
+```text
+Python RC1:       62,939,205 B  = 29.6969%
+Native EXP-93:    63,020,085 B  = 29.7351%
+Remaining gap:        80,880 B  (~0.1285% larger than Python archive total)
+```
+
+Performance post EXP-93:
+
+```text
+Python comp: 70.21 s
+Native comp: 47.87 s
+Python dec:  15.04 s
+Native dec:   4.83 s
+```
+
+Lossless SHA: **PASS**
+
+Interpretation:
+
+- approximately 86% of the original ratio gap was recovered;
+- the native path remains materially faster than the Python release path;
+- the remaining gap is concentrated in a small number of files;
+- selective native Word-XOR and text-path parity are now the targeted ratio work.
+
+---
+
+## 39. EXP-92 / EXP-94 / EXP-96 Production AUTO Requalification
+
+Status:
+
+**PRODUCTION ROUTER BEING REQUALIFIED ON REAL KPF1 COSTS**
+
+Historical research routing assumptions changed slightly after native KPF1 framing and the real NativeK75 backend were introduced.
+
+EXP-92 production result before correction:
+
+```text
+Correct: 10 / 16
+Regret:  1,835 B
+Byte-perfect roundtrip: PASS
+```
+
+After factory-grain improvements and the EXP-94 structural rule:
+
+```text
+Correct: 15 / 16
+Regret:    720 B
+```
+
+EXP-94 structural rule:
+
+If every 512 KiB FLAT backend parent is already content-pure, SMART cannot gain from separating content classes and only adds metadata overhead. In that case FLAT is selected directly with no probe.
+
+This removed all observed false-SMART decisions.
+
+One case remained:
+
+`many_medium_four_groups`
+
+SMART wins by 720 B, but a 512 KiB probe sampled the wrong direction.
+
+EXP-96 therefore changes only small/medium repeated-mixing candidates up to 4 MiB to a full-input probe.
+
+No global probe-budget increase is introduced.
+
+---
+
+## 40. EXP-97M Rapid Competitor Benchmark
+
+Status:
+
+**COMPLETED — SHA PASS**
+
+Corpus:
+
+`Silesia canonical, 12 files, 211,938,580 B`
+
+Conditions:
+
+- same GitHub Actions runner;
+- one pass in the rapid benchmark;
+- full archive/container bytes counted;
+- competitors single-threaded where supported;
+- every decompressed file SHA-256 verified.
+
+Results ordered by compression ratio:
+
+```text
+Codec                  Archive bytes   Ratio      Comp MB/s   Dec MB/s
+XZ/LZMA2 -6             49,233,340     23.2300%      2.785      72.086
+Zstd -19                52,895,350     24.9579%      2.482     708.386
+KEPHIR 2 Native EXP-95  63,013,168     29.7318%      4.475      46.945
+Zstd -3                 66,216,569     31.2433%    191.882     732.453
+Gzip/Deflate -9         67,631,990     31.9111%     10.840     167.703
+LZ4 default            100,934,427     47.6244%    361.980     844.758
+```
+
+All SHA checks: **PASS**
+
+Current positioning:
+
+- KEPHIR compresses about 4.84% smaller than Zstd -3.
+- KEPHIR compresses about 6.83% smaller than Gzip -9.
+- KEPHIR compresses far smaller than LZ4 default.
+- KEPHIR is about 19.1% larger than Zstd -19.
+- KEPHIR is about 28.0% larger than XZ/LZMA2 -6.
+- KEPHIR compression is about 1.80x faster than Zstd -19 in this runner.
+- KEPHIR compression is about 1.61x faster than XZ/LZMA2 -6 in this runner.
+- KEPHIR decompression is currently slower than all measured competitors in this rapid matrix.
+
+Interpretation:
+
+KEPHIR currently occupies a real but narrow middle position:
+
+```text
+better ratio than mainstream fast profiles
++
+faster compression than tested high-compression profiles
+-
+decode speed is not yet competitive
+-
+ratio does not yet match mature high-compression codecs
+```
+
+The full EXP-97 median-of-3 benchmark with additional Brotli/7-Zip profiles remains the stricter qualification matrix.
+
+---
+
+## 41. Immediate product benchmark priority
+
+The current product priority is now measurable:
+
+1. preserve the ~29.73% ratio or improve it;
+2. raise decompression throughput substantially;
+3. avoid sacrificing the compression advantage versus Zstd -19 / LZMA2 -6;
+4. close the remaining ~80 KB ratio gap versus the qualified Python KEPHIR release;
+5. complete the full EXP-97 competitor matrix before commercial performance claims are frozen.
