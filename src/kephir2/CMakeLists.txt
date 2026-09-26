@@ -47,6 +47,7 @@ set_target_properties(kephir37_native PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 add_library(kephir2_core STATIC
     src/analyzer.cpp
+    src/auto_routing.cpp
     src/archive.cpp
     src/execution.cpp
     src/native37_blob.cpp
@@ -146,6 +147,11 @@ add_executable(kephir2_native_k75_cli
 )
 target_link_libraries(kephir2_native_k75_cli PRIVATE kephir2_core)
 
+add_executable(kephir2_auto_routing_smoke
+    tests/auto_routing_smoke.cpp
+)
+target_link_libraries(kephir2_auto_routing_smoke PRIVATE kephir2_core)
+
 enable_testing()
 add_test(NAME kephir2_strategy_smoke COMMAND kephir2_strategy_smoke)
 add_test(NAME kephir2_analyzer_smoke COMMAND kephir2_analyzer_smoke)
@@ -156,6 +162,7 @@ add_test(NAME kephir2_execution_smoke COMMAND kephir2_execution_smoke)
 add_test(NAME kephir2_native37_smoke COMMAND kephir2_native37_smoke)
 add_test(NAME kephir2_native37_blob_smoke COMMAND kephir2_native37_blob_smoke)
 add_test(NAME kephir2_native_k75_smoke COMMAND kephir2_native_k75_smoke)
+add_test(NAME kephir2_auto_routing_smoke COMMAND kephir2_auto_routing_smoke)
 
 
 add_library(kephir2_api SHARED
