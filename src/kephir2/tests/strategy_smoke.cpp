@@ -31,13 +31,33 @@ int main() {
     silesia_like.median_file_bytes = 10'000'000.0;
     silesia_like.small_file_fraction = 0.0;
 
+    silesia_like.sampled_content_groups = 5;
+    silesia_like.sampled_dominant_file_fraction = 1.0 / 3.0;
+    silesia_like.sampled_dominant_byte_fraction = 1.0 / 3.0;
+
     LayoutProbe smart_probe{};
-    smart_probe.sampled_bytes = 12u * 1024u * 1024u;
-    smart_probe.flat_archive_bytes = 3'850'000;
-    smart_probe.smart_archive_bytes = 3'820'000;
+    smart_probe.sampled_bytes = 2u * 1024u * 1024u;
+    smart_probe.flat_archive_bytes = 754'225;
+    smart_probe.smart_archive_bytes = 753'646;
 
     auto silesia_plan = router.plan(silesia_like, Profile::Auto, smart_probe);
     assert(silesia_plan.layout == Layout::Smart);
+    assert(!silesia_plan.request_extended_probe);
+
+    ArchiveFeatures homogeneous_large{};
+    homogeneous_large.logical_bytes = 200'000'000;
+    homogeneous_large.file_count = 10;
+    homogeneous_large.sampled_content_groups = 1;
+    homogeneous_large.sampled_dominant_file_fraction = 1.0;
+    homogeneous_large.sampled_dominant_byte_fraction = 1.0;
+
+    LayoutProbe ambiguous_probe{};
+    ambiguous_probe.sampled_bytes = 2u * 1024u * 1024u;
+    ambiguous_probe.flat_archive_bytes = 700'000;
+    ambiguous_probe.smart_archive_bytes = 700'100;
+
+    auto ambiguous_plan = router.plan(homogeneous_large, Profile::Auto, ambiguous_probe);
+    assert(ambiguous_plan.request_extended_probe);
 
     auto fast_plan = router.plan(silesia_like, Profile::Fast, std::nullopt);
     assert(fast_plan.preferred_grain_bytes == 512u * 1024u);
