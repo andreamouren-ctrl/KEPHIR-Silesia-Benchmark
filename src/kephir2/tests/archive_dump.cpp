@@ -51,7 +51,26 @@ int main() {
 
     const auto manifest = encode_manifest(records);
 
+    const Kpf1FileEnvelope file_env{
+        "sample.txt",
+        ByteBuffer{0x00,0x01,0xff,'K','7','5'}
+    };
+    const auto file_archive = encode_kpf1_file(file_env);
+
+    const Kpf1DirectoryEnvelope dir_env{
+        {"g0","g1","g2"},
+        manifest,
+        {
+            {12, ByteBuffer{0x10,0x11}},
+            {0x1'0000'0200ull, ByteBuffer{0x20,0x21,0x22}},
+            {70000, ByteBuffer{0x30}}
+        }
+    };
+    const auto dir_archive = encode_kpf1_directory(dir_env);
+
     std::cout << "VARINT_HEX\t" << hex(varints) << '\n';
     std::cout << "MANIFEST_HEX\t" << hex(manifest) << '\n';
+    std::cout << "FILE_KPF1_HEX\t" << hex(file_archive) << '\n';
+    std::cout << "DIR_KPF1_HEX\t" << hex(dir_archive) << '\n';
     return 0;
 }
