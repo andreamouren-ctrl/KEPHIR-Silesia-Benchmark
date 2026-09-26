@@ -49,6 +49,54 @@ std::uint64_t sad8x8(ByteView cur,ByteView prev,
 #endif
 }
 
+#if defined(__SSE2__) && !defined(AURORA_DISABLE_GRID25_SIMD)
+void sad8x8_grid25_sse2(ByteView cur,ByteView prev,
+                        std::uint32_t stride,
+                        std::uint32_t bx,std::uint32_t by,
+                        std::uint64_t (&costs)[25]) {
+    std::fill(std::begin(costs),std::end(costs),0ull);
+
+    constexpr int dys[5]{-4,-2,0,2,4};
+
+    for(std::uint32_t yy=0;yy<8;++yy) {
+        const auto* ca=cur.data()+static_cast<std::size_t>(by+yy)*stride+bx;
+        const __m128i c8=_mm_loadl_epi64(
+            reinterpret_cast<const __m128i*>(ca));
+        const __m128i cc=_mm_unpacklo_epi64(c8,c8);
+
+        for(std::uint32_t dyi=0;dyi<5;++dyi) {
+            const auto py=static_cast<std::uint32_t>(
+                static_cast<int>(by)+dys[dyi]+static_cast<int>(yy));
+            const auto* pa=prev.data()+static_cast<std::size_t>(py)*stride+(bx-4);
+
+            const __m128i p0=_mm_loadu_si128(
+                reinterpret_cast<const __m128i*>(pa));
+            const __m128i p2=_mm_srli_si128(p0,2);
+            const __m128i p4=_mm_srli_si128(p0,4);
+            const __m128i p6=_mm_srli_si128(p0,6);
+            const __m128i p8=_mm_srli_si128(p0,8);
+
+            const __m128i pair02=_mm_unpacklo_epi64(p0,p2);
+            const __m128i pair46=_mm_unpacklo_epi64(p4,p6);
+            const __m128i pair8=_mm_unpacklo_epi64(p8,p8);
+
+            const __m128i s02=_mm_sad_epu8(cc,pair02);
+            const __m128i s46=_mm_sad_epu8(cc,pair46);
+            const __m128i s8=_mm_sad_epu8(cc,pair8);
+
+            const auto base=static_cast<std::size_t>(dyi)*5u;
+            costs[base+0]+=static_cast<std::uint64_t>(_mm_cvtsi128_si64(s02));
+            costs[base+1]+=static_cast<std::uint64_t>(
+                _mm_cvtsi128_si64(_mm_srli_si128(s02,8)));
+            costs[base+2]+=static_cast<std::uint64_t>(_mm_cvtsi128_si64(s46));
+            costs[base+3]+=static_cast<std::uint64_t>(
+                _mm_cvtsi128_si64(_mm_srli_si128(s46,8)));
+            costs[base+4]+=static_cast<std::uint64_t>(_mm_cvtsi128_si64(s8));
+        }
+    }
+}
+#endif
+
 } // namespace
 
 std::vector<std::pair<int,int>> AuroraVideoMotion::candidates(int radius) {
@@ -115,12 +163,22 @@ MotionResidual AuroraVideoMotion::encode_mc8r4_adaptive(ByteView cur,ByteView pr
 
     const auto activity=sparse_luma_mad(cur,prev,w,h,8);
     const auto limit=activity<=low_motion_threshold ? low_motion_candidates : 25u;
-    return encode_mc8r4_limited(cur,prev,w,h,limit);
+    return encode_mc8r4_limited_impl(
+        cur,prev,w,h,limit,limit==25u);
 }
 
 MotionResidual AuroraVideoMotion::encode_mc8r4_limited(ByteView cur,ByteView prev,
                                                        std::uint32_t w,std::uint32_t h,
                                                        std::size_t max_candidates) {
+    return encode_mc8r4_limited_impl(
+        cur,prev,w,h,max_candidates,false);
+}
+
+MotionResidual AuroraVideoMotion::encode_mc8r4_limited_impl(
+        ByteView cur,ByteView prev,
+        std::uint32_t w,std::uint32_t h,
+        std::size_t max_candidates,
+        bool enable_grid25_simd) {
     constexpr std::uint32_t block=8;
     constexpr int radius=4;
     if(w==0 || h==0 || (w%block)!=0 || (h%block)!=0 || (w%2)!=0 || (h%2)!=0)
@@ -188,33 +246,50 @@ MotionResidual AuroraVideoMotion::encode_mc8r4_limited(ByteView cur,ByteView pre
                 by+block+static_cast<std::uint32_t>(radius)<=h;
 #endif
 
-            for(std::size_t i=0;i<candidate_count;++i) {
-                const auto [dx,dy]=cand[i];
-                const int sx=static_cast<int>(bx)+dx;
-                const int sy=static_cast<int>(by)+dy;
-                if(!interior &&
-                   (sx<0 || sy<0 ||
-                    sx+static_cast<int>(block)>static_cast<int>(w) ||
-                    sy+static_cast<int>(block)>static_cast<int>(h)))
-                    continue;
+#if defined(__SSE2__) && !defined(AURORA_DISABLE_GRID25_SIMD)
+            if(enable_grid25_simd && candidate_count==25 && interior) {
+                std::uint64_t grid_costs[25];
+                sad8x8_grid25_sse2(cur,prev,w,bx,by,grid_costs);
 
-                const std::uint64_t cost=sad8x8(
-                    cur,prev,w,bx,by,
-                    static_cast<std::uint32_t>(sx),
-                    static_cast<std::uint32_t>(sy));
-                if(cost<best_cost) {
-                    best_cost=cost;
-                    best_idx=static_cast<int>(i);
-
-                    // Exact fast path: SAD is non-negative, so zero is the
-                    // global optimum. Candidate order is the tie-break rule
-                    // (the encoder only accepts strictly lower costs), hence
-                    // stopping here is bitstream-identical to evaluating all
-                    // remaining candidates.
-#if !defined(AURORA_DISABLE_EXACT_MOTION_FASTPATH)
-                    if(best_cost==0)
-                        break;
+                for(std::size_t i=0;i<candidate_count;++i) {
+                    const auto [dx,dy]=cand[i];
+                    const auto gx=static_cast<std::size_t>((dx+radius)/2);
+                    const auto gy=static_cast<std::size_t>((dy+radius)/2);
+                    const auto cost=grid_costs[gy*5u+gx];
+                    if(cost<best_cost) {
+                        best_cost=cost;
+                        best_idx=static_cast<int>(i);
+                    }
+                }
+            } else
 #endif
+            {
+                for(std::size_t i=0;i<candidate_count;++i) {
+                    const auto [dx,dy]=cand[i];
+                    const int sx=static_cast<int>(bx)+dx;
+                    const int sy=static_cast<int>(by)+dy;
+                    if(!interior &&
+                       (sx<0 || sy<0 ||
+                        sx+static_cast<int>(block)>static_cast<int>(w) ||
+                        sy+static_cast<int>(block)>static_cast<int>(h)))
+                        continue;
+
+                    const std::uint64_t cost=sad8x8(
+                        cur,prev,w,bx,by,
+                        static_cast<std::uint32_t>(sx),
+                        static_cast<std::uint32_t>(sy));
+                    if(cost<best_cost) {
+                        best_cost=cost;
+                        best_idx=static_cast<int>(i);
+
+                        // Exact fast path: SAD is non-negative, so zero is the
+                        // global optimum. Candidate order is the tie-break rule
+                        // (the encoder only accepts strictly lower costs).
+#if !defined(AURORA_DISABLE_EXACT_MOTION_FASTPATH)
+                        if(best_cost==0)
+                            break;
+#endif
+                    }
                 }
             }
 
