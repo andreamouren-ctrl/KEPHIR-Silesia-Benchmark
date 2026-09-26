@@ -1,0 +1,107 @@
+name: AURORA Half-Block SAD
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["research/khepri-stream-codec"]
+  push:
+    branches: ["feature/aurora-media-halfblock-sad"]
+    paths:
+      - ".github/workflows/aurora_halfblock_sad.yml"
+      - "src/cpp/aurora_media/AuroraVideoMotion.cpp"
+      - "benchmarks/major_codecs/aurora_exact_motion_fastpath.cpp"
+      - "tests/cpp/test_aurora_video_motion.cpp"
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build regression test
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            src/cpp/aurora_media/AuroraVideoResidual.cpp \
+            tests/cpp/test_aurora_video_motion.cpp \
+            -Isrc/cpp/aurora_media \
+            -o test_motion
+
+      - name: Run regression test
+        run: ./test_motion | tee regression.txt
+
+      - name: Build full-SAD baseline
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -DAURORA_DISABLE_HALFBLOCK_SAD \
+            -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            benchmarks/major_codecs/aurora_exact_motion_fastpath.cpp \
+            -Isrc/cpp/aurora_media \
+            -o bench_full
+
+      - name: Build half-block SAD
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            benchmarks/major_codecs/aurora_exact_motion_fastpath.cpp \
+            -Isrc/cpp/aurora_media \
+            -o bench_half
+
+      - name: Run A/B
+        run: |
+          echo "=== FULL ===" | tee halfblock_sad_ab.txt
+          ./bench_full | tee -a halfblock_sad_ab.txt
+          echo "=== HALF ===" | tee -a halfblock_sad_ab.txt
+          ./bench_half | tee -a halfblock_sad_ab.txt
+
+      - name: Validate equivalence and summarize
+        run: |
+          python3 - <<'PY' | tee halfblock_sad_summary.txt
+          import re
+          from pathlib import Path
+
+          text=Path("halfblock_sad_ab.txt").read_text()
+          parts=text.split("=== HALF ===")
+          if len(parts)!=2:
+              raise SystemExit("missing A/B sections")
+
+          def parse(section):
+              rows={}
+              for line in section.splitlines():
+                  if not line.startswith("MOTION_BENCH "):
+                      continue
+                  vals=dict(re.findall(r"(\w+)=([^ ]+)",line))
+                  rows[vals["name"]]=vals
+              return rows
+
+          base=parse(parts[0])
+          fast=parse(parts[1])
+          if base.keys()!=fast.keys():
+              raise SystemExit("scenario mismatch")
+
+          print("AURORA_HALFBLOCK_SAD_AB")
+          for name in sorted(base):
+              b,f=base[name],fast[name]
+              for key in ("fingerprint","motion_bytes","residual_bytes"):
+                  if b[key]!=f[key]:
+                      raise SystemExit(f"{name}: output mismatch in {key}")
+              bm=float(b["ms"]); fm=float(f["ms"])
+              print(
+                  f"{name}: full_ms={bm:.6f} half_ms={fm:.6f} "
+                  f"speedup_x={bm/fm:.3f} "
+                  f"time_reduction_pct={(1.0-fm/bm)*100.0:.2f}"
+              )
+          print("BITSTREAM_EQUIVALENCE=PASS")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-halfblock-sad
+          path: |
+            regression.txt
+            halfblock_sad_ab.txt
+            halfblock_sad_summary.txt
