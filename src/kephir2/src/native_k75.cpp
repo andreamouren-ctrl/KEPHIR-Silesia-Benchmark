@@ -3,57 +3,440 @@
 #include "kephir2/native37_blob.hpp"
 
 #include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <stdexcept>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 namespace kephir2 {
+namespace {
+
+constexpr std::size_t kParentBytes = 512u * 1024u;
+constexpr std::array<std::string_view, 32> kTextTokens{
+    " the "," and ","ing","tion"," of "," to "," in "," that ",
+    " is "," for ","ed ","er ","re ","en ","on ","at ",
+    "\n","</","/>","http","www.","=\"","<!--","-->",
+    "data","this","with","from","have","not "," as "," by "
+};
+
+struct EncodedEntry {
+    std::uint8_t mode{0};
+    std::uint32_t raw_size{0};
+    std::vector<std::uint8_t> compressed;
+};
+
+void put_u32(std::vector<std::uint8_t>& out, std::uint32_t value) {
+    for (unsigned k = 0; k < 4; ++k)
+        out.push_back(static_cast<std::uint8_t>(value >> (8u * k)));
+}
+
+void put_u64(std::vector<std::uint8_t>& out, std::uint64_t value) {
+    for (unsigned k = 0; k < 8; ++k)
+        out.push_back(static_cast<std::uint8_t>(value >> (8u * k)));
+}
+
+std::uint32_t get_u32(std::span<const std::uint8_t> data, std::size_t& pos) {
+    if (data.size() - pos < 4) throw std::runtime_error("truncated K75 u32");
+    std::uint32_t value = 0;
+    for (unsigned k = 0; k < 4; ++k)
+        value |= static_cast<std::uint32_t>(data[pos++]) << (8u * k);
+    return value;
+}
+
+std::uint64_t get_u64(std::span<const std::uint8_t> data, std::size_t& pos) {
+    if (data.size() - pos < 8) throw std::runtime_error("truncated K75 u64");
+    std::uint64_t value = 0;
+    for (unsigned k = 0; k < 8; ++k)
+        value |= static_cast<std::uint64_t>(data[pos++]) << (8u * k);
+    return value;
+}
+
+double entropy_values(std::span<const std::uint8_t> values) {
+    if (values.empty()) return 0.0;
+    std::array<std::uint64_t, 256> counts{};
+    for (const auto b : values) ++counts[b];
+    const double n = static_cast<double>(values.size());
+    double h = 0.0;
+    for (const auto count : counts) {
+        if (!count) continue;
+        const double p = static_cast<double>(count) / n;
+        h -= p * std::log2(p);
+    }
+    return h;
+}
+
+double sample_entropy(
+    std::span<const std::uint8_t> input,
+    std::size_t step = 32) {
+
+    if (input.empty()) return 0.0;
+    std::vector<std::uint8_t> sample;
+    sample.reserve((input.size() + step - 1) / step);
+    for (std::size_t i = 0; i < input.size(); i += step)
+        sample.push_back(input[i]);
+    return entropy_values(sample);
+}
+
+double residual_entropy(
+    std::span<const std::uint8_t> input,
+    std::size_t lag,
+    std::size_t step = 32) {
+
+    if (input.size() <= lag) return 99.0;
+    std::vector<std::uint8_t> values;
+    values.reserve((input.size() - lag + step - 1) / step);
+    for (std::size_t i = lag; i < input.size(); i += step)
+        values.push_back(static_cast<std::uint8_t>(input[i] - input[i - lag]));
+    return entropy_values(values);
+}
+
+bool is_text_like(std::span<const std::uint8_t> input) {
+    if (input.empty()) return false;
+    std::uint64_t printable = 0, letters_space = 0, n = 0;
+    for (std::size_t i = 0; i < input.size(); i += 32) {
+        const auto b = input[i];
+        printable += (b == 9 || b == 10 || b == 13 || (b >= 32 && b < 127)) ? 1u : 0u;
+        letters_space += (b == 32 || (b >= 65 && b <= 90) || (b >= 97 && b <= 122)) ? 1u : 0u;
+        ++n;
+    }
+    return n
+        && static_cast<double>(printable) / n >= 0.88
+        && static_cast<double>(letters_space) / n >= 0.58;
+}
+
+std::vector<std::uint8_t> delta_lag(
+    std::span<const std::uint8_t> input,
+    std::size_t lag) {
+
+    std::vector<std::uint8_t> out(input.size());
+    for (std::size_t i = 0; i < input.size(); ++i)
+        out[i] = i < lag ? input[i]
+            : static_cast<std::uint8_t>(input[i] - input[i - lag]);
+    return out;
+}
+
+std::vector<std::uint8_t> inv_delta(
+    std::span<const std::uint8_t> input,
+    std::size_t lag) {
+
+    std::vector<std::uint8_t> out(input.size());
+    for (std::size_t i = 0; i < input.size(); ++i)
+        out[i] = i < lag ? input[i]
+            : static_cast<std::uint8_t>(input[i] + out[i - lag]);
+    return out;
+}
+
+std::vector<std::uint8_t> transpose(
+    std::span<const std::uint8_t> input,
+    std::size_t width) {
+
+    const auto rows = input.size() / width;
+    const auto main = rows * width;
+    std::vector<std::uint8_t> out;
+    out.reserve(input.size());
+    for (std::size_t c = 0; c < width; ++c)
+        for (std::size_t i = c; i < main; i += width)
+            out.push_back(input[i]);
+    out.insert(out.end(), input.begin() + static_cast<std::ptrdiff_t>(main), input.end());
+    return out;
+}
+
+std::vector<std::uint8_t> inv_transpose(
+    std::span<const std::uint8_t> input,
+    std::size_t width,
+    std::size_t raw_length) {
+
+    if (input.size() != raw_length)
+        throw std::runtime_error("transposed payload length mismatch");
+    const auto rows = raw_length / width;
+    const auto main = rows * width;
+    std::vector<std::uint8_t> out(raw_length);
+    std::size_t k = 0;
+    for (std::size_t c = 0; c < width; ++c)
+        for (std::size_t r = 0; r < rows; ++r)
+            out[r * width + c] = input[k++];
+    for (std::size_t i = main; i < raw_length; ++i)
+        out[i] = input[k++];
+    return out;
+}
+
+std::vector<std::uint8_t> word_xor(
+    std::span<const std::uint8_t> input,
+    std::size_t width = 2) {
+
+    const auto main = (input.size() / width) * width;
+    std::vector<std::uint8_t> out(input.size());
+    std::uint64_t previous = 0;
+    for (std::size_t i = 0; i < main; i += width) {
+        std::uint64_t value = 0;
+        for (std::size_t k = 0; k < width; ++k)
+            value |= static_cast<std::uint64_t>(input[i + k]) << (8u * k);
+        const auto encoded = i == 0 ? value : (value ^ previous);
+        for (std::size_t k = 0; k < width; ++k)
+            out[i + k] = static_cast<std::uint8_t>(encoded >> (8u * k));
+        previous = value;
+    }
+    std::copy(input.begin() + static_cast<std::ptrdiff_t>(main), input.end(),
+              out.begin() + static_cast<std::ptrdiff_t>(main));
+    return out;
+}
+
+std::vector<std::uint8_t> inv_word_xor(
+    std::span<const std::uint8_t> input,
+    std::size_t width = 2) {
+
+    const auto main = (input.size() / width) * width;
+    std::vector<std::uint8_t> out(input.size());
+    std::uint64_t previous = 0;
+    for (std::size_t i = 0; i < main; i += width) {
+        std::uint64_t encoded = 0;
+        for (std::size_t k = 0; k < width; ++k)
+            encoded |= static_cast<std::uint64_t>(input[i + k]) << (8u * k);
+        const auto value = i == 0 ? encoded : (encoded ^ previous);
+        for (std::size_t k = 0; k < width; ++k)
+            out[i + k] = static_cast<std::uint8_t>(value >> (8u * k));
+        previous = value;
+    }
+    std::copy(input.begin() + static_cast<std::ptrdiff_t>(main), input.end(),
+              out.begin() + static_cast<std::ptrdiff_t>(main));
+    return out;
+}
+
+std::vector<std::uint8_t> text_tokenize(std::span<const std::uint8_t> input) {
+    std::vector<std::size_t> order(kTextTokens.size());
+    for (std::size_t i = 0; i < order.size(); ++i) order[i] = i;
+    std::stable_sort(order.begin(), order.end(), [](std::size_t a, std::size_t b) {
+        return kTextTokens[a].size() > kTextTokens[b].size();
+    });
+
+    std::vector<std::uint8_t> out;
+    std::size_t i = 0;
+    while (i < input.size()) {
+        bool matched = false;
+        for (const auto token_index : order) {
+            const auto token = kTextTokens[token_index];
+            if (token.empty()
+                || static_cast<std::uint8_t>(token.front()) != input[i]
+                || token.size() > input.size() - i) continue;
+
+            bool equal = true;
+            for (std::size_t k = 0; k < token.size(); ++k) {
+                if (input[i + k] != static_cast<std::uint8_t>(token[k])) {
+                    equal = false;
+                    break;
+                }
+            }
+            if (!equal) continue;
+
+            out.push_back(255);
+            out.push_back(static_cast<std::uint8_t>(token_index + 1));
+            i += token.size();
+            matched = true;
+            break;
+        }
+        if (matched) continue;
+        if (input[i] == 255) {
+            out.push_back(255);
+            out.push_back(0);
+        } else {
+            out.push_back(input[i]);
+        }
+        ++i;
+    }
+    return out;
+}
+
+std::vector<std::uint8_t> text_detokenize(std::span<const std::uint8_t> input) {
+    std::vector<std::uint8_t> out;
+    std::size_t i = 0;
+    while (i < input.size()) {
+        const auto b = input[i++];
+        if (b != 255) {
+            out.push_back(b);
+            continue;
+        }
+        if (i >= input.size())
+            throw std::runtime_error("truncated text token stream");
+        const auto token_id = input[i++];
+        if (token_id == 0) {
+            out.push_back(255);
+        } else {
+            if (token_id > kTextTokens.size())
+                throw std::runtime_error("invalid text token id");
+            const auto token = kTextTokens[token_id - 1];
+            for (const auto ch : token)
+                out.push_back(static_cast<std::uint8_t>(ch));
+        }
+    }
+    return out;
+}
+
+std::uint8_t choose_mode(std::span<const std::uint8_t> input) {
+    struct Candidate { double entropy; std::uint8_t mode; };
+    const double raw_h = sample_entropy(input);
+    const std::array<Candidate, 5> candidates{{
+        {raw_h, 0},
+        {residual_entropy(input, 2), 4},
+        {residual_entropy(input, 4), 1},
+        {residual_entropy(input, 16), 5},
+        {residual_entropy(input, 1024), 2},
+    }};
+    const auto best = std::min_element(
+        candidates.begin(), candidates.end(),
+        [](const auto& a, const auto& b) { return a.entropy < b.entropy; });
+    if (best->mode != 0 && raw_h - best->entropy < 0.10) return 0;
+    return best->mode;
+}
+
+std::size_t choose_grain(std::span<const std::uint8_t> parent) {
+    if (parent.size() <= 128u * 1024u) return parent.size();
+
+    std::vector<double> parts;
+    constexpr std::size_t q = 128u * 1024u;
+    for (std::size_t offset = 0; offset < parent.size(); offset += q) {
+        const auto bytes = std::min(q, parent.size() - offset);
+        parts.push_back(sample_entropy(parent.subspan(offset, bytes), 32));
+    }
+
+    const auto [min_it, max_it] = std::minmax_element(parts.begin(), parts.end());
+    const double spread = parts.empty() ? 0.0 : (*max_it - *min_it);
+
+    if (parent.size() > 256u * 1024u && spread >= 0.75) return 128u * 1024u;
+    if (parent.size() > 256u * 1024u && spread >= 0.40) return 256u * 1024u;
+    return parent.size();
+}
+
+std::vector<std::uint8_t> transform(
+    std::span<const std::uint8_t> input,
+    std::uint8_t mode) {
+
+    switch (mode) {
+    case 0: return {input.begin(), input.end()};
+    case 1: return transpose(delta_lag(input, 4), 4);
+    case 2: return transpose(delta_lag(input, 1024), 1024);
+    case 3: return transpose(word_xor(input, 2), 2);
+    case 4: return transpose(delta_lag(input, 2), 2);
+    case 5: return transpose(delta_lag(input, 16), 16);
+    case 6: return text_tokenize(input);
+    default: throw std::runtime_error("invalid K75 transform mode");
+    }
+}
+
+std::vector<std::uint8_t> inverse(
+    std::span<const std::uint8_t> input,
+    std::uint8_t mode,
+    std::size_t raw_length) {
+
+    switch (mode) {
+    case 0: return {input.begin(), input.end()};
+    case 1: return inv_delta(inv_transpose(input, 4, raw_length), 4);
+    case 2: return inv_delta(inv_transpose(input, 1024, raw_length), 1024);
+    case 3: return inv_word_xor(inv_transpose(input, 2, raw_length), 2);
+    case 4: return inv_delta(inv_transpose(input, 2, raw_length), 2);
+    case 5: return inv_delta(inv_transpose(input, 16, raw_length), 16);
+    case 6: return text_detokenize(input);
+    default: throw std::runtime_error("invalid K75 transform mode");
+    }
+}
+
+EncodedEntry encode_entry(std::span<const std::uint8_t> raw) {
+    if (raw.size() > std::numeric_limits<std::uint32_t>::max())
+        throw std::runtime_error("K75 grain too large");
+
+    std::uint8_t mode = choose_mode(raw);
+    auto compressed = native37::encode_aur2_blob(transform(raw, mode));
+
+    if (mode != 0) {
+        auto baseline = native37::encode_aur2_blob(raw);
+        if (baseline.size() <= compressed.size()) {
+            mode = 0;
+            compressed = std::move(baseline);
+        }
+    }
+
+    if (is_text_like(raw)) {
+        auto tokenized = text_tokenize(raw);
+        if (tokenized.size() + 16 <
+            static_cast<std::size_t>(static_cast<double>(raw.size()) * 0.99)) {
+            auto token_compressed = native37::encode_aur2_blob(tokenized);
+            if (token_compressed.size() < compressed.size()) {
+                mode = 6;
+                compressed = std::move(token_compressed);
+            }
+        }
+    }
+
+    return {
+        mode,
+        static_cast<std::uint32_t>(raw.size()),
+        std::move(compressed)
+    };
+}
+
+} // namespace
 
 const char* NativeK75Backend::name() const noexcept {
-    return "native-k75-exp37";
+    return "native-k75-baseline";
 }
 
 std::uint32_t NativeK75Backend::format_version() const noexcept {
-    return 1;
+    return 1u;
 }
 
 BackendEncodeResult NativeK75Backend::encode(
     const ByteSource& input,
-    const BackendOptions& options) {
+    const BackendOptions&) {
 
-    (void)options;
-
-    if (input.size() > std::numeric_limits<std::size_t>::max()) {
-        throw std::runtime_error("native K75 input exceeds addressable memory");
-    }
-
-    std::vector<std::uint8_t> raw(
-        static_cast<std::size_t>(input.size()));
+    std::vector<EncodedEntry> entries;
+    std::vector<std::uint8_t> parent(kParentBytes);
 
     std::uint64_t offset = 0;
-    constexpr std::size_t kReadChunk = 1u * 1024u * 1024u;
-
     while (offset < input.size()) {
-        const auto remaining = static_cast<std::size_t>(input.size() - offset);
-        const auto want = std::min(kReadChunk, remaining);
+        const auto want = static_cast<std::size_t>(
+            std::min<std::uint64_t>(kParentBytes, input.size() - offset));
         const auto got = input.read(
             offset,
-            std::span<std::uint8_t>(
-                raw.data() + static_cast<std::size_t>(offset),
-                want));
+            std::span<std::uint8_t>(parent.data(), want));
+        if (got != want)
+            throw std::runtime_error("short read from K75 byte source");
 
-        if (got == 0) {
-            throw std::runtime_error("native K75 source ended before expected size");
+        const auto parent_span =
+            std::span<const std::uint8_t>(parent.data(), got);
+        const auto grain = choose_grain(parent_span);
+        if (!grain) throw std::runtime_error("invalid zero K75 grain");
+
+        for (std::size_t local = 0; local < got; local += grain) {
+            const auto bytes = std::min(grain, got - local);
+            entries.push_back(encode_entry(parent_span.subspan(local, bytes)));
         }
         offset += got;
     }
 
-    auto blob = native37::encode_aur2_blob(raw);
+    if (entries.size() > std::numeric_limits<std::uint32_t>::max())
+        throw std::runtime_error("K75 entry count overflow");
+
+    std::vector<std::uint8_t> blob{'K','7','5','U'};
+    put_u64(blob, input.size());
+    put_u32(blob, static_cast<std::uint32_t>(entries.size()));
+
+    for (const auto& entry : entries) {
+        if (entry.compressed.size() > std::numeric_limits<std::uint32_t>::max())
+            throw std::runtime_error("K75 compressed entry too large");
+        blob.push_back(entry.mode);
+        put_u32(blob, entry.raw_size);
+        put_u32(blob, static_cast<std::uint32_t>(entry.compressed.size()));
+        blob.insert(blob.end(), entry.compressed.begin(), entry.compressed.end());
+    }
 
     BackendEncodeResult result;
-    result.stats.input_bytes = raw.size();
+    result.stats.input_bytes = input.size();
     result.stats.output_bytes = blob.size();
-    result.stats.workers_used = 1;
+    result.stats.workers_used = entries.empty() ? 0 : 1;
     result.blob = std::move(blob);
     return result;
 }
@@ -62,31 +445,52 @@ BackendStats NativeK75Backend::decode(
     std::span<const std::uint8_t> blob,
     std::uint64_t expected_raw_bytes,
     ByteSink& output,
-    const BackendOptions& options) {
+    const BackendOptions&) {
 
-    (void)options;
+    if (blob.size() < 16
+        || blob[0] != 'K' || blob[1] != '7'
+        || blob[2] != '5' || blob[3] != 'U')
+        throw std::runtime_error("not a K75U backend blob");
 
-    const auto raw = native37::decode_aur2_blob(blob);
+    std::size_t pos = 4;
+    const auto total_raw = get_u64(blob, pos);
+    const auto count = get_u32(blob, pos);
 
-    if (expected_raw_bytes != 0 && raw.size() != expected_raw_bytes) {
-        throw std::runtime_error("native K75 decoded raw length mismatch");
+    if (expected_raw_bytes != 0 && expected_raw_bytes != total_raw)
+        throw std::runtime_error("K75 expected raw length mismatch");
+
+    std::uint64_t output_offset = 0;
+    for (std::uint32_t i = 0; i < count; ++i) {
+        if (pos >= blob.size()) throw std::runtime_error("truncated K75 entry");
+        const auto mode = blob[pos++];
+        const auto raw_size = get_u32(blob, pos);
+        const auto compressed_size = get_u32(blob, pos);
+        if (compressed_size > blob.size() - pos)
+            throw std::runtime_error("truncated K75 compressed payload");
+
+        const auto compressed = blob.subspan(pos, compressed_size);
+        pos += compressed_size;
+
+        auto transformed = native37::decode_aur2_blob(compressed);
+        auto raw = inverse(transformed, mode, raw_size);
+        if (raw.size() != raw_size)
+            throw std::runtime_error("K75 inverse transform length mismatch");
+        if (output_offset > total_raw || raw.size() > total_raw - output_offset)
+            throw std::runtime_error("K75 decoded output overflow");
+
+        output.write(output_offset, raw);
+        output_offset += raw.size();
     }
 
-    constexpr std::size_t kWriteChunk = 1u * 1024u * 1024u;
-    std::size_t offset = 0;
-
-    while (offset < raw.size()) {
-        const auto bytes = std::min(kWriteChunk, raw.size() - offset);
-        output.write(
-            offset,
-            std::span<const std::uint8_t>(raw.data() + offset, bytes));
-        offset += bytes;
-    }
+    if (output_offset != total_raw)
+        throw std::runtime_error("K75 decoded total length mismatch");
+    if (pos != blob.size())
+        throw std::runtime_error("K75 trailing bytes");
 
     BackendStats stats;
     stats.input_bytes = blob.size();
-    stats.output_bytes = raw.size();
-    stats.workers_used = 1;
+    stats.output_bytes = total_raw;
+    stats.workers_used = count ? 1 : 0;
     return stats;
 }
 
