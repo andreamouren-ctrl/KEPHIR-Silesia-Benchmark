@@ -1,0 +1,77 @@
+name: KEPHIR 2 EXP-81 Direction-Preserving Router
+on:
+  push:
+    branches:
+      - development/kephir-2-core
+    paths:
+      - "research/packaging/exp81_direction_preserving_router.py"
+      - ".github/workflows/exp81_direction_preserving_router.yml"
+  workflow_dispatch:
+
+jobs:
+  exp81-direction-router:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential unzip curl
+
+      - name: Build KEPHIR production backend
+        run: |
+          cat engine/source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 research/generators/general/make_exp26_source.py
+          python3 research/generators/general/make_exp27_source.py
+          python3 research/generators/general/make_exp31_source.py
+          python3 research/generators/general/make_exp33_source.py
+          python3 research/generators/general/make_exp37_source.py
+          g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY \
+            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 \
+            -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 \
+            -pthread KEPHIR_2_EXP37_DUAL_MATCH.cpp -o kephir37
+
+      - name: Download canonical Silesia
+        run: |
+          mkdir -p corpora/silesia
+          curl -L --fail --retry 4 -o /tmp/silesia.zip https://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip
+          echo "c240c17d6805fb8a0bde763f1b94cd99  /tmp/silesia.zip" | md5sum -c -
+          unzip -q /tmp/silesia.zip -d corpora/silesia
+          test "$(find corpora/silesia -type f | wc -l)" -eq 12
+
+      - name: Run EXP-81
+        env:
+          KEPHIR_WORKERS: "16"
+        run: python3 research/packaging/exp81_direction_preserving_router.py
+
+      - name: Validate and summarize
+        run: |
+          python3 - <<'PY'
+          import json
+          d=json.load(open("exp81_results.json"))
+          assert d["aggregate"]["datasets"] >= 8
+          for name,ds in d["datasets"].items():
+              assert ds["smart"]["sha_ok"]
+              assert ds["flat"]["sha_ok"]
+              print(
+                  "DATASET",name,
+                  "SELECTED",ds["selected_layout"],
+                  "ORACLE",ds["oracle_layout"],
+                  "REGRET",ds["selection_regret_bytes"],
+                  "REASON",ds["selection_reason"],
+                  "ROUTING_S",ds["routing_time_s"],
+                  "SMART",ds["smart"]["archive_bytes"],
+                  "FLAT",ds["flat"]["archive_bytes"],
+              )
+          print("AGGREGATE",json.dumps(d["aggregate"],sort_keys=True))
+          print("EXP81_SHA_ALL_PASS")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exp81-direction-router-results
+          path: exp81_results.json
