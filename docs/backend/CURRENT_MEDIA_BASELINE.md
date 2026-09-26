@@ -595,3 +595,29 @@ Decision:
 - no production promotion;
 - temporal reference diversity helps mobile materially but does not explain the aggregate gap;
 - next experiment: KSV-16 block hybrid inter/intra prediction.
+
+
+## 2026-09-26 KSV-16 block-hybrid checkpoint
+
+Run 36234608098:
+- baseline: 24,782,482 bytes
+- block-hybrid: 24,707,912 bytes
+- aggregate improvement: 74,570 bytes / 0.3009%
+- all five natural sources improve
+- football improvement: 1.0710%
+- all emitted streams bit-exact
+
+Winning hybrid candidates mostly use zero intra penalty.
+Intra usage remains localized:
+- mobile roughly 0.7–1.2% of blocks;
+- football roughly 2.7–9.9%;
+- most other windows near zero.
+
+Decision:
+- no production promotion;
+- simple H/V spatial escape modes are useful but not a major compression lever.
+
+New priority:
+- current MC8R4 samples displacement at 2-pixel increments only;
+- radius 4 therefore evaluates 25 even-coordinate vectors and never tests odd integer displacement;
+- next experiment: KSV-17 dense integer motion, 81 vectors in the same one-byte motion map.
