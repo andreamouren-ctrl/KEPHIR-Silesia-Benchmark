@@ -2344,3 +2344,103 @@ Requirements:
 3. re-run full Silesia EXP-91;
 4. reject the change if aggregate ratio regresses on other files;
 5. preserve EXP-98 decode and EXP-100 encode throughput architecture.
+
+
+---
+
+## 51. EXP-104 — Targeted Grain Oracle
+
+Status:
+
+**DIAGNOSTIC COMPLETE**
+
+Scope:
+
+The exact 128/256/512 KiB grain oracle was run only on the three coarse buckets responsible for the remaining `mozilla` deficit, across canonical Silesia and deterministic Router Matrix v2 holdouts.
+
+Total matching parents:
+
+`42`
+
+Key result:
+
+The coarse bucket `l2:h7:z0:p1:s0` is strongly ambiguous:
+
+```text
+Occurrences: 39
+Best 128 KiB:  1
+Best 256 KiB:  7
+Best 512 KiB: 31
+```
+
+Therefore:
+
+**A static coarse-bucket rule is rejected.**
+
+Important `mozilla` parents:
+
+```text
+parent 2:
+  best 128 KiB
+  512 KiB penalty = 11,592 B
+
+parent 7:
+  best 256 KiB
+  512 KiB penalty = 20,769 B
+
+parent 40:
+  coarse l2:h5:z2:p1:s6
+  best 512 KiB
+  native 128 KiB penalty = 4,982 B
+```
+
+Counterexamples proving that coarse matching alone is unsafe:
+
+- `samba` parents with the same high-entropy coarse bucket prefer 512 KiB;
+- many `x-ray` parents prefer 512 KiB, with only small 256 KiB wins on some parents;
+- deterministic incompressible matrix parents overwhelmingly prefer 512 KiB;
+- synthetic mixed/random workloads share the same coarse entropy signature.
+
+Fine fingerprint observation:
+
+The current residual-entropy fingerprint still collides:
+
+`r231:r431:sp0:u15:tr15`
+
+contains:
+
+- one high-value `mozilla` parent that prefers 128 KiB;
+- 21 observed parents that prefer 512 KiB.
+
+Conclusion:
+
+Entropy and residual entropy alone are insufficient to detect the local distribution change that makes smaller grains useful.
+
+Decision:
+
+**Do not add any static grain rule from EXP-104.**
+
+Proceed to EXP-105, which measures quarter-to-quarter byte-distribution drift.
+
+---
+
+## 52. EXP-105 — Quarter Distribution Drift
+
+Status:
+
+**RUNNING**
+
+Hypothesis:
+
+Some 512 KiB parents have four 128 KiB regions with similar entropy but materially different byte distributions. Smaller grains then help because the backend model resets on each local distribution.
+
+Measure cheap features:
+
+- pairwise total-variation distance between quarter byte histograms;
+- mean quarter-to-parent distribution distance;
+- printable/zero fraction ranges;
+- byte-mean range.
+
+Goal:
+
+Find a generalizable signal that separates high-value `mozilla` splits from random/incompressible parents without running a compression probe.
