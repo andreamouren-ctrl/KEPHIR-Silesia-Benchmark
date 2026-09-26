@@ -715,3 +715,25 @@ Decision:
 - do not prioritize H4;
 - move H3 into the native C++ AURORA Media core;
 - next checkpoint: KSV-21 native H3 implementation and conformance/performance validation.
+
+
+## 2026-09-26 KSV-21 native H3 checkpoint
+
+Run 36237741991:
+- Python/C++ H3 motion and residual fingerprints identical
+- direct binary-vector conformance: PASS
+- FLOOR and TRUNC native roundtrip: PASS
+- dense decoder: PASS
+- 4K H3 motion-stage scaling:
+  - 1 worker: 9.664 fps
+  - 2 workers: 19.748 fps
+  - 4 workers: 27.611 fps
+  - 8 workers: 26.654 fps
+- sparse 4-worker motion reference: 88.957 fps
+- H3 output deterministic across worker counts
+
+Decision:
+- native H3 core promoted;
+- four workers remain the preferred CI-runner parallelism point;
+- do not yet switch the full production router;
+- next checkpoint: KSV-22 cheap FLOOR/TRUNC + MOD8/ZZ policy selection with one KHEPRI encode.
