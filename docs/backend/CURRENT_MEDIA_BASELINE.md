@@ -293,3 +293,31 @@ Decision:
 - research result accepted;
 - rule is not yet a production baseline because it was learned/evaluated on one source family;
 - next gate: KASH-03 multi-corpus unseen validation.
+
+
+## 2026-09-26 KASH-03 unseen multi-corpus checkpoint
+
+Validation:
+- GitHub Actions run 36224815221
+- Elephants Dream / Big Buck Bunny / Tears of Steel
+- frozen KASH-02 rule; no retraining
+- all outputs bit-exact
+- production duplicate candidate encodes: 0
+
+Aggregate:
+- fixed 2 s: 8,966,978 bytes
+- oracle: 8,882,472 bytes
+- predictor: 8,959,223 bytes
+- available oracle gain: 84,506 bytes
+- predictor gain: 7,755 bytes
+- oracle gain recovered: 9.177%
+
+Per-source:
+- Elephants Dream: +863-byte predictor regression (+0.035897%)
+- Big Buck Bunny: 0-byte predictor gain while oracle exposes 63,885 bytes
+- Tears of Steel: -8,618 bytes (-0.251679%), 42.119% oracle recovery
+
+Decision:
+- do not promote the frozen KASH-02 rule;
+- adaptive horizon remains valuable, but the single-feature threshold does not generalize;
+- next gate: KASH-04 multi-feature, leave-one-source-out predictor with conservative false-split cost.
