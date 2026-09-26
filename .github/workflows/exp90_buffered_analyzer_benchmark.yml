@@ -9,7 +9,7 @@ on:
       - "research/packaging/exp90_buffered_analyzer_benchmark.py"
       - "research/packaging/router_matrix_v1.py"
       - "research/packaging/router_matrix_v2.py"
-      - ".github/workflows/exp89_native_planner_benchmark.yml"
+      - ".github/workflows/exp90_buffered_analyzer_benchmark.yml"
   workflow_dispatch:
 
 jobs:
@@ -40,7 +40,8 @@ jobs:
 
       - name: Run EXP-90 native planner benchmark
         run: |
-          python3 research/packaging/exp90_buffered_analyzer_benchmark.py             build/kephir2/kephir2_planner_dump
+          python3 research/packaging/exp90_buffered_analyzer_benchmark.py \
+            build/kephir2/kephir2_planner_dump
 
       - name: Validate summary
         run: |
