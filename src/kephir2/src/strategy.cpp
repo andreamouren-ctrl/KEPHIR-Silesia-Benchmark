@@ -6,11 +6,13 @@ namespace kephir2 {
 
 namespace {
 constexpr double kStage1StrongMargin = 0.02;
+constexpr std::uint64_t kStage1ProbeBudget = 512u * 1024u;
+constexpr std::uint64_t kStage2ProbeBudget = 2u * 1024u * 1024u;
+constexpr std::uint64_t kSmallFullProbeLimit = 1u * 1024u * 1024u;
 constexpr std::uint32_t kDiversityMinGroups = 3;
 constexpr double kDiversityMaxDominantFileFraction = 0.75;
 constexpr double kDiversityMaxDominantByteFraction = 0.80;
 constexpr std::uint64_t kDiversityMinLogicalBytes = 8u * 1024u * 1024u;
-constexpr std::uint64_t kStage2ProbeBudget = 12u * 1024u * 1024u;
 
 bool sample_is_representative(const ArchiveFeatures& features) noexcept {
     return features.logical_bytes >= kDiversityMinLogicalBytes
@@ -49,12 +51,12 @@ StrategyPlan GlobalRouter::plan(
     StrategyPlan out{};
     out.profile = requested_profile;
 
-    // Deterministic dominance fast path:
-    // when every file belongs to one content family, SMART would create one
-    // payload group containing the same ordered concatenation as FLAT while
-    // carrying additional grouping metadata. FLAT therefore dominates and no
-    // compression probe is required.
-    if (features.file_count > 0 && features.sampled_content_groups == 1) {
+    // EXP-84 deterministic-dominance / adaptive-budget AUTO router.
+    // A single content family collapses SMART to one payload stream, so FLAT
+    // dominates without any compression probe.
+    if (features.file_count == 0) {
+        out.layout = Layout::Flat;
+    } else if (features.sampled_content_groups == 1) {
         out.layout = Layout::Flat;
     } else if (probe && probe->valid()) {
         const auto measured_layout = (probe->smart_archive_bytes < probe->flat_archive_bytes)
@@ -67,20 +69,32 @@ StrategyPlan GlobalRouter::plan(
         if (full_input_probe || margin >= kStage1StrongMargin) {
             out.layout = measured_layout;
         } else if (sample_is_representative(features)) {
-            // EXP-82: diversity is a confidence signal, not a SMART vote.
-            // Preserve the measured direction, whether SMART or FLAT.
+            // Diversity establishes confidence only. It never chooses SMART
+            // or FLAT; preserve the measured direction.
             out.layout = measured_layout;
-        } else if (probe->sampled_bytes < kStage2ProbeBudget
-                   && probe->sampled_bytes < features.logical_bytes) {
-            // Homogeneous / weak evidence: request the larger bounded probe.
-            out.layout = measured_layout;
-            out.request_extended_probe = true;
         } else {
-            // Maximum bounded evidence reached: preserve what was measured.
-            out.layout = measured_layout;
+            const auto target = static_cast<std::size_t>(
+                std::min<std::uint64_t>(kStage2ProbeBudget, features.logical_bytes));
+            if (probe->sampled_bytes < target) {
+                out.layout = measured_layout;
+                out.requested_probe_bytes = target;
+                out.request_extended_probe = true;
+            } else {
+                out.layout = measured_layout;
+            }
         }
     } else {
+        // No compression probe yet. Small multi-class archives are cheap
+        // enough to measure in full; larger archives start with 512 KiB.
         out.layout = fallback_layout(features);
+        const auto target = static_cast<std::size_t>(
+            features.logical_bytes <= kSmallFullProbeLimit
+                ? features.logical_bytes
+                : std::min<std::uint64_t>(kStage1ProbeBudget, features.logical_bytes));
+        if (target != 0) {
+            out.requested_probe_bytes = target;
+            out.request_initial_probe = true;
+        }
     }
 
     switch (requested_profile) {
