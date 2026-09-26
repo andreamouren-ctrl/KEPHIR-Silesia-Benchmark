@@ -87,6 +87,43 @@ int main() {
     assert(throws_manifest(trailing, 3));
     assert(throws_manifest(encoded, 2));
 
+    const Kpf1FileEnvelope file_env{
+        "sample.txt",
+        ByteBuffer{0x00,0x01,0xff,'K','7','5'}
+    };
+    const auto file_bytes = encode_kpf1_file(file_env);
+    assert(decode_kpf1_file(file_bytes) == file_env);
+
+    auto file_trailing = file_bytes;
+    file_trailing.push_back(0);
+    bool file_rejected = false;
+    try {
+        (void)decode_kpf1_file(file_trailing);
+    } catch (const std::runtime_error&) {
+        file_rejected = true;
+    }
+    assert(file_rejected);
+
+    const Kpf1DirectoryEnvelope dir_env{
+        {"g0","g1","g2"},
+        encoded,
+        {
+            {12, ByteBuffer{0x10,0x11}},
+            {0x1'0000'0200ull, ByteBuffer{0x20,0x21,0x22}},
+            {70000, ByteBuffer{0x30}}
+        }
+    };
+    const auto dir_bytes = encode_kpf1_directory(dir_env);
+    assert(decode_kpf1_directory(dir_bytes) == dir_env);
+
+    bool wrong_kind_rejected = false;
+    try {
+        (void)decode_kpf1_directory(file_bytes);
+    } catch (const std::runtime_error&) {
+        wrong_kind_rejected = true;
+    }
+    assert(wrong_kind_rejected);
+
     const auto root = std::filesystem::temp_directory_path() / "kephir2_archive_smoke";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root / "sub");
