@@ -1,0 +1,91 @@
+name: AURORA Native 4K Stage Profile
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["research/khepri-stream-codec"]
+  push:
+    branches: ["feature/aurora-media-4k-stage-profiler"]
+    paths:
+      - ".github/workflows/aurora_native_4k_stage_profile.yml"
+      - "benchmarks/major_codecs/aurora_native_4k_stage_profile.cpp"
+      - "src/cpp/aurora_media/**"
+
+jobs:
+  profile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+
+      - name: Generate EXP-37A source
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          python3 make_exp37_source.py
+
+      - name: Build profiler
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -DNO_INTERNAL_VERIFY \
+            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 \
+            -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 \
+            -pthread -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraKhepriExp37MemoryAdapter.cpp \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            src/cpp/aurora_media/AuroraVideoResidual.cpp \
+            benchmarks/major_codecs/aurora_native_4k_stage_profile.cpp \
+            -Isrc/cpp/aurora_media -o aurora_4k_profile
+
+      - name: Run profiler
+        run: ./aurora_4k_profile | tee aurora_4k_stage_profile.txt
+
+      - name: Validate profile
+        run: |
+          grep -q "AURORA_4K_STAGE_PROFILE_PASS" aurora_4k_stage_profile.txt
+          python3 - <<'PY' | tee aurora_4k_stage_profile_summary.txt
+          import re
+          from pathlib import Path
+          text=Path("aurora_4k_stage_profile.txt").read_text()
+          stages={}
+          headline=None
+          for line in text.splitlines():
+              if line.startswith("AURORA_4K_STAGE_PROFILE "):
+                  headline=dict(re.findall(r"(\w+)=([^ ]+)",line))
+              elif line.startswith("STAGE "):
+                  vals=dict(re.findall(r"(\w+)=([^ ]+)",line))
+                  stages[vals["name"]]={
+                      "ms":float(vals["ms"]),
+                      "percent":float(vals["percent"]),
+                  }
+          if headline is None or len(stages)!=9:
+              raise SystemExit("incomplete stage profile")
+          encode_names=[
+              "encode_extract","encode_motion","encode_residual_map","encode_khepri"
+          ]
+          decode_names=[
+              "decode_extract","decode_khepri","decode_residual_unmap",
+              "decode_motion","decode_paste"
+          ]
+          top_encode=max(encode_names,key=lambda n:stages[n]["ms"])
+          top_decode=max(decode_names,key=lambda n:stages[n]["ms"])
+          print("AURORA_4K_STAGE_PROFILE_VALIDATION_PASS")
+          print("top_encode",top_encode,stages[top_encode])
+          print("top_decode",top_decode,stages[top_decode])
+          print("packed_bytes",headline["packed_bytes"])
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-4k-stage-profile
+          path: |
+            aurora_4k_stage_profile.txt
+            aurora_4k_stage_profile_summary.txt
