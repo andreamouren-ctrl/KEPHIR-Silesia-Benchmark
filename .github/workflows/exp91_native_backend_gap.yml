@@ -1,0 +1,72 @@
+name: KEPHIR 2 EXP-91 Native Backend Gap
+on:
+  push:
+    branches:
+      - development/kephir-2-core
+    paths:
+      - "src/kephir2/**"
+      - "release/kephir_final.py"
+      - "research/routers/exp75_lazy_wx_fingerprint.py"
+      - "research/packaging/exp91_native_backend_gap.py"
+      - ".github/workflows/exp91_native_backend_gap.yml"
+  workflow_dispatch:
+
+jobs:
+  exp91-backend-gap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Build native KEPHIR 2 core
+        run: |
+          cmake -S src/kephir2 -B build/kephir2 -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/kephir2 --config Release --parallel
+
+      - name: Build legacy EXP-37 executable for Python release path
+        run: |
+          cat engine/source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 research/generators/general/make_exp26_source.py
+          python3 research/generators/general/make_exp27_source.py
+          python3 research/generators/general/make_exp31_source.py
+          python3 research/generators/general/make_exp33_source.py
+          python3 research/generators/general/make_exp37_source.py
+          g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY \
+            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 \
+            -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 \
+            -pthread KEPHIR_2_EXP37_DUAL_MATCH.cpp -o kephir37
+          chmod +x kephir37
+
+      - name: Download canonical Silesia
+        run: |
+          mkdir -p corpora/silesia
+          curl -L --fail --retry 4 -o /tmp/silesia.zip https://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip
+          echo "c240c17d6805fb8a0bde763f1b94cd99  /tmp/silesia.zip" | md5sum -c -
+          unzip -q /tmp/silesia.zip -d corpora/silesia
+          test "$(find corpora/silesia -type f | wc -l)" -eq 12
+
+      - name: Run EXP-91
+        env:
+          KEPHIR_WORKERS: "16"
+        run: |
+          python3 research/packaging/exp91_native_backend_gap.py \
+            build/kephir2/kephir2_native_k75_cli
+
+      - name: Validate result
+        run: |
+          python3 - <<'PY'
+          import json
+          d=json.load(open("exp91_results.json"))
+          a=d["aggregate"]
+          assert a["raw_bytes"] == 211938580
+          assert a["sha_all_pass"]
+          print("EXP91_AGGREGATE",json.dumps(a,sort_keys=True))
+          print("EXP91_SHA_ALL_PASS")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exp91-native-backend-gap-results
+          path: exp91_results.json
