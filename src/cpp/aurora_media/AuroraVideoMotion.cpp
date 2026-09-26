@@ -1,6 +1,7 @@
 #include "AuroraVideoMotion.h"
 #include "AuroraMediaError.h"
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <limits>
 #include <tuple>
@@ -49,6 +50,13 @@ std::uint64_t sad8x8(ByteView cur,ByteView prev,
 #endif
 }
 
+int dense_chroma_shift(int value,DenseChromaPolicy policy) {
+    if(policy==DenseChromaPolicy::Trunc)
+        return value/2;
+    // Python-style floor division used by the KSV-17/KSV-20 reference.
+    return value>=0 ? value/2 : -(((-value)+1)/2);
+}
+
 } // namespace
 
 std::vector<std::pair<int,int>> AuroraVideoMotion::candidates(int radius) {
@@ -75,6 +83,296 @@ std::vector<std::pair<int,int>> AuroraVideoMotion::candidates(int radius) {
         };
     });
     return c;
+}
+
+std::vector<std::pair<int,int>> AuroraVideoMotion::dense_candidates(int radius) {
+    if(radius<=0)
+        throw AuroraMediaError(ErrorCode::InvalidArgument,"dense motion radius must be positive");
+
+    std::vector<std::pair<int,int>> c;
+    c.reserve(static_cast<std::size_t>((2*radius+1)*(2*radius+1)));
+    for(int dy=-radius;dy<=radius;++dy)
+        for(int dx=-radius;dx<=radius;++dx)
+            c.emplace_back(dx,dy);
+
+    std::sort(c.begin(),c.end(),[](const auto& a,const auto& b){
+        return std::tuple{
+            std::abs(a.first)+std::abs(a.second),
+            std::abs(a.second),
+            std::abs(a.first),
+            a.second,
+            a.first
+        } < std::tuple{
+            std::abs(b.first)+std::abs(b.second),
+            std::abs(b.second),
+            std::abs(b.first),
+            b.second,
+            b.first
+        };
+    });
+    if(c.size()>256)
+        throw AuroraMediaError(ErrorCode::ResourceLimit,"dense motion map exceeds one-byte index");
+    return c;
+}
+
+MotionResidual AuroraVideoMotion::encode_mc8r4_h3(
+        ByteView cur,ByteView prev,
+        std::uint32_t w,std::uint32_t h,
+        DenseChromaPolicy chroma_policy) {
+    constexpr std::uint32_t block=8;
+    constexpr int radius=4;
+
+    if(w==0 || h==0 || (w%block)!=0 || (h%block)!=0 || (w%2)!=0 || (h%2)!=0)
+        throw AuroraMediaError(ErrorCode::InvalidArgument,"H3 MC8R4 invalid dimensions");
+
+    const auto fs=frame_size(w,h);
+    if(cur.size()!=fs || prev.size()!=fs)
+        throw AuroraMediaError(ErrorCode::InvalidArgument,"H3 MC8R4 frame size mismatch");
+
+    static const auto sparse=candidates(radius);
+    static const auto dense=dense_candidates(radius);
+    static const auto dense_index=[]{
+        std::array<int,81> map{};
+        map.fill(-1);
+        const auto d=AuroraVideoMotion::dense_candidates(radius);
+        for(std::size_t i=0;i<d.size();++i) {
+            const auto [dx,dy]=d[i];
+            map[static_cast<std::size_t>((dy+radius)*(2*radius+1)+(dx+radius))]=
+                static_cast<int>(i);
+        }
+        return map;
+    }();
+
+    auto index_for=[&](int dx,int dy)->int {
+        if(dx<-radius || dx>radius || dy<-radius || dy>radius)
+            return -1;
+        return dense_index[
+            static_cast<std::size_t>((dy+radius)*(2*radius+1)+(dx+radius))];
+    };
+
+    const auto ys=y_size(w,h);
+    const auto us=uv_size(w,h);
+    const auto cw=w/2;
+
+    MotionResidual out;
+    out.motion_map.reserve(static_cast<std::size_t>(w/block)*(h/block));
+    out.residual_yuv420.resize(fs);
+
+    auto residual_plane=[&](std::size_t cur_off,std::size_t prev_off,std::size_t out_off,
+                            std::uint32_t stride,std::uint32_t x,std::uint32_t y,
+                            std::uint32_t bs,int dx,int dy) {
+        for(std::uint32_t yy=0;yy<bs;++yy) {
+            const auto ci=cur_off+static_cast<std::size_t>(y+yy)*stride+x;
+            const auto pi=prev_off+
+                static_cast<std::size_t>(static_cast<int>(y)+dy+static_cast<int>(yy))*stride+
+                static_cast<std::size_t>(static_cast<int>(x)+dx);
+            const auto oi=out_off+static_cast<std::size_t>(y+yy)*stride+x;
+#if defined(__SSE2__) && !defined(AURORA_DISABLE_RESIDUAL_SIMD)
+            if(bs==8) {
+                const __m128i a=_mm_loadl_epi64(
+                    reinterpret_cast<const __m128i*>(cur.data()+ci));
+                const __m128i b=_mm_loadl_epi64(
+                    reinterpret_cast<const __m128i*>(prev.data()+pi));
+                const __m128i d=_mm_sub_epi8(a,b);
+                _mm_storel_epi64(
+                    reinterpret_cast<__m128i*>(out.residual_yuv420.data()+oi),d);
+                continue;
+            }
+#endif
+            for(std::uint32_t xx=0;xx<bs;++xx) {
+                const int d=static_cast<int>(cur[ci+xx])-static_cast<int>(prev[pi+xx]);
+                out.residual_yuv420[oi+xx]=static_cast<Byte>(d & 0xff);
+            }
+        }
+    };
+
+    struct Ranked {
+        std::uint64_t cost{};
+        int dense_idx{};
+        int dx{};
+        int dy{};
+    };
+
+    std::vector<Ranked> ranked;
+    ranked.reserve(sparse.size());
+
+    for(std::uint32_t by=0;by<h;by+=block) {
+        for(std::uint32_t bx=0;bx<w;bx+=block) {
+            ranked.clear();
+            std::array<bool,81> evaluated{};
+            std::array<bool,81> refine{};
+
+            for(const auto [dx,dy]:sparse) {
+                const int sx=static_cast<int>(bx)+dx;
+                const int sy=static_cast<int>(by)+dy;
+                if(sx<0 || sy<0 ||
+                   sx+static_cast<int>(block)>static_cast<int>(w) ||
+                   sy+static_cast<int>(block)>static_cast<int>(h))
+                    continue;
+
+                const int dense_idx=index_for(dx,dy);
+                if(dense_idx<0)
+                    throw AuroraMediaError(ErrorCode::InternalInvariant,
+                                           "H3 sparse vector missing dense index");
+
+                const auto cost=sad8x8(
+                    cur,prev,w,bx,by,
+                    static_cast<std::uint32_t>(sx),
+                    static_cast<std::uint32_t>(sy));
+                evaluated[static_cast<std::size_t>(dense_idx)]=true;
+                ranked.push_back(Ranked{cost,dense_idx,dx,dy});
+            }
+
+            if(ranked.empty())
+                throw AuroraMediaError(ErrorCode::InternalInvariant,
+                                       "H3 sparse stage found no candidate");
+
+            std::sort(ranked.begin(),ranked.end(),[](const Ranked& a,const Ranked& b){
+                if(a.cost!=b.cost) return a.cost<b.cost;
+                return a.dense_idx<b.dense_idx;
+            });
+
+            Ranked best=ranked.front();
+
+            if(best.cost!=0) {
+                const auto centers=std::min<std::size_t>(3,ranked.size());
+                for(std::size_t ci=0;ci<centers;++ci) {
+                    const auto center=ranked[ci];
+                    for(int dy=std::max(-radius,center.dy-1);
+                        dy<=std::min(radius,center.dy+1);++dy) {
+                        for(int dx=std::max(-radius,center.dx-1);
+                            dx<=std::min(radius,center.dx+1);++dx) {
+                            const int idx=index_for(dx,dy);
+                            if(idx>=0)
+                                refine[static_cast<std::size_t>(idx)]=true;
+                        }
+                    }
+                }
+
+                for(std::size_t idx=0;idx<dense.size();++idx) {
+                    if(!refine[idx] || evaluated[idx])
+                        continue;
+
+                    const auto [dx,dy]=dense[idx];
+                    const int sx=static_cast<int>(bx)+dx;
+                    const int sy=static_cast<int>(by)+dy;
+                    if(sx<0 || sy<0 ||
+                       sx+static_cast<int>(block)>static_cast<int>(w) ||
+                       sy+static_cast<int>(block)>static_cast<int>(h))
+                        continue;
+
+                    const auto cost=sad8x8(
+                        cur,prev,w,bx,by,
+                        static_cast<std::uint32_t>(sx),
+                        static_cast<std::uint32_t>(sy));
+                    evaluated[idx]=true;
+
+                    if(cost<best.cost ||
+                       (cost==best.cost && static_cast<int>(idx)<best.dense_idx)) {
+                        best=Ranked{
+                            cost,static_cast<int>(idx),dx,dy
+                        };
+                    }
+
+                    if(best.cost==0)
+                        break;
+                }
+            }
+
+            out.motion_map.push_back(static_cast<Byte>(best.dense_idx));
+            residual_plane(0,0,0,w,bx,by,block,best.dx,best.dy);
+
+            const auto cb=block/2;
+            const auto cx=bx/2;
+            const auto cy=by/2;
+            const auto cdx=dense_chroma_shift(best.dx,chroma_policy);
+            const auto cdy=dense_chroma_shift(best.dy,chroma_policy);
+
+            residual_plane(ys,ys,ys,cw,cx,cy,cb,cdx,cdy);
+            residual_plane(ys+us,ys+us,ys+us,cw,cx,cy,cb,cdx,cdy);
+        }
+    }
+
+    return out;
+}
+
+Bytes AuroraVideoMotion::decode_mc8r4_dense(
+        ByteView motion,ByteView residual,ByteView prev,
+        std::uint32_t w,std::uint32_t h,
+        DenseChromaPolicy chroma_policy) {
+    constexpr std::uint32_t block=8;
+    constexpr int radius=4;
+
+    const auto fs=frame_size(w,h);
+    const auto blocks=static_cast<std::size_t>(w/block)*(h/block);
+    if(w==0 || h==0 || (w%block)!=0 || (h%block)!=0 ||
+       prev.size()!=fs || residual.size()!=fs || motion.size()!=blocks)
+        throw AuroraMediaError(ErrorCode::InvalidArgument,
+                               "dense MC8R4 decode geometry/size mismatch");
+
+    static const auto dense=dense_candidates(radius);
+    const auto ys=y_size(w,h);
+    const auto us=uv_size(w,h);
+    const auto cw=w/2;
+    Bytes out(fs);
+
+    auto reconstruct=[&](std::size_t prev_off,std::size_t res_off,std::size_t out_off,
+                         std::uint32_t stride,std::uint32_t x,std::uint32_t y,
+                         std::uint32_t bs,int dx,int dy) {
+        for(std::uint32_t yy=0;yy<bs;++yy) {
+            const auto oi=out_off+static_cast<std::size_t>(y+yy)*stride+x;
+            const auto pi=prev_off+
+                static_cast<std::size_t>(static_cast<int>(y)+dy+static_cast<int>(yy))*stride+
+                static_cast<std::size_t>(static_cast<int>(x)+dx);
+            const auto ri=res_off+static_cast<std::size_t>(y+yy)*stride+x;
+#if defined(__SSE2__) && !defined(AURORA_DISABLE_RESIDUAL_SIMD)
+            if(bs==8) {
+                const __m128i p=_mm_loadl_epi64(
+                    reinterpret_cast<const __m128i*>(prev.data()+pi));
+                const __m128i r=_mm_loadl_epi64(
+                    reinterpret_cast<const __m128i*>(residual.data()+ri));
+                const __m128i v=_mm_add_epi8(p,r);
+                _mm_storel_epi64(reinterpret_cast<__m128i*>(out.data()+oi),v);
+                continue;
+            }
+#endif
+            for(std::uint32_t xx=0;xx<bs;++xx)
+                out[oi+xx]=static_cast<Byte>(
+                    (static_cast<unsigned>(prev[pi+xx])+residual[ri+xx])&0xffu);
+        }
+    };
+
+    std::size_t mi=0;
+    for(std::uint32_t by=0;by<h;by+=block) {
+        for(std::uint32_t bx=0;bx<w;bx+=block) {
+            const auto idx=motion[mi++];
+            if(idx>=dense.size())
+                throw AuroraMediaError(ErrorCode::CorruptPacket,
+                                       "dense MC8R4 bad motion index");
+
+            const auto [dx,dy]=dense[idx];
+            const int sx=static_cast<int>(bx)+dx;
+            const int sy=static_cast<int>(by)+dy;
+            if(sx<0 || sy<0 ||
+               sx+static_cast<int>(block)>static_cast<int>(w) ||
+               sy+static_cast<int>(block)>static_cast<int>(h))
+                throw AuroraMediaError(ErrorCode::CorruptPacket,
+                                       "dense MC8R4 vector out of bounds");
+
+            reconstruct(0,0,0,w,bx,by,block,dx,dy);
+
+            const auto cb=block/2;
+            const auto cx=bx/2;
+            const auto cy=by/2;
+            const auto cdx=dense_chroma_shift(dx,chroma_policy);
+            const auto cdy=dense_chroma_shift(dy,chroma_policy);
+
+            reconstruct(ys,ys,ys,cw,cx,cy,cb,cdx,cdy);
+            reconstruct(ys+us,ys+us,ys+us,cw,cx,cy,cb,cdx,cdy);
+        }
+    }
+
+    return out;
 }
 
 MotionResidual AuroraVideoMotion::encode_mc8r4(ByteView cur,ByteView prev,
