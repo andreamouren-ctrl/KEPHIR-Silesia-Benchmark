@@ -26,6 +26,9 @@ std::uint64_t sad8x8(ByteView cur,ByteView prev,
                     std::uint32_t cx,std::uint32_t cy,
                     std::uint32_t px,std::uint32_t py,
                     std::uint64_t stop_at) {
+#if defined(AURORA_DISABLE_ROW_BOUNDED_SAD)
+    (void)stop_at;
+#endif
 #if defined(__SSE2__)
     std::uint64_t sum=0;
     for(std::uint32_t yy=0;yy<8;++yy) {
