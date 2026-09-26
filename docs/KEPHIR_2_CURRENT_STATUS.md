@@ -1750,12 +1750,98 @@ The full EXP-97 median-of-3 benchmark with additional Brotli/7-Zip profiles rema
 
 ---
 
-## 41. Immediate product benchmark priority
+## 41. EXP-97 Full Competitor Benchmark
 
-The current product priority is now measurable:
+Status:
 
-1. preserve the ~29.73% ratio or improve it;
-2. raise decompression throughput substantially;
-3. avoid sacrificing the compression advantage versus Zstd -19 / LZMA2 -6;
-4. close the remaining ~80 KB ratio gap versus the qualified Python KEPHIR release;
-5. complete the full EXP-97 competitor matrix before commercial performance claims are frozen.
+**COMPLETED — OFFICIAL CURRENT COMPETITIVE BASELINE**
+
+Run:
+
+`36231613250`
+
+Commit:
+
+`6c40577dd6d9e58f8b2cef7b377af0fb51d6c836`
+
+Corpus:
+
+`Silesia canonical, 12 files, 211,938,580 B`
+
+Method:
+
+- complete archive/container bytes counted;
+- competitors forced single-thread where supported;
+- three timed repetitions per file;
+- median time per file;
+- real decompression;
+- SHA-256 verification for every decoded file.
+
+All SHA checks: **PASS**
+
+Results ordered by archive ratio:
+
+```text
+Codec                   Archive B     Ratio      Comp MB/s   Dec MB/s
+XZ/LZMA2 -9e            48,456,004    22.8632%      2.074       89.45
+7-Zip/LZMA2 mx9         48,757,480    23.0055%      3.043       94.93
+XZ/LZMA2 -6             49,233,340    23.2300%      2.777       88.63
+Brotli q11              49,564,563    23.3863%      0.613      398.11
+7-Zip/LZMA2 mx5         49,755,217    23.4762%      3.754       93.85
+Zstd -19                52,895,350    24.9579%      2.935      853.49
+Bzip2 -9                54,506,769    25.7182%     16.478       39.24
+Zstd -9                 59,182,179    27.9242%     70.820      938.49
+Brotli q5               59,590,621    28.1169%     37.836      448.06
+KEPHIR 2 Native EXP-95  63,013,168    29.7318%      5.795       56.61
+Zstd -3                 66,216,569    31.2433%    264.895      911.15
+Gzip/Deflate -9         67,631,990    31.9111%     12.004      195.61
+Zstd -1                 73,276,937    34.5746%    415.085     1005.25
+LZ4 HC -9               77,992,601    36.7996%     33.042     1021.04
+LZ4 default            100,934,427    47.6244%    512.581     1030.69
+```
+
+KEPHIR observations:
+
+- KEPHIR is about **4.84% smaller than Zstd -3**.
+- KEPHIR is about **6.83% smaller than Gzip -9**.
+- KEPHIR compression is about **1.97x faster than Zstd -19**.
+- KEPHIR compression is about **2.79x faster than XZ/LZMA2 -9e**.
+- KEPHIR compression is about **1.90x faster than 7-Zip/LZMA2 mx9**.
+- KEPHIR remains materially slower in decompression than modern Zstd/Brotli profiles.
+- More importantly, **Zstd -9 and Brotli q5 currently dominate KEPHIR simultaneously in ratio, compression throughput, and decompression throughput on Silesia**.
+- Bzip2 -9 also beats KEPHIR on ratio and compression speed, although KEPHIR decompresses faster.
+
+Commercial interpretation:
+
+The current native engine is technically valid and occupies a measurable point between very fast and very high-ratio profiles, but this full benchmark shows that the point is **not yet differentiated enough to justify product preference**.
+
+The previous narrow statement “better ratio than a mainstream fast profile and faster than maximum-ratio profiles” is true but insufficient because mature middle profiles such as Zstd -9 and Brotli q5 outperform the current KEPHIR point more broadly.
+
+Therefore no commercial performance claim is frozen yet.
+
+---
+
+## 42. Immediate product benchmark priority
+
+The new R&D target is no longer simply “improve decompression.”
+
+The engine must move onto a Pareto frontier where at least one important workload/profile has no mainstream competitor that is both smaller and faster.
+
+Priority order:
+
+1. recover the remaining ratio gap versus the qualified Python KEPHIR release;
+2. raise compression throughput while preserving or improving ratio;
+3. raise decompression throughput substantially;
+4. target **<28% on Silesia first**, because this is required to get past the current Zstd -9 / Brotli q5 ratio region;
+5. then target at least **20–30 MB/s compression and 150–200 MB/s decompression** without giving back that ratio;
+6. repeat EXP-97 after every promoted backend milestone;
+7. do not claim a compelling commercial advantage until KEPHIR reaches a real Pareto-winning region on one or more representative workload classes.
+
+Current official competitive checkpoint:
+
+```text
+Ratio:        29.7318%
+Compression:   5.795 MB/s
+Decompression: 56.610 MB/s
+Lossless:      SHA PASS
+```
