@@ -1,0 +1,117 @@
+name: AURORA Residual SIMD Full Pipeline
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["research/khepri-stream-codec"]
+  push:
+    branches: ["feature/aurora-media-residual-simd"]
+    paths:
+      - ".github/workflows/aurora_residual_simd_full_pipeline.yml"
+      - "src/cpp/aurora_media/AuroraVideoMotion.cpp"
+      - "benchmarks/major_codecs/aurora_native_4k_parallel.cpp"
+
+jobs:
+  full-pipeline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+
+      - name: Generate EXP-37A source
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          python3 make_exp37_source.py
+
+      - name: Build scalar residual pipeline
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -DNO_INTERNAL_VERIFY \
+            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 \
+            -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 \
+            -DAURORA_DISABLE_RESIDUAL_SIMD -pthread \
+            src/cpp/aurora_media/AuroraKhepriExp37MemoryAdapter.cpp \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            src/cpp/aurora_media/AuroraVideoResidual.cpp \
+            benchmarks/major_codecs/aurora_native_4k_parallel.cpp \
+            -Isrc/cpp/aurora_media -o pipeline_scalar
+
+      - name: Build SIMD residual pipeline
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -DNO_INTERNAL_VERIFY \
+            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 \
+            -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 \
+            -pthread \
+            src/cpp/aurora_media/AuroraKhepriExp37MemoryAdapter.cpp \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            src/cpp/aurora_media/AuroraVideoResidual.cpp \
+            benchmarks/major_codecs/aurora_native_4k_parallel.cpp \
+            -Isrc/cpp/aurora_media -o pipeline_simd
+
+      - name: Run full-pipeline A/B
+        run: |
+          echo "=== SCALAR ===" | tee residual_simd_full_pipeline.txt
+          ./pipeline_scalar | tee -a residual_simd_full_pipeline.txt
+          echo "=== SIMD ===" | tee -a residual_simd_full_pipeline.txt
+          ./pipeline_simd | tee -a residual_simd_full_pipeline.txt
+
+      - name: Validate payload equivalence and summarize
+        run: |
+          python3 - <<'PY' | tee residual_simd_full_pipeline_summary.txt
+          import re
+          from pathlib import Path
+
+          text=Path("residual_simd_full_pipeline.txt").read_text()
+          parts=text.split("=== SIMD ===")
+          if len(parts)!=2:
+              raise SystemExit("missing A/B sections")
+
+          def parse(section):
+              rows={}
+              for line in section.splitlines():
+                  if not line.startswith("PARALLEL_PASS "):
+                      continue
+                  vals=dict(re.findall(r"(\w+)=([^ ]+)",line))
+                  key=(vals["name"],int(vals["workers"]))
+                  rows[key]=vals
+              return rows
+
+          scalar=parse(parts[0])
+          simd=parse(parts[1])
+          if scalar.keys()!=simd.keys():
+              raise SystemExit("pipeline scenario mismatch")
+
+          print("AURORA_RESIDUAL_SIMD_FULL_PIPELINE_AB")
+          for key in sorted(scalar, key=lambda k:(k[0],k[1])):
+              b=scalar[key]; f=simd[key]
+              if b["packed_bytes"]!=f["packed_bytes"]:
+                  raise SystemExit(f"{key}: payload mismatch")
+              be=float(b["encode_seconds"]); fe=float(f["encode_seconds"])
+              bd=float(b["decode_seconds"]); fd=float(f["decode_seconds"])
+              bt=float(b["total_seconds"]); ft=float(f["total_seconds"])
+              print(
+                  f"name={key[0]} workers={key[1]} "
+                  f"encode_speedup_x={be/fe:.3f} "
+                  f"decode_speedup_x={bd/fd:.3f} "
+                  f"total_speedup_x={bt/ft:.3f} "
+                  f"payload_bytes={b['packed_bytes']}"
+              )
+          print("PAYLOAD_EQUIVALENCE=PASS")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-residual-simd-full-pipeline
+          path: |
+            residual_simd_full_pipeline.txt
+            residual_simd_full_pipeline_summary.txt
