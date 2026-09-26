@@ -141,6 +141,11 @@ add_executable(kephir2_interop_tool
 )
 target_link_libraries(kephir2_interop_tool PRIVATE kephir2_core)
 
+add_executable(kephir2_native_k75_cli
+    tests/native_k75_cli.cpp
+)
+target_link_libraries(kephir2_native_k75_cli PRIVATE kephir2_core)
+
 enable_testing()
 add_test(NAME kephir2_strategy_smoke COMMAND kephir2_strategy_smoke)
 add_test(NAME kephir2_analyzer_smoke COMMAND kephir2_analyzer_smoke)
