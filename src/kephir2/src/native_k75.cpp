@@ -278,6 +278,88 @@ std::vector<std::uint8_t> text_detokenize(std::span<const std::uint8_t> input) {
     return out;
 }
 
+std::string wx_coarse_bucket(std::span<const std::uint8_t> input) {
+    if (input.empty()) return "empty";
+
+    std::vector<std::uint8_t> sample;
+    sample.reserve((input.size() + 63u) / 64u);
+
+    std::uint64_t zero = 0;
+    std::uint64_t printable = 0;
+
+    for (std::size_t i = 0; i < input.size(); i += 64u) {
+        const auto b = input[i];
+        sample.push_back(b);
+        zero += b == 0 ? 1u : 0u;
+        printable +=
+            (b == 9 || b == 10 || b == 13 || (b >= 32 && b < 127))
+            ? 1u : 0u;
+    }
+
+    const double h = entropy_values(sample);
+    const double zero_fraction =
+        static_cast<double>(zero) / sample.size();
+    const double printable_fraction =
+        static_cast<double>(printable) / sample.size();
+
+    const int sb =
+        input.size() <= 128u * 1024u ? 0
+        : (input.size() <= 256u * 1024u ? 1 : 2);
+    const auto hb = std::min(7, static_cast<int>(h));
+    const auto zb = std::min(4, static_cast<int>(zero_fraction * 10.0));
+    const auto pb = std::min(4, static_cast<int>(printable_fraction * 5.0));
+
+    return "wx:s" + std::to_string(sb)
+        + ":h" + std::to_string(hb)
+        + ":z" + std::to_string(zb)
+        + ":p" + std::to_string(pb);
+}
+
+std::string wx_feature_bucket(
+    std::span<const std::uint8_t> input,
+    const std::string& coarse) {
+
+    if (input.empty()) return coarse;
+
+    const double r2 = residual_entropy(input, 2, 64);
+    const double r4 = residual_entropy(input, 4, 64);
+
+    const auto q = std::max<std::size_t>(1, input.size() / 4);
+    std::vector<double> hs;
+    for (std::size_t i = 0; i < input.size(); i += q) {
+        const auto bytes = std::min(q, input.size() - i);
+        hs.push_back(sample_entropy(input.subspan(i, bytes), 64));
+    }
+
+    const auto [min_it, max_it] =
+        std::minmax_element(hs.begin(), hs.end());
+    const double spread =
+        hs.empty() ? 0.0 : (*max_it - *min_it);
+
+    const auto r2b = std::min(15, static_cast<int>(r2 * 2.0));
+    const auto r4b = std::min(15, static_cast<int>(r4 * 2.0));
+    const auto spb = std::min(7, static_cast<int>(spread * 4.0));
+
+    return coarse
+        + ":r2" + std::to_string(r2b)
+        + ":r4" + std::to_string(r4b)
+        + ":sp" + std::to_string(spb);
+}
+
+bool should_probe_word_xor(std::span<const std::uint8_t> input) {
+    if (input.empty() || is_text_like(input)) return false;
+
+    const auto coarse = wx_coarse_bucket(input);
+    if (coarse != "wx:s0:h3:z0:p4"
+        && coarse != "wx:s2:h6:z1:p1") {
+        return false;
+    }
+
+    const auto fine = wx_feature_bucket(input, coarse);
+    return fine == "wx:s0:h3:z0:p4:r210:r411:sp3"
+        || fine == "wx:s2:h6:z1:p1:r213:r413:sp4";
+}
+
 std::uint8_t choose_mode(std::span<const std::uint8_t> input) {
     struct Candidate { double entropy; std::uint8_t mode; };
     const double raw_h = sample_entropy(input);
@@ -451,6 +533,15 @@ EncodedEntry encode_entry(std::span<const std::uint8_t> raw) {
         if (baseline.size() <= compressed.size()) {
             mode = 0;
             compressed = std::move(baseline);
+        }
+    }
+
+    if (mode == 0 && should_probe_word_xor(raw)) {
+        auto wx_compressed =
+            native37::encode_aur2_blob(transform(raw, 3));
+        if (wx_compressed.size() < compressed.size()) {
+            mode = 3;
+            compressed = std::move(wx_compressed);
         }
     }
 
