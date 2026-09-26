@@ -408,6 +408,9 @@ BackendEncodeResult NativeK75Backend::encode(
 
     std::uint64_t offset = 0;
     while (offset < input.size()) {
+        if (options.operation) {
+            options.operation->throw_if_cancelled();
+        }
         const auto want = static_cast<std::size_t>(
             std::min<std::uint64_t>(kParentBytes, input.size() - offset));
         const auto got = input.read(
