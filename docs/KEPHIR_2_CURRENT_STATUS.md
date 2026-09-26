@@ -2653,3 +2653,80 @@ Promotion gates:
 4. EXP-91 SHA PASS;
 5. Native aggregate ratio improves;
 6. `mr` native win is preserved.
+
+
+---
+
+## 55. EXP-110 — Parent vs Inner Context Decomposition
+
+Status:
+
+**DIAGNOSTIC COMPLETE / STRONG SIGNAL**
+
+Goal:
+
+Separate the two variables changed together by EXP-109:
+
+- K75 parent/grain size;
+- inner AUR2 chunk/context size.
+
+All research configurations were decoded through the ordinary default decoder and verified by SHA.
+
+Results:
+
+```text
+Config            Archive B     Ratio       Comp MB/s   Dec MB/s
+baseline          62,925,489    29.6904%       4.364       43.18
+p1024 / i512      63,550,108    29.9852%       4.415       46.06
+p2048 / i512      63,541,319    29.9810%       4.421       45.90
+p4096 / i512      63,548,140    29.9842%       4.392       45.95
+p8192 / i512      63,513,965    29.9681%       4.419       45.87
+p4096 / i1024     62,577,250    29.5261%       4.080       46.34
+p4096 / i2048     61,966,775    29.2381%       3.751       46.79
+p4096 / i4096     61,072,988    28.8164%       3.300       44.76
+p8192 / i4096     61,021,271    28.7920%       3.267       44.86
+p8192 / i8192     60,800,465    28.6878%       2.952       45.32
+```
+
+All SHA checks: **PASS**
+
+Key conclusion:
+
+**The large ratio gain comes from increasing the inner AUR2 context, not from increasing K75 parent size alone.**
+
+Evidence:
+
+- larger parents with the inner context fixed at 512 KiB make the ratio worse (~29.97–29.99%);
+- increasing inner context from 512 KiB → 1 MiB → 2 MiB → 4 MiB improves ratio monotonically;
+- 8 MiB parent + 8 MiB inner context reaches the best tested result:
+  **28.6878% / 60,800,465 B**.
+
+This is approximately:
+
+- **2.125 MB smaller** than the current production baseline;
+- about **1.0026 percentage points better ratio**.
+
+Tradeoff:
+
+Single-thread compression drops from ~4.36 MB/s to ~2.95 MB/s at the 8 MiB research point.
+
+Decompression remains roughly flat around 45 MB/s in single-thread mode.
+
+Decision:
+
+**Do not promote EXP-110 directly as production default.**
+
+Proceed to a production candidate that adapts inner context by profile/content and preserves the current parent/grain system.
+
+Next milestone:
+
+**EXP-111 — Adaptive Inner Context Policy**
+
+Requirements:
+
+1. keep current K75 parent/grain logic;
+2. vary only inner AUR2 context;
+3. evaluate at least 512 KiB / 1 MiB / 2 MiB / 4 MiB / 8 MiB;
+4. derive a cheap content/profile gate rather than forcing 8 MiB globally;
+5. preserve default decoder compatibility;
+6. re-run full Silesia, Router Matrix, Core Smoke, Legacy Interop and competitive benchmark once promoted.
