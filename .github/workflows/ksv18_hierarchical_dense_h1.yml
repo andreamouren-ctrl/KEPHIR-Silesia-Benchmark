@@ -1,0 +1,147 @@
+name: KSV-18 H1 Hierarchical Dense Motion
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["feature/aurora-media-ksv18-hierarchical-dense-h1"]
+    paths:
+      - ".github/workflows/ksv18_hierarchical_dense_h1.yml"
+      - "research/video/experiments/ksv18_hierarchical_dense_h1.py"
+      - "research/video/experiments/ksv17_dense_integer_motion.py"
+      - "research/video/experiments/ksv13_natural_radius_sweep.py"
+      - "research/video/lab/kstream_video_motion_control.py"
+      - "research/video/lab/kstream_video_residual_symbols_v7.py"
+      - "research/video/lab/kstream_video_baseline.py"
+      - "make_exp40_source.py"
+
+jobs:
+  ksv18:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential ffmpeg curl python3-numpy
+
+      - name: Build optimized byte-identical KHEPRI EXP-40
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          python3 make_exp37_source.py
+          python3 make_exp40_source.py
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -DNO_INTERNAL_VERIFY \
+            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 \
+            -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 \
+            -DK2_SHARED_MATCH_CACHE_MODE=1 -pthread \
+            KEPHIR_2_EXP40_SHARED_MATCH_CACHE.cpp -o kephir40
+
+      - name: Download Xiph natural video corpus
+        run: |
+          mkdir -p natural_sources
+          curl -L --fail --retry 4 -o natural_sources/container.y4m \
+            https://media.xiph.org/video/derf/y4m/container_cif.y4m
+          curl -L --fail --retry 4 -o natural_sources/coastguard.y4m \
+            https://media.xiph.org/video/derf/y4m/coastguard_cif.y4m
+          curl -L --fail --retry 4 -o natural_sources/mobile.y4m \
+            https://media.xiph.org/video/derf/y4m/mobile_cif.y4m
+          curl -L --fail --retry 4 -o natural_sources/football.y4m \
+            https://media.xiph.org/video/derf/y4m/football_cif.y4m
+          curl -L --fail --retry 4 -o natural_sources/stefan.y4m \
+            https://media.xiph.org/video/derf/y4m/stefan_sif.y4m
+
+      - name: Prepare deterministic 60-frame corpus
+        run: |
+          mkdir -p natural_raw
+          ffmpeg -hide_banner -loglevel error -y -i natural_sources/container.y4m \
+            -frames:v 60 -pix_fmt yuv420p -f rawvideo natural_raw/container.yuv
+          ffmpeg -hide_banner -loglevel error -y -i natural_sources/coastguard.y4m \
+            -frames:v 60 -pix_fmt yuv420p -f rawvideo natural_raw/coastguard.yuv
+          ffmpeg -hide_banner -loglevel error -y -i natural_sources/mobile.y4m \
+            -frames:v 60 -pix_fmt yuv420p -f rawvideo natural_raw/mobile.yuv
+          ffmpeg -hide_banner -loglevel error -y -i natural_sources/football.y4m \
+            -frames:v 60 -pix_fmt yuv420p -f rawvideo natural_raw/football.yuv
+          ffmpeg -hide_banner -loglevel error -y -i natural_sources/stefan.y4m \
+            -frames:v 60 -pix_fmt yuv420p -f rawvideo natural_raw/stefan.yuv
+
+      - name: Run KSV-18 H1 hierarchy
+        env:
+          PYTHONPATH: research/video/lab:research/video/experiments:research/backend
+        run: |
+          python3 research/video/experiments/ksv18_hierarchical_dense_h1.py \
+            --kephir ./kephir40 \
+            --clip container:natural_raw/container.yuv:352:288:30:1 \
+            --clip coastguard:natural_raw/coastguard.yuv:352:288:30:1 \
+            --clip mobile:natural_raw/mobile.yuv:352:288:30:1 \
+            --clip football:natural_raw/football.yuv:352:288:30:1 \
+            --clip stefan:natural_raw/stefan.yuv:352:240:30:1 \
+            | tee ksv18_h1.log
+
+      - name: Validate KSV-18 result
+        run: |
+          grep -q "KSV18_HIERARCHICAL_DENSE_H1_PASS" ksv18_h1.log
+          python3 - <<'PY' | tee ksv18_summary.txt
+          import json
+          from pathlib import Path
+
+          r=json.loads(
+              Path("results/video/ksv18_hierarchical_dense_h1/KSV18_RESULTS.json").read_text()
+          )
+          assert len(r["rows"]) == 5
+          for row in r["rows"]:
+              for policy in ("baseline","h1","dense"):
+                  assert row[policy]["sha_ok"]
+
+          a=r["aggregate"]
+          print("KSV18_VALIDATION_PASS")
+          print("BASELINE_BYTES",a["baseline"]["bytes"])
+          print("H1_BYTES",a["h1"]["bytes"])
+          print("DENSE_BYTES",a["dense"]["bytes"])
+          print("H1_DELTA_PCT",f'{a["h1_delta_percent"]:.6f}')
+          print("DENSE_DELTA_PCT",f'{a["dense_delta_percent"]:.6f}')
+          print("GAIN_RECOVERED_PCT",f'{a["gain_recovered_percent"]:.3f}')
+          print(
+              "H1_VS_DENSE_RESEARCH_TIME_RATIO",
+              f'{a["h1_vs_dense_search_time_ratio"]:.4f}'
+          )
+
+          evals=[]
+          for row in r["rows"]:
+              vals=[
+                  w["h1_mean_candidate_evaluations"]
+                  for w in row["windows"]
+              ]
+              evals.extend(vals)
+              print(
+                  "SOURCE",
+                  row["name"],
+                  "baseline",row["baseline"]["bytes"],
+                  "h1",row["h1"]["bytes"],
+                  "dense",row["dense"]["bytes"],
+                  "recovered_pct",f'{row["gain_recovered_percent"]:.3f}',
+                  "mean_h1_evals",f'{sum(vals)/len(vals):.3f}',
+              )
+          print("MEAN_H1_CANDIDATE_EVALS",f'{sum(evals)/len(evals):.3f}')
+
+          candidate=(
+              a["gain_recovered_percent"] >= 90.0
+              and a["h1"]["encode_research_seconds"]
+                  <= a["dense"]["encode_research_seconds"] * 0.80
+          )
+          print("KSV18_PRODUCTION_DIRECTION_CANDIDATE",str(candidate).lower())
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ksv18-hierarchical-dense-h1
+          path: |
+            results/video/ksv18_hierarchical_dense_h1/KSV18_RESULTS.json
+            ksv18_h1.log
+            ksv18_summary.txt

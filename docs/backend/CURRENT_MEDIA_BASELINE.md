@@ -657,3 +657,22 @@ Decision:
 - dense integer motion becomes the new compression-quality target;
 - next experiment: KSV-18 hierarchical dense refinement around the best sparse-even vector;
 - promotion target: recover >=90% of KSV-17 gain at materially lower search cost.
+
+
+## 2026-09-26 KSV-18 H1 hierarchical dense checkpoint
+
+Run 36235832986:
+- baseline: 24,782,482 bytes
+- H1: 24,384,758 bytes
+- exhaustive dense: 24,264,464 bytes
+- H1 improvement: 1.6049%
+- dense improvement: 2.0903%
+- dense gain recovered: 76.778%
+- H1/dense research-time ratio: 0.5841
+- mean H1 candidate evaluations: 30.912/block
+- all streams bit-exact
+
+Decision:
+- hierarchical dense refinement is validated as the right direction;
+- H1 is not sufficient for production because recovery is below the 90% target;
+- next experiment: KSV-19 H2 refinement around the two best sparse-even candidates.
