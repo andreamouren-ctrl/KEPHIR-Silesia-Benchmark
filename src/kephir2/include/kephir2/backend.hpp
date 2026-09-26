@@ -61,6 +61,9 @@ public:
         const ByteSource& input,
         const BackendOptions& options) = 0;
 
+    // expected_raw_bytes == 0 means the outer container does not provide the
+    // raw length (legacy KPF1 single-file envelope); the backend must obtain
+    // and validate its native raw length from the compressed blob itself.
     [[nodiscard]] virtual BackendStats decode(
         std::span<const std::uint8_t> blob,
         std::uint64_t expected_raw_bytes,
