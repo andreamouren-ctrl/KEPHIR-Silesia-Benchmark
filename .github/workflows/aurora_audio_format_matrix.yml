@@ -4,6 +4,13 @@ on:
   workflow_dispatch:
   pull_request:
     branches: ["research/khepri-stream-codec"]
+    paths:
+      - ".github/workflows/aurora_audio_format_matrix.yml"
+      - "benchmarks/major_codecs/benchmark_audio_format_matrix.py"
+      - "src/python/reference/aurora_media_codec_bridge.py"
+      - "src/python/reference/aurora_media_container.py"
+      - "research/audio/lab/kstream_kmrl_lab.py"
+      - "research/audio/lab/kstream_kmrl_frontend.py"
   push:
     branches: ["feature/aurora-media-audio-format-matrix-rebase"]
     paths:

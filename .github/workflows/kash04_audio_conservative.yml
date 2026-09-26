@@ -4,6 +4,12 @@ on:
   workflow_dispatch:
   pull_request:
     branches: ["research/khepri-stream-codec"]
+    paths:
+      - ".github/workflows/kash04_audio_conservative.yml"
+      - "research/audio/experiments/kash04_conservative_macro.py"
+      - "research/audio/experiments/kash02_reset_predictor.py"
+      - "src/python/reference/aurora_media_codec_bridge.py"
+      - "research/audio/lab/kstream_kmrl_lab.py"
   push:
     branches: ["feature/aurora-media-kash04-conservative"]
     paths:
