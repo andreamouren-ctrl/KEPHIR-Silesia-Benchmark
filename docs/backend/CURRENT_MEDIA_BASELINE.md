@@ -350,3 +350,32 @@ Decision:
 - fixed 2-second recovery remains the canonical production baseline;
 - KASH stays research-only until a substantially broader corpus exists;
 - do not increase classifier complexity on the current small corpus.
+
+
+## 2026-09-26 audio format matrix checkpoint
+
+Validation:
+- GitHub Actions run 36225455301
+- seven end-to-end PCM -> codec -> AUM -> codec cases
+- all byte-exact
+- AUM track metadata and recovery flags verified
+
+Validated examples:
+- mono s16 / 44.1 kHz
+- stereo s16 / 48 kHz
+- 5.1 s16 / 48 kHz
+- stereo s24 / 96 kHz
+- 5.1 s24 / 96 kHz
+- stereo s32 / 192 kHz
+- 7.1 s32 / 96 kHz
+
+Public audio bridge validation now enforces:
+- 1..32 channels
+- 8 kHz..384 kHz sample rate
+- 16/24/32-bit signed PCM
+- frame-aligned PCM payloads
+
+Decision:
+- promote the audio format-support capability gate;
+- synthetic compression ratios from this matrix are not product claims;
+- 24/32-bit correctness is validated, but compression maturity still requires a real high-resolution corpus.
