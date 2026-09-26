@@ -99,6 +99,7 @@ Current implemented native components:
 
 - **Global Strategy Router**
 - **Native Content Analyzer v1**
+- **Compression Planner v1**
 
 Current native capabilities:
 
@@ -430,7 +431,41 @@ The native analyzer is semantically compatible with the existing Python classifi
 
 ---
 
-## 10. Current validated facts
+## 10. Native Compression Planner v1
+
+Status:
+
+**PROMOTED**
+
+A native integration layer now connects:
+
+```text
+Directory
+    ↓
+ContentAnalyzer
+    ↓
+ArchiveFeatures
+    ↓
+GlobalRouter
+    ↓
+StrategyPlan
+```
+
+Native files:
+
+```text
+src/kephir2/include/kephir2/planner.hpp
+src/kephir2/src/planner.cpp
+src/kephir2/tests/planner_smoke.cpp
+```
+
+The integration smoke test is **PASS**.
+
+This is the first production-oriented end-to-end decision path in KEPHIR 2 that no longer depends on Python for archive analysis or strategy planning.
+
+---
+
+## 11. Current validated facts
 
 At the present checkpoint:
 
@@ -448,7 +483,7 @@ At the present checkpoint:
 
 ---
 
-## 11. Current product architecture priority
+## 12. Current product architecture priority
 
 The current production path now contains both the native Content Analyzer and the native Global Router:
 
@@ -468,7 +503,7 @@ The next architectural task is to validate this decision layer over a broader wo
 
 ---
 
-## 12. Validation matrix still required
+## 13. Validation matrix still required
 
 Before EXP-79 can be declared the final production Global Router, it must be tested on:
 
@@ -497,7 +532,7 @@ For every workload, record:
 
 ---
 
-## 13. Current engineering rules
+## 14. Current engineering rules
 
 Every future milestone must follow:
 
@@ -522,7 +557,7 @@ Production functionality should progressively migrate into the native KEPHIR 2 C
 
 ---
 
-## 14. Immediate next milestone
+## 15. Immediate next milestone
 
 **EXP-80 — Global Router Validation Matrix**
 
@@ -553,7 +588,7 @@ Acceptance criteria:
 
 ---
 
-## 15. Current checkpoint summary
+## 16. Current checkpoint summary
 
 ```text
 KEPHIR 1.0
@@ -570,6 +605,7 @@ KEPHIR 2
             ├── Analyzer smoke test .... PASS
             ├── Analyzer parity ........ 272 files / 0 mismatches
             ├── Native Analyzer v1 ..... PROMOTED
+            ├── Native Planner v1 ...... PROMOTED
             ├── EXP-77 ................. SUPERSEDED
             ├── EXP-78 ................. REJECTED AS FINAL ROUTER
             ├── EXP-79 ................. PROMOTED PRINCIPLE
@@ -579,7 +615,7 @@ KEPHIR 2
 
 ---
 
-## 16. Update policy
+## 17. Update policy
 
 This document is mandatory project state.
 
