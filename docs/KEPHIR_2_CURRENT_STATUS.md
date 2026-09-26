@@ -1151,7 +1151,44 @@ Decision:
 
 ---
 
-## 24. Current validated facts
+## 24. Native KPF1 Envelope v1
+
+Status:
+
+**PROMOTED**
+
+The native archive layer now owns the outer KPF1 framing while treating compressed group/file payloads as opaque blobs.
+
+Implemented:
+
+- KPF1 magic and kind validation;
+- file envelope encode/decode;
+- directory group-name table encode/decode;
+- embedded manifest framing;
+- per-group raw-length framing;
+- compressed-blob framing;
+- strict truncation/trailing-byte validation;
+- manifest validation during directory decode.
+
+Validation:
+
+```text
+C++ test suite:                 PASS
+Analyzer parity:                307 files PASS
+KPF1 file Python↔C++ parity:    PASS
+KPF1 directory Python↔C++ parity: PASS
+Python cross-decode:            PASS
+```
+
+Decision:
+
+**The KPF1 outer container framing is now migrated into the KEPHIR 2 native core.**
+
+The compression backend remains unchanged and its output is still treated as an opaque lossless blob.
+
+---
+
+## 25. Current validated facts
 
 At the present checkpoint:
 
@@ -1169,7 +1206,7 @@ At the present checkpoint:
 
 ---
 
-## 25. Current product architecture priority
+## 26. Current product architecture priority
 
 The current production path now contains both the native Content Analyzer and the native Global Router:
 
@@ -1189,7 +1226,7 @@ The next architectural task is to validate this decision layer over a broader wo
 
 ---
 
-## 26. Validation matrix still required
+## 27. Validation matrix still required
 
 Before EXP-79 can be declared the final production Global Router, it must be tested on:
 
@@ -1218,7 +1255,7 @@ For every workload, record:
 
 ---
 
-## 27. Current engineering rules
+## 28. Current engineering rules
 
 Every future milestone must follow:
 
@@ -1243,30 +1280,30 @@ Production functionality should progressively migrate into the native KEPHIR 2 C
 
 ---
 
-## 28. Immediate next milestone
+## 29. Immediate next milestone
 
-**Native KPF1 Envelope v1**
+**Native Directory Packing Plan v1**
 
 Goal:
 
-Move the outer KPF1 file/directory container framing into C++ while keeping the existing inner compressed blobs opaque.
+Migrate KPF1 SMART directory planning from Python into C++ without changing the backend.
 
-Implement next:
+Implement:
 
-- KPF1 magic/kind parsing;
-- file envelope encode/decode;
-- directory group-name table;
-- embedded manifest length framing;
-- per-group raw-length + compressed-blob framing;
-- strict bounds/trailing-byte validation;
-- Python↔C++ byte-parity fixtures.
+- deterministic recursive file discovery;
+- content-first class assignment per file;
+- sorted group-name table matching Python behavior;
+- group-id assignment;
+- exact per-group raw byte totals;
+- prefix-compressed manifest generation using the promoted native archive layer;
+- no requirement to concatenate entire groups in RAM.
 
-No compression algorithm changes yet.
+Validation target:
 
-This isolates archive framing from the backend and is the next step toward eliminating Python orchestration.
+- Python↔C++ parity for file order, content group, group id, file size, group raw length and manifest bytes on deterministic fixtures and repository samples.
 
 ---
-## 29. Current checkpoint summary
+## 30. Current checkpoint summary
 
 ```text
 KEPHIR 1.0
@@ -1304,16 +1341,18 @@ KEPHIR 2
             ├── EXP-90 speedup ......... ~20.6x vs EXP-89
             ├── Native Archive v1 ...... PROMOTED
             ├── Manifest parity ........ PASS
+            ├── Native KPF1 envelope ... PROMOTED
+            ├── KPF1 byte parity ....... PASS
             ├── Router Matrix v1 ....... FROZEN
             ├── Router Matrix v2 ....... HOLDOUT ESTABLISHED
             ├── Native EXP-84 policy ... PASS
             ├── Routing SHA ............ PASS
-            └── Next ................... Native KPF1 Envelope v1
+            └── Next ................... Native Directory Packing Plan v1
 ```
 
 ---
 
-## 30. Update policy
+## 31. Update policy
 
 This document is mandatory project state.
 
