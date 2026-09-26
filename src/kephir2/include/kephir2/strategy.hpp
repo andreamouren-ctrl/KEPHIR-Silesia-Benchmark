@@ -41,6 +41,11 @@ struct ArchiveFeatures {
     double sampled_entropy{0.0};
     double sampled_printable_fraction{0.0};
     double sampled_zero_fraction{0.0};
+
+    // Content-first diversity from the bounded sample.
+    std::uint32_t sampled_content_groups{0};
+    double sampled_dominant_file_fraction{1.0};
+    double sampled_dominant_byte_fraction{1.0};
 };
 
 struct LayoutProbe {
@@ -52,6 +57,12 @@ struct LayoutProbe {
     [[nodiscard]] bool valid() const noexcept {
         return sampled_bytes != 0 && flat_archive_bytes != 0 && smart_archive_bytes != 0;
     }
+
+    [[nodiscard]] double relative_margin() const noexcept {
+        const auto best = flat_archive_bytes < smart_archive_bytes ? flat_archive_bytes : smart_archive_bytes;
+        const auto worst = flat_archive_bytes < smart_archive_bytes ? smart_archive_bytes : flat_archive_bytes;
+        return best == 0 ? 0.0 : static_cast<double>(worst - best) / static_cast<double>(best);
+    }
 };
 
 struct StrategyPlan {
@@ -62,6 +73,7 @@ struct StrategyPlan {
     bool allow_structural_transforms{true};
     bool allow_local_experience{true};
     bool require_integrity_verification{true};
+    bool request_extended_probe{false};
 };
 
 class GlobalRouter {
