@@ -152,6 +152,11 @@ add_executable(kephir2_auto_routing_smoke
 )
 target_link_libraries(kephir2_auto_routing_smoke PRIVATE kephir2_core)
 
+add_executable(kephir2_production_layout_bench
+    tests/production_layout_bench.cpp
+)
+target_link_libraries(kephir2_production_layout_bench PRIVATE kephir2_core)
+
 enable_testing()
 add_test(NAME kephir2_strategy_smoke COMMAND kephir2_strategy_smoke)
 add_test(NAME kephir2_analyzer_smoke COMMAND kephir2_analyzer_smoke)
