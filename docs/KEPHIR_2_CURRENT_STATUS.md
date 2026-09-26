@@ -2268,3 +2268,79 @@ The observed 7–9 byte total-size difference was only AUR2 envelope metadata, n
 Conclusion:
 
 The remaining text ratio deficit was **not** inside EXP-37 parse/encode. This finding directly enabled EXP-102 to isolate the actual tokenization bug.
+
+
+---
+
+## 49. EXP-103 — Mozilla Grain Attribution Audit
+
+Status:
+
+**DIAGNOSTIC COMPLETE**
+
+Goal:
+
+Determine whether the remaining `mozilla` deficit is caused by Python session learning or by a static grain-policy mismatch.
+
+Result:
+
+```text
+Native archive:               17,871,087 B
+Python fresh factory:         17,833,792 B
+Python after dickens training:17,833,792 B
+Native deficit:                   37,295 B
+Session-learning gain:                 0 B
+```
+
+Conclusion:
+
+**Session learning is not responsible for the mozilla gap.**
+
+The Python fresh factory and the Python model after processing `dickens` select the same result byte-for-byte.
+
+The deficit is concentrated in a very small number of grain-policy disagreements.
+
+Largest contributors:
+
+```text
+Bucket l2:h7:z0:p1:s0
+  Parents: 2
+  Native grain: 512 KiB
+  Python grains: 128 KiB / 256 KiB
+  Native penalty: 32,469 B
+
+Bucket l2:h5:z2:p1:s6
+  Parents: 2
+  One critical disagreement:
+    Native: 128 KiB
+    Python: 512 KiB
+  Native penalty: 4,893 B
+
+Bucket l2:h5:z1:p3:s2
+  Parent: 1
+  Native: 256 KiB
+  Python: 512 KiB
+  Native penalty: 91 B
+```
+
+The first two bucket families explain approximately **37.36 KB** of the **37.295 KB** total deficit; tiny per-entry metadata/packing deltas account for the residual noise.
+
+Important finding:
+
+The remaining ratio problem is not broad. It is a **small static factory-grain policy mismatch**.
+
+Decision:
+
+**Do not add session learning to the native production engine for this issue.**
+
+Next experiment:
+
+**EXP-104 — Native Grain Policy Correction**
+
+Requirements:
+
+1. correct only the proven high-impact grain buckets;
+2. preserve the native `mr` advantage;
+3. re-run full Silesia EXP-91;
+4. reject the change if aggregate ratio regresses on other files;
+5. preserve EXP-98 decode and EXP-100 encode throughput architecture.
