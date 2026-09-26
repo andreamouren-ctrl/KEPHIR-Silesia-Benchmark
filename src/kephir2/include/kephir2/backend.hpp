@@ -40,6 +40,12 @@ struct BackendOptions {
     std::size_t workers{0};
     bool allow_local_experience{true};
     const OperationContext* operation{nullptr};
+
+    // Research-only context controls. Zero keeps the qualified production
+    // defaults. They are intentionally not exposed through the stable C ABI.
+    std::size_t research_parent_bytes{0};
+    std::size_t research_inner_chunk_bytes{0};
+    bool research_force_parent_grain{false};
 };
 
 struct BackendStats {
