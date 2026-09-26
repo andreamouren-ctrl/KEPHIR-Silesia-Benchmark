@@ -101,11 +101,63 @@ kephir2::Profile to_profile(kephir2_profile profile) {
     }
 }
 
-kephir2::BackendOptions to_backend_options(const OptionsView& options) {
+kephir2::BackendOptions to_backend_options(
+    const OptionsView& options,
+    const kephir2::OperationContext* operation = nullptr) {
+
     kephir2::BackendOptions out;
     out.workers = options.workers;
     out.allow_local_experience = options.allow_local_experience;
+    out.operation = operation;
     return out;
+}
+
+kephir2_phase to_c_phase(kephir2::OperationPhase phase) noexcept {
+    using kephir2::OperationPhase;
+    switch (phase) {
+    case OperationPhase::Idle: return KEPHIR2_PHASE_IDLE;
+    case OperationPhase::Scanning: return KEPHIR2_PHASE_SCANNING;
+    case OperationPhase::Analyzing: return KEPHIR2_PHASE_ANALYZING;
+    case OperationPhase::Planning: return KEPHIR2_PHASE_PLANNING;
+    case OperationPhase::Packing: return KEPHIR2_PHASE_PACKING;
+    case OperationPhase::Compressing: return KEPHIR2_PHASE_COMPRESSING;
+    case OperationPhase::Writing: return KEPHIR2_PHASE_WRITING;
+    case OperationPhase::Verifying: return KEPHIR2_PHASE_VERIFYING;
+    case OperationPhase::Extracting: return KEPHIR2_PHASE_EXTRACTING;
+    case OperationPhase::Done: return KEPHIR2_PHASE_DONE;
+    }
+    return KEPHIR2_PHASE_IDLE;
+}
+
+kephir2::OperationContext make_backend_operation_context(
+    const OptionsView& options,
+    bool report_progress) {
+
+    kephir2::OperationContext::ProgressCallback progress;
+    if (report_progress && options.progress_callback) {
+        progress = [&options](const kephir2::OperationProgress& p) {
+            kephir2_progress_v1 out{};
+            out.struct_size = sizeof(out);
+            out.phase = to_c_phase(p.phase);
+            out.fraction = std::clamp(p.fraction, 0.0, 1.0);
+            out.processed_bytes = p.processed_bytes;
+            out.total_bytes = p.total_bytes;
+            out.current_path_utf8 =
+                p.current_path.empty() ? nullptr : p.current_path.c_str();
+            options.progress_callback(&out, options.user_data);
+        };
+    }
+
+    kephir2::OperationContext::CancelCallback cancel;
+    if (options.cancel_callback) {
+        cancel = [&options]() {
+            return options.cancel_callback(options.user_data) != 0;
+        };
+    }
+
+    return kephir2::OperationContext(
+        std::move(progress),
+        std::move(cancel));
 }
 
 std::filesystem::path from_utf8(const char* value) {
@@ -156,7 +208,7 @@ bool cancelled(const OptionsView& options) noexcept {
 
 void throw_if_cancelled(const OptionsView& options) {
     if (cancelled(options)) {
-        throw std::runtime_error("KEPHIR2_CANCELLED");
+        throw kephir2::OperationCancelled{};
     }
 }
 
@@ -353,7 +405,9 @@ kephir2_status map_exception(
 
     const std::string message = error.what();
 
-    if (message == "KEPHIR2_CANCELLED") {
+    if (dynamic_cast<const kephir2::OperationCancelled*>(&error) != nullptr
+        || message == "KEPHIR2_CANCELLED"
+        || message == "KEPHIR operation cancelled") {
         fill_result(
             result,
             KEPHIR2_CANCELLED,
@@ -498,7 +552,16 @@ kephir2_status kephir2_compress(
             input_string);
         throw_if_cancelled(options);
 
-        const auto backend_options = to_backend_options(options);
+        auto backend_operation =
+            make_backend_operation_context(options, true);
+        auto routing_operation =
+            make_backend_operation_context(options, false);
+
+        const auto backend_options =
+            to_backend_options(options, &backend_operation);
+        const auto routing_backend_options =
+            to_backend_options(options, &routing_operation);
+
         kephir2::ByteBuffer archive;
 
         if (std::filesystem::is_directory(input)) {
@@ -523,7 +586,7 @@ kephir2_status kephir2_compress(
                 input,
                 engine->backend,
                 to_profile(options.profile),
-                backend_options);
+                routing_backend_options);
 
             throw_if_cancelled(options);
 
@@ -734,7 +797,10 @@ kephir2_status kephir2_extract(
             archive_path.generic_string());
         throw_if_cancelled(options);
 
-        const auto backend_options = to_backend_options(options);
+        auto backend_operation =
+            make_backend_operation_context(options, true);
+        const auto backend_options =
+            to_backend_options(options, &backend_operation);
 
         if (archive[4] == static_cast<std::uint8_t>(kephir2::Kpf1Kind::File)) {
             const auto envelope = kephir2::decode_kpf1_file(archive);
