@@ -122,6 +122,47 @@ int main() {
     assert(!holdout_final.request_extended_probe);
 
 
+    // EXP-94: if every 512 KiB FLAT parent is already content-pure,
+    // SMART cannot earn a class-separation benefit.
+    ArchiveFeatures aligned_multiclass{};
+    aligned_multiclass.logical_bytes = 6u * 1024u * 1024u;
+    aligned_multiclass.file_count = 6;
+    aligned_multiclass.average_file_bytes = 1u * 1024u * 1024u;
+    aligned_multiclass.sampled_content_groups = 3;
+    aligned_multiclass.multi_file_content_groups = 3;
+    aligned_multiclass.repeatable_content_byte_fraction = 1.0;
+    aligned_multiclass.sampled_dominant_byte_fraction = 1.0 / 3.0;
+    aligned_multiclass.flat_parent_count = 12;
+    aligned_multiclass.flat_mixed_parent_count = 0;
+    aligned_multiclass.flat_mixed_parent_byte_fraction = 0.0;
+
+    auto aligned_plan =
+        router.plan(aligned_multiclass, Profile::Auto, std::nullopt);
+    assert(aligned_plan.layout == Layout::Flat);
+    assert(!aligned_plan.request_initial_probe);
+    assert(aligned_plan.requested_probe_bytes == 0);
+
+    // EXP-94: many medium files across repeated classes with strong parent
+    // mixing are worth measuring even though average file size is below the
+    // old 512 KiB groupability threshold.
+    ArchiveFeatures medium_mixed{};
+    medium_mixed.logical_bytes = 40u * 64u * 1024u;
+    medium_mixed.file_count = 40;
+    medium_mixed.average_file_bytes = 64u * 1024u;
+    medium_mixed.sampled_content_groups = 4;
+    medium_mixed.multi_file_content_groups = 4;
+    medium_mixed.repeatable_content_byte_fraction = 1.0;
+    medium_mixed.sampled_dominant_byte_fraction = 0.25;
+    medium_mixed.flat_parent_count = 5;
+    medium_mixed.flat_mixed_parent_count = 3;
+    medium_mixed.flat_mixed_parent_byte_fraction = 0.60;
+
+    auto medium_plan =
+        router.plan(medium_mixed, Profile::Auto, std::nullopt);
+    assert(medium_plan.request_initial_probe);
+    assert(medium_plan.requested_probe_bytes == 512u * 1024u);
+
+
     ArchiveFeatures weak_multiclass{};
     weak_multiclass.logical_bytes = 200u * 1024u * 1024u;
     weak_multiclass.file_count = 16;
