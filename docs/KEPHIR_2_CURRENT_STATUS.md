@@ -786,7 +786,37 @@ EXP-84 is the current AUTO router candidate pending comparison with the parallel
 
 ---
 
-## 17. Current validated facts
+## 17. EXP-85 — Adaptive-Budget Fast AUTO
+
+Status:
+
+**VALIDATED ALTERNATIVE / NOT PROMOTED OVER EXP-84**
+
+EXP-85 combined the single-content-group fast path with:
+
+- full-input probe up to 2 MiB;
+- 512 KiB stage-1 probe above that threshold;
+- 2 MiB bounded stage-2 probe.
+
+Result:
+
+```text
+Correct selections: 8 / 8
+Selection accuracy: 100%
+Total regret:       0 bytes
+Routing time:       5.71 s aggregate
+SHA roundtrip:      PASS on all datasets
+```
+
+EXP-85 confirms the adaptive-budget direction, but EXP-84 remains the preferred canonical candidate because it achieved the same correctness with **3.91 s aggregate routing** on Canonical Router Matrix v1.
+
+Decision:
+
+**EXP-84 retained as the canonical AUTO router policy.**
+
+---
+
+## 18. Current validated facts
 
 At the present checkpoint:
 
@@ -804,7 +834,7 @@ At the present checkpoint:
 
 ---
 
-## 18. Current product architecture priority
+## 19. Current product architecture priority
 
 The current production path now contains both the native Content Analyzer and the native Global Router:
 
@@ -824,7 +854,7 @@ The next architectural task is to validate this decision layer over a broader wo
 
 ---
 
-## 19. Validation matrix still required
+## 20. Validation matrix still required
 
 Before EXP-79 can be declared the final production Global Router, it must be tested on:
 
@@ -853,7 +883,7 @@ For every workload, record:
 
 ---
 
-## 20. Current engineering rules
+## 21. Current engineering rules
 
 Every future milestone must follow:
 
@@ -878,25 +908,34 @@ Production functionality should progressively migrate into the native KEPHIR 2 C
 
 ---
 
-## 21. Immediate next milestone
+## 22. Immediate next milestone
 
-**AUTO Router Candidate Consolidation**
+**Native EXP-84 Probe Policy + EXP-86 Cheap Groupability Estimator**
 
-Goal:
+Immediate production task:
 
-Compare EXP-84 against the parallel EXP-85 adaptive-budget run and retain a single canonical AUTO policy.
+Expose EXP-84 probe requirements through the native Compression Planner:
 
-After consolidation, the next optimization target is the remaining heterogeneous-workload probe cost, primarily:
+- single content class → no probe / FLAT;
+- <=1 MiB heterogeneous → full-input probe;
+- larger heterogeneous → 512 KiB initial probe;
+- maximum extended probe → 2 MiB.
 
-- repository;
-- Silesia;
-- mixed-content directories.
+Research task:
 
-The next research direction should replace expensive full KEPHIR micro-compression probes with a much cheaper predictive/groupability estimator while preserving the current 8/8 matrix correctness.
+Develop EXP-86 to replace the remaining expensive KEPHIR micro-compression probes on heterogeneous workloads with a much cheaper groupability/predictive estimator.
+
+Acceptance criteria for EXP-86:
+
+- preserve 8/8 correctness on Canonical Router Matrix v1;
+- preserve 0 B regret;
+- all SHA PASS for oracle verification;
+- routing materially below EXP-84's 3.91 s;
+- no filename/extension dependence.
 
 ---
 
-## 22. Current checkpoint summary
+## 23. Current checkpoint summary
 
 ```text
 KEPHIR 1.0
@@ -922,8 +961,9 @@ KEPHIR 2
             ├── EXP-82 ................. PROMOTED, 8/8, 0 B regret
             ├── EXP-82 routing ......... 41.96 s aggregate
             ├── EXP-83 budget-only ..... REJECTED, 7/8, 14.24 s
-            ├── EXP-84 ................. PROMOTED CANDIDATE, 8/8
+            ├── EXP-84 ................. CANONICAL AUTO, 8/8, 0 B
             ├── EXP-84 routing ......... 3.91 s aggregate
+            ├── EXP-85 ................. 8/8, 0 B, 5.71 s, not selected
             ├── Router Matrix v1 ....... FROZEN
             ├── Native EXP-82 policy ... PASS
             ├── Routing SHA ............ PASS
@@ -932,7 +972,7 @@ KEPHIR 2
 
 ---
 
-## 23. Update policy
+## 24. Update policy
 
 This document is mandatory project state.
 
