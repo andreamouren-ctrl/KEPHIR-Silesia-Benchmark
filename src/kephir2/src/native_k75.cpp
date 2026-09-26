@@ -747,6 +747,24 @@ BackendEncodeResult NativeK75Backend::encode(
         });
     }
 
+    const std::size_t parent_bytes =
+        options.research_parent_bytes
+            ? options.research_parent_bytes
+            : kParentBytes;
+    const std::size_t inner_chunk_bytes =
+        options.research_inner_chunk_bytes
+            ? options.research_inner_chunk_bytes
+            : kParentBytes;
+
+    constexpr std::size_t kMaxResearchContext = 8u * 1024u * 1024u;
+    if (parent_bytes == 0 || parent_bytes > kMaxResearchContext) {
+        throw std::runtime_error("invalid K75 research parent size");
+    }
+    if (inner_chunk_bytes == 0
+        || inner_chunk_bytes > kMaxResearchContext) {
+        throw std::runtime_error("invalid K75 research inner chunk size");
+    }
+
     std::size_t workers = options.workers;
     if (workers == 0) {
         workers = std::thread::hardware_concurrency();
@@ -771,8 +789,8 @@ BackendEncodeResult NativeK75Backend::encode(
         for (auto& raw : pending) {
             futures.push_back(std::async(
                 std::launch::async,
-                [raw = std::move(raw)]() mutable {
-                    return encode_entry(raw);
+                [raw = std::move(raw), inner_chunk_bytes]() mutable {
+                    return encode_entry(raw, inner_chunk_bytes);
                 }));
         }
 
@@ -783,7 +801,7 @@ BackendEncodeResult NativeK75Backend::encode(
         pending.clear();
     };
 
-    std::vector<std::uint8_t> parent(kParentBytes);
+    std::vector<std::uint8_t> parent(parent_bytes);
     std::uint64_t offset = 0;
     std::uint64_t scheduled_bytes = 0;
 
@@ -794,7 +812,7 @@ BackendEncodeResult NativeK75Backend::encode(
 
         const auto want = static_cast<std::size_t>(
             std::min<std::uint64_t>(
-                kParentBytes,
+                parent_bytes,
                 input.size() - offset));
 
         const auto got = input.read(
@@ -808,7 +826,10 @@ BackendEncodeResult NativeK75Backend::encode(
         const auto parent_span =
             std::span<const std::uint8_t>(parent.data(), got);
 
-        const auto grain = select_grain(parent_span);
+        const auto grain = select_grain(
+            parent_span,
+            inner_chunk_bytes,
+            options.research_force_parent_grain);
         if (!grain)
             throw std::runtime_error("invalid zero K75 grain");
 
