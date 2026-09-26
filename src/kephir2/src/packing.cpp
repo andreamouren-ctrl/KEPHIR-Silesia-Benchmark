@@ -96,6 +96,54 @@ DirectoryPackingPlan build_directory_packing_plan(
     return plan;
 }
 
+DirectoryPackingPlan build_flat_directory_packing_plan(
+    const std::filesystem::path& root) {
+
+    DirectoryPackingPlan plan;
+    const auto paths = collect_directory_files(root);
+
+    plan.files.reserve(paths.size());
+    plan.groups.push_back({"flat", 0, {}});
+
+    std::vector<ManifestRecord> manifest_records;
+    manifest_records.reserve(paths.size());
+
+    auto& group = plan.groups.front();
+
+    for (std::size_t i = 0; i < paths.size(); ++i) {
+        const auto& path = paths[i];
+        const auto size = std::filesystem::file_size(path);
+
+        if (size > std::numeric_limits<std::uint64_t>::max() - group.raw_length) {
+            throw std::runtime_error("flat packing raw length overflow");
+        }
+
+        const auto rel = relative_utf8(path, root);
+        const auto offset = group.raw_length;
+
+        plan.files.push_back({
+            rel,
+            ContentClass::Empty,
+            "flat",
+            0,
+            size,
+            offset
+        });
+
+        group.raw_length += size;
+        group.file_indices.push_back(i);
+
+        manifest_records.push_back({
+            rel,
+            0,
+            size
+        });
+    }
+
+    plan.manifest = encode_manifest(manifest_records);
+    return plan;
+}
+
 PackedGroupSource::PackedGroupSource(
     std::filesystem::path root,
     const DirectoryPackingPlan& plan,
