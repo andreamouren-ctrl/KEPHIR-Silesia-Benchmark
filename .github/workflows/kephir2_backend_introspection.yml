@@ -1,0 +1,32 @@
+name: KEPHIR 2 Backend Introspection
+on:
+  push:
+    branches:
+      - development/kephir-2-core
+    paths:
+      - "research/generators/general/inspect_exp37_api.py"
+      - "research/generators/general/make_exp26_source.py"
+      - "research/generators/general/make_exp27_source.py"
+      - "research/generators/general/make_exp31_source.py"
+      - "research/generators/general/make_exp33_source.py"
+      - "research/generators/general/make_exp37_source.py"
+      - ".github/workflows/kephir2_backend_introspection.yml"
+  workflow_dispatch:
+
+jobs:
+  inspect-exp37:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Materialize EXP-37 source
+        run: |
+          cat engine/source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 research/generators/general/make_exp26_source.py
+          python3 research/generators/general/make_exp27_source.py
+          python3 research/generators/general/make_exp31_source.py
+          python3 research/generators/general/make_exp33_source.py
+          python3 research/generators/general/make_exp37_source.py
+
+      - name: Inspect API surface
+        run: python3 research/generators/general/inspect_exp37_api.py
