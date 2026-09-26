@@ -1043,7 +1043,70 @@ This defines EXP-90.
 
 ---
 
-## 22. Current validated facts
+## 22. EXP-90 — Buffered Native Analyzer Fast Path
+
+Status:
+
+**PROMOTED**
+
+EXP-90 changes only the Analyzer I/O strategy for bounded small/medium files.
+
+For files up to 1 MiB:
+
+- perform one bounded sequential read;
+- derive the exact same Python-compatible stride sample from the buffer;
+- avoid thousands of single-byte seek/read operations.
+
+Large files retain sparse sampling to avoid reading arbitrarily large inputs in full.
+
+Dedicated validation:
+
+```text
+Action parity:       16 / 16
+Feature mismatches:  0
+Classifier parity:   PASS
+Core Smoke:          PASS
+Aggregate native:    0.574 s
+```
+
+Comparison with EXP-89 baseline:
+
+```text
+EXP-89 native planning: 11.818 s
+EXP-90 native planning:  0.574 s
+Speedup:                ~20.6x
+Reduction:              ~95.1%
+```
+
+Key workload improvements:
+
+```text
+repository:
+  1466 ms → 17 ms
+
+many_tiny_source:
+  7558 ms → 71 ms
+
+many_medium_four_groups:
+   791 ms → 4.4 ms
+
+mixed_content:
+   157 ms → 2.7 ms
+```
+
+Silesia remains approximately 0.28 s because its large files intentionally retain sparse sampling.
+
+Conclusion:
+
+The native KEPHIR 2 analysis + AUTO pre-routing decision layer is now both semantically validated and fast enough to stop being the primary product bottleneck.
+
+Decision:
+
+**Freeze Native Analyzer/Planner decision semantics at this checkpoint and move development to the native archive/execution path.**
+
+---
+
+## 23. Current validated facts
 
 At the present checkpoint:
 
@@ -1061,7 +1124,7 @@ At the present checkpoint:
 
 ---
 
-## 23. Current product architecture priority
+## 24. Current product architecture priority
 
 The current production path now contains both the native Content Analyzer and the native Global Router:
 
@@ -1081,7 +1144,7 @@ The next architectural task is to validate this decision layer over a broader wo
 
 ---
 
-## 24. Validation matrix still required
+## 25. Validation matrix still required
 
 Before EXP-79 can be declared the final production Global Router, it must be tested on:
 
@@ -1110,7 +1173,7 @@ For every workload, record:
 
 ---
 
-## 25. Current engineering rules
+## 26. Current engineering rules
 
 Every future milestone must follow:
 
@@ -1135,31 +1198,32 @@ Production functionality should progressively migrate into the native KEPHIR 2 C
 
 ---
 
-## 26. Immediate next milestone
+## 27. Immediate next milestone
 
-**EXP-90 — Buffered Small/Medium-File Analyzer Fast Path**
+**Native Archive Layer v1**
 
 Goal:
 
-Eliminate the millions of per-byte seek/read operations responsible for EXP-89 native planning overhead while preserving exact classifier semantics.
+Begin replacing Python archive orchestration with stable native C++ production components without changing compression semantics.
 
-Implementation direction:
+First milestone:
 
-- for files up to a bounded threshold, perform one buffered sequential read;
-- derive the exact Python-compatible stride sample from that in-memory buffer;
-- apply the same optimization to directory aggregate sampling;
-- retain sparse sampling for large files to avoid reading huge archives in full.
+- native unsigned-varint codec;
+- native prefix-compressed path manifest;
+- deterministic file ordering;
+- manifest encode/decode roundtrip;
+- path-safety validation;
+- byte-parity tests against the current Python manifest format where applicable;
+- no compression backend changes yet.
 
-Acceptance criteria:
+Rationale:
 
-- 16/16 EXP-88 initial-action parity;
-- 0 groupability feature mismatches;
-- Python↔C++ classifier parity remains PASS;
-- materially reduce EXP-89's 11.818 s aggregate native planning time;
-- especially reduce many_tiny_source from 7.558 s.
+The Analyzer/Planner decision layer is now validated and fast. The next largest architectural debt is Python archive orchestration and temporary-file/subprocess handling.
+
+The archive layer will be migrated incrementally before integrating the compression backend as a native library.
 
 ---
-## 27. Current checkpoint summary
+## 28. Current checkpoint summary
 
 ```text
 KEPHIR 1.0
@@ -1192,17 +1256,19 @@ KEPHIR 2
             ├── EXP-87 holdout ......... 4/8, 262 B regret
             ├── EXP-88 ................. PROMOTED, 16/16, 0 B
             ├── EXP-89 native parity ... 16/16, 0 feature mismatches
-            ├── EXP-89 native time ..... 11.818 s, OPTIMIZE ANALYZER
+            ├── EXP-89 native time ..... 11.818 s baseline
+            ├── EXP-90 ................. PROMOTED, 0.574 s
+            ├── EXP-90 speedup ......... ~20.6x vs EXP-89
             ├── Router Matrix v1 ....... FROZEN
             ├── Router Matrix v2 ....... HOLDOUT ESTABLISHED
             ├── Native EXP-84 policy ... PASS
             ├── Routing SHA ............ PASS
-            └── Next ................... EXP-90 buffered native analyzer
+            └── Next ................... Native Archive Layer v1
 ```
 
 ---
 
-## 28. Update policy
+## 29. Update policy
 
 This document is mandatory project state.
 
