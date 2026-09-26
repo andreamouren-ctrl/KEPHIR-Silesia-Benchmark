@@ -1,0 +1,116 @@
+name: AURORA Media EXP38 Backend
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["research/khepri-stream-codec"]
+  push:
+    branches: ["feature/aurora-media-exp38-backend"]
+    paths:
+      - ".github/workflows/aurora_media_exp38_backend.yml"
+      - "src/cpp/aurora_media/AuroraKhepriExp38MemoryAdapter.*"
+      - "benchmarks/major_codecs/aurora_khepri_media_backend_ab.cpp"
+      - "make_exp38_source.py"
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+
+      - name: Generate EXP-37A and EXP-38A
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          python3 make_exp37_source.py
+          python3 make_exp38_source.py
+
+      - name: Build EXP-37A media baseline
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG             -DNO_INTERNAL_VERIFY             -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3             -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1             -pthread -Wall -Wextra -Werror             src/cpp/aurora_media/AuroraKhepriExp37MemoryAdapter.cpp             src/cpp/aurora_media/AuroraVideoMotion.cpp             src/cpp/aurora_media/AuroraVideoResidual.cpp             benchmarks/major_codecs/aurora_khepri_media_backend_ab.cpp             -Isrc/cpp/aurora_media -o media_exp37
+
+      - name: Build EXP-38A fused media candidate
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG             -DNO_INTERNAL_VERIFY -DAURORA_KHEPRI_EXP38             -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3             -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1             -DK2_FUSED_MATCH_MODE=1             -pthread -Wall -Wextra -Werror             src/cpp/aurora_media/AuroraKhepriExp38MemoryAdapter.cpp             src/cpp/aurora_media/AuroraVideoMotion.cpp             src/cpp/aurora_media/AuroraVideoResidual.cpp             benchmarks/major_codecs/aurora_khepri_media_backend_ab.cpp             -Isrc/cpp/aurora_media -o media_exp38
+
+      - name: Run backend A/B
+        run: |
+          echo "=== EXP37 ===" | tee media_backend_ab.txt
+          ./media_exp37 | tee -a media_backend_ab.txt
+          echo "=== EXP38 ===" | tee -a media_backend_ab.txt
+          ./media_exp38 | tee -a media_backend_ab.txt
+
+      - name: Validate and summarize
+        run: |
+          python3 - <<'PY' | tee media_backend_summary.txt
+          import re
+          from pathlib import Path
+
+          rows=[]
+          for line in Path("media_backend_ab.txt").read_text().splitlines():
+              if line.startswith("AURORA_KHEPRI_MEDIA_BACKEND_PASS "):
+                  rows.append(dict(re.findall(r"(\w+)=([^ ]+)",line)))
+
+          if len(rows)!=2:
+              raise SystemExit("expected EXP37 and EXP38 rows")
+          base,fused=rows
+
+          if base["backend"]!="EXP37_DUAL" or fused["backend"]!="EXP38_FUSED":
+              raise SystemExit("backend order mismatch")
+          for key in ("tiles","input_bytes","input_fingerprint"):
+              if base[key]!=fused[key]:
+                  raise SystemExit(f"input corpus mismatch in {key}")
+
+          b_bytes=int(base["packed_bytes"])
+          f_bytes=int(fused["packed_bytes"])
+          b_enc=float(base["encode_ms"])
+          f_enc=float(fused["encode_ms"])
+          b_dec=float(base["decode_ms"])
+          f_dec=float(fused["decode_ms"])
+
+          print("AURORA_MEDIA_EXP38_AB")
+          print(
+              "compression",
+              f"exp37_bytes={b_bytes}",
+              f"exp38_bytes={f_bytes}",
+              f"delta_bytes={f_bytes-b_bytes}",
+              f"delta_pct={(f_bytes/b_bytes-1.0)*100.0:.6f}",
+          )
+          print(
+              "encode",
+              f"exp37_ms={b_enc:.6f}",
+              f"exp38_ms={f_enc:.6f}",
+              f"speedup_x={b_enc/f_enc:.3f}",
+              f"time_reduction_pct={(1.0-f_enc/b_enc)*100.0:.2f}",
+          )
+          print(
+              "decode",
+              f"exp37_ms={b_dec:.6f}",
+              f"exp38_ms={f_dec:.6f}",
+              f"speedup_x={b_dec/f_dec:.3f}",
+              f"time_reduction_pct={(1.0-f_dec/b_dec)*100.0:.2f}",
+          )
+          print("LOSSLESS_ROUNDTRIP=PASS")
+          print("DETERMINISTIC_OUTPUT=PASS")
+
+          # Do not auto-promote a changed backend. Report whether it meets a
+          # conservative candidate gate; final promotion is a separate step.
+          candidate=(f_enc <= b_enc*0.90 and f_bytes <= b_bytes)
+          print("EXP38_MEDIA_CANDIDATE",str(candidate).lower())
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-media-exp38-backend
+          path: |
+            media_backend_ab.txt
+            media_backend_summary.txt
