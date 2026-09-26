@@ -49,7 +49,14 @@ StrategyPlan GlobalRouter::plan(
     StrategyPlan out{};
     out.profile = requested_profile;
 
-    if (probe && probe->valid()) {
+    // Deterministic dominance fast path:
+    // when every file belongs to one content family, SMART would create one
+    // payload group containing the same ordered concatenation as FLAT while
+    // carrying additional grouping metadata. FLAT therefore dominates and no
+    // compression probe is required.
+    if (features.file_count > 0 && features.sampled_content_groups == 1) {
+        out.layout = Layout::Flat;
+    } else if (probe && probe->valid()) {
         const auto measured_layout = (probe->smart_archive_bytes < probe->flat_archive_bytes)
             ? Layout::Smart
             : Layout::Flat;
