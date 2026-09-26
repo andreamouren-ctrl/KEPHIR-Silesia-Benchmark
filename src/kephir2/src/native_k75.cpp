@@ -458,6 +458,67 @@ bool valid_grain_candidate(
     return false;
 }
 
+std::size_t distribution_drift_grain(
+    std::span<const std::uint8_t> parent,
+    std::string_view coarse_key) {
+
+    // EXP-106: only refine the high-entropy / low-entropy-spread bucket for
+    // which EXP-104 proved that coarse entropy is ambiguous. Existing trusted
+    // factory rules retain priority.
+    if (parent.size() != kParentBytes
+        || coarse_key != "l2:h7:z0:p1:s0") {
+        return 0;
+    }
+
+    constexpr std::size_t kQuarter = 128u * 1024u;
+    std::array<std::array<std::uint32_t, 256>, 4> counts{};
+    std::array<std::uint32_t, 4> printable{};
+
+    for (std::size_t q = 0; q < 4; ++q) {
+        const auto part = parent.subspan(q * kQuarter, kQuarter);
+        for (const auto b : part) {
+            ++counts[q][b];
+            printable[q] +=
+                (b == 9 || b == 10 || b == 13 || (b >= 32 && b < 127))
+                ? 1u : 0u;
+        }
+    }
+
+    double tv_max = 0.0;
+    for (std::size_t a = 0; a < 4; ++a) {
+        for (std::size_t b = a + 1; b < 4; ++b) {
+            std::uint64_t l1 = 0;
+            for (std::size_t symbol = 0; symbol < 256; ++symbol) {
+                const auto av = counts[a][symbol];
+                const auto bv = counts[b][symbol];
+                l1 += av >= bv ? av - bv : bv - av;
+            }
+            const double tv =
+                static_cast<double>(l1)
+                / (2.0 * static_cast<double>(kQuarter));
+            tv_max = std::max(tv_max, tv);
+        }
+    }
+
+    const auto [pmin, pmax] =
+        std::minmax_element(printable.begin(), printable.end());
+    const double printable_range =
+        static_cast<double>(*pmax - *pmin)
+        / static_cast<double>(kQuarter);
+
+    // EXP-105 observed that genuine local distribution drift with stable
+    // printable fraction separates the valuable mozilla/x-ray splits from
+    // synthetic random/incompressible parents. The lower-drift case benefits
+    // from 128 KiB; stronger drift benefits from 256 KiB.
+    if (tv_max > 0.04 && printable_range < 0.01) {
+        return tv_max < 0.07
+            ? 128u * 1024u
+            : 256u * 1024u;
+    }
+
+    return 0;
+}
+
 std::size_t trusted_factory_grain(
     std::span<const std::uint8_t> parent) {
 
@@ -484,6 +545,15 @@ std::size_t trusted_factory_grain(
             best_score = score;
             best_trials = rule.trials;
             best_grain = rule.grain;
+        }
+    }
+
+    if (best_score < 0.0) {
+        const auto drift_grain =
+            distribution_drift_grain(parent, key);
+        if (drift_grain != 0
+            && valid_grain_candidate(parent.size(), drift_grain)) {
+            return drift_grain;
         }
     }
 
