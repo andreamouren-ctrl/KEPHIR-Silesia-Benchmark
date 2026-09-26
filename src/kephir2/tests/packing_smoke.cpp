@@ -1,9 +1,14 @@
 #include "kephir2/packing.hpp"
 
+#include <algorithm>
+#include <array>
 #include <cassert>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
+#include <span>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -32,6 +37,10 @@ int main() {
         root / "a.dat",
         "int f(int x){return x*x+17;}\n",
         64);
+    write_repeat(
+        root / "aa.dat",
+        "int g(int x){return x+31;}\n",
+        32);
 
     {
         std::ofstream out(root / "sub" / "b.dat", std::ios::binary);
@@ -49,13 +58,14 @@ int main() {
     ContentAnalyzer analyzer;
     const auto plan = build_directory_packing_plan(root, analyzer);
 
-    assert(plan.files.size() == 3);
+    assert(plan.files.size() == 4);
     assert(!plan.groups.empty());
     assert(!plan.manifest.empty());
 
     assert(plan.files[0].path == "a.dat");
-    assert(plan.files[1].path == "sub/b.dat");
-    assert(plan.files[2].path == "sub/c.dat");
+    assert(plan.files[1].path == "aa.dat");
+    assert(plan.files[2].path == "sub/b.dat");
+    assert(plan.files[3].path == "sub/c.dat");
 
     std::uint64_t total_group_bytes = 0;
     for (const auto& group : plan.groups) {
@@ -78,6 +88,43 @@ int main() {
         total_file_bytes += file.size;
     }
     assert(total_group_bytes == total_file_bytes);
+
+    // Every group source must reproduce the exact logical concatenation
+    // without materializing that concatenation inside the source itself.
+    for (std::size_t group_index = 0; group_index < plan.groups.size(); ++group_index) {
+        const auto& group = plan.groups[group_index];
+        PackedGroupSource source(root, plan, group_index);
+        assert(source.size() == group.raw_length);
+
+        std::vector<std::uint8_t> expected;
+        expected.reserve(static_cast<std::size_t>(group.raw_length));
+        for (const auto file_index : group.file_indices) {
+            std::ifstream in(root / std::filesystem::u8path(
+                plan.files[file_index].path.begin(),
+                plan.files[file_index].path.end()), std::ios::binary);
+            expected.insert(
+                expected.end(),
+                std::istreambuf_iterator<char>(in),
+                std::istreambuf_iterator<char>());
+        }
+
+        std::vector<std::uint8_t> actual;
+        actual.resize(expected.size());
+        std::size_t cursor = 0;
+        while (cursor < actual.size()) {
+            const auto chunk = std::min<std::size_t>(7, actual.size() - cursor);
+            const auto got = source.read(
+                cursor,
+                std::span<std::uint8_t>(actual.data() + cursor, chunk));
+            assert(got == chunk);
+            cursor += got;
+        }
+        assert(actual == expected);
+
+        std::array<std::uint8_t, 8> eof{};
+        assert(source.read(source.size(), eof) == 0);
+        assert(source.read(source.size() + 100, eof) == 0);
+    }
 
     const auto manifest_records =
         decode_manifest(plan.manifest, plan.groups.size());
