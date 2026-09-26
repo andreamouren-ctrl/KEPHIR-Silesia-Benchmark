@@ -1,10 +1,14 @@
 #include "AuroraVideoMotion.h"
 #include "AuroraMediaError.h"
 #include <algorithm>
+#include <array>
+#include <cstring>
 #include <cstdlib>
 #include <limits>
 #include <tuple>
-#if defined(__SSE2__)
+#if defined(__AVX2__)
+#include <immintrin.h>
+#elif defined(__SSE2__)
 #include <emmintrin.h>
 #endif
 
@@ -48,6 +52,81 @@ std::uint64_t sad8x8(ByteView cur,ByteView prev,
     return sum;
 #endif
 }
+
+#if defined(__AVX2__) && !defined(AURORA_DISABLE_AVX2_BATCH_SAD)
+std::uint64_t load_u64_unaligned(const Byte* p) {
+    std::uint64_t v{};
+    std::memcpy(&v,p,sizeof(v));
+    return v;
+}
+
+std::array<std::uint64_t,25> sad8x8_all25_interior_avx2(
+        ByteView cur,ByteView prev,
+        std::uint32_t stride,
+        std::uint32_t bx,std::uint32_t by,
+        std::uint64_t center_cost) {
+    std::array<std::uint64_t,25> costs{};
+
+    for(int dyi=0;dyi<5;++dyi) {
+        const int dy=-4+2*dyi;
+        __m256i acc4=_mm256_setzero_si256();
+        std::uint64_t fifth=0;
+
+        for(std::uint32_t yy=0;yy<8;++yy) {
+            const auto* ca=cur.data()+static_cast<std::size_t>(by+yy)*stride+bx;
+            const auto cur64=load_u64_unaligned(ca);
+            const __m256i cv=_mm256_set1_epi64x(static_cast<long long>(cur64));
+
+            const auto* p=prev.data()+
+                static_cast<std::size_t>(
+                    static_cast<int>(by)+dy+static_cast<int>(yy))*stride+
+                (bx-4);
+
+            if(dy==0) {
+                const __m256i pv=_mm256_set_epi64x(
+                    static_cast<long long>(load_u64_unaligned(p+8)),
+                    static_cast<long long>(load_u64_unaligned(p+6)),
+                    static_cast<long long>(load_u64_unaligned(p+2)),
+                    static_cast<long long>(load_u64_unaligned(p+0)));
+                acc4=_mm256_add_epi64(acc4,_mm256_sad_epu8(cv,pv));
+            } else {
+                const __m256i pv=_mm256_set_epi64x(
+                    static_cast<long long>(load_u64_unaligned(p+6)),
+                    static_cast<long long>(load_u64_unaligned(p+4)),
+                    static_cast<long long>(load_u64_unaligned(p+2)),
+                    static_cast<long long>(load_u64_unaligned(p+0)));
+                acc4=_mm256_add_epi64(acc4,_mm256_sad_epu8(cv,pv));
+
+                const __m128i a=_mm_loadl_epi64(
+                    reinterpret_cast<const __m128i*>(ca));
+                const __m128i b=_mm_loadl_epi64(
+                    reinterpret_cast<const __m128i*>(p+8));
+                const __m128i s=_mm_sad_epu8(a,b);
+                fifth+=static_cast<std::uint64_t>(_mm_cvtsi128_si64(s));
+            }
+        }
+
+        alignas(32) std::uint64_t lanes[4];
+        _mm256_store_si256(reinterpret_cast<__m256i*>(lanes),acc4);
+        const auto row=static_cast<std::size_t>(dyi)*5;
+
+        if(dy==0) {
+            costs[row+0]=lanes[0];
+            costs[row+1]=lanes[1];
+            costs[row+2]=center_cost;
+            costs[row+3]=lanes[2];
+            costs[row+4]=lanes[3];
+        } else {
+            costs[row+0]=lanes[0];
+            costs[row+1]=lanes[1];
+            costs[row+2]=lanes[2];
+            costs[row+3]=lanes[3];
+            costs[row+4]=fifth;
+        }
+    }
+    return costs;
+}
+#endif
 
 } // namespace
 
@@ -188,33 +267,58 @@ MotionResidual AuroraVideoMotion::encode_mc8r4_limited(ByteView cur,ByteView pre
                 by+block+static_cast<std::uint32_t>(radius)<=h;
 #endif
 
-            for(std::size_t i=0;i<candidate_count;++i) {
-                const auto [dx,dy]=cand[i];
-                const int sx=static_cast<int>(bx)+dx;
-                const int sy=static_cast<int>(by)+dy;
-                if(!interior &&
-                   (sx<0 || sy<0 ||
-                    sx+static_cast<int>(block)>static_cast<int>(w) ||
-                    sy+static_cast<int>(block)>static_cast<int>(h)))
-                    continue;
+#if defined(__AVX2__) && !defined(AURORA_DISABLE_AVX2_BATCH_SAD)
+            if(interior && candidate_count==25) {
+                if(cand.empty() || cand[0].first!=0 || cand[0].second!=0)
+                    throw AuroraMediaError(
+                        ErrorCode::InternalInvariant,
+                        "MC8R4 candidate order no longer starts at zero motion");
 
-                const std::uint64_t cost=sad8x8(
-                    cur,prev,w,bx,by,
-                    static_cast<std::uint32_t>(sx),
-                    static_cast<std::uint32_t>(sy));
-                if(cost<best_cost) {
-                    best_cost=cost;
-                    best_idx=static_cast<int>(i);
-
-                    // Exact fast path: SAD is non-negative, so zero is the
-                    // global optimum. Candidate order is the tie-break rule
-                    // (the encoder only accepts strictly lower costs), hence
-                    // stopping here is bitstream-identical to evaluating all
-                    // remaining candidates.
-#if !defined(AURORA_DISABLE_EXACT_MOTION_FASTPATH)
-                    if(best_cost==0)
-                        break;
+                const auto center_cost=sad8x8(cur,prev,w,bx,by,bx,by);
+                if(center_cost==0) {
+                    best_cost=0;
+                    best_idx=0;
+                } else {
+                    const auto costs=sad8x8_all25_interior_avx2(
+                        cur,prev,w,bx,by,center_cost);
+                    for(std::size_t i=0;i<candidate_count;++i) {
+                        const auto [dx,dy]=cand[i];
+                        const auto gx=static_cast<std::size_t>((dx+4)/2);
+                        const auto gy=static_cast<std::size_t>((dy+4)/2);
+                        const auto cost=costs[gy*5+gx];
+                        if(cost<best_cost) {
+                            best_cost=cost;
+                            best_idx=static_cast<int>(i);
+                            if(best_cost==0)
+                                break;
+                        }
+                    }
+                }
+            } else
 #endif
+            {
+                for(std::size_t i=0;i<candidate_count;++i) {
+                    const auto [dx,dy]=cand[i];
+                    const int sx=static_cast<int>(bx)+dx;
+                    const int sy=static_cast<int>(by)+dy;
+                    if(!interior &&
+                       (sx<0 || sy<0 ||
+                        sx+static_cast<int>(block)>static_cast<int>(w) ||
+                        sy+static_cast<int>(block)>static_cast<int>(h)))
+                        continue;
+
+                    const std::uint64_t cost=sad8x8(
+                        cur,prev,w,bx,by,
+                        static_cast<std::uint32_t>(sx),
+                        static_cast<std::uint32_t>(sy));
+                    if(cost<best_cost) {
+                        best_cost=cost;
+                        best_idx=static_cast<int>(i);
+#if !defined(AURORA_DISABLE_EXACT_MOTION_FASTPATH)
+                        if(best_cost==0)
+                            break;
+#endif
+                    }
                 }
             }
 
