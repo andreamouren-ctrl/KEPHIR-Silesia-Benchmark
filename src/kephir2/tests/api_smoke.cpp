@@ -15,6 +15,8 @@ struct CallbackState {
     int progress_calls{0};
     kephir2_phase last_phase{KEPHIR2_PHASE_IDLE};
     bool cancel{false};
+    bool cancel_during_compression{false};
+    bool saw_backend_progress{false};
 };
 
 void on_progress(
@@ -28,6 +30,15 @@ void on_progress(
     assert(progress->fraction <= 1.0);
     ++state->progress_calls;
     state->last_phase = progress->phase;
+
+    if (progress->phase == KEPHIR2_PHASE_COMPRESSING
+        && progress->processed_bytes > 0
+        && progress->total_bytes > 0) {
+        state->saw_backend_progress = true;
+        if (state->cancel_during_compression) {
+            state->cancel = true;
+        }
+    }
 }
 
 int should_cancel(void* user_data) {
@@ -197,6 +208,37 @@ int main() {
         &options,
         &cancelled) == KEPHIR2_CANCELLED);
     assert(!std::filesystem::exists(cancelled_archive));
+
+    // Cancellation must also work after the native backend has started
+    // processing data, not only at the API phase boundaries.
+    const auto long_input = base / "long_input.dat";
+    const auto mid_cancel_archive = base / "mid_cancel.kpf";
+    write_repeat(
+        long_input,
+        "ordinary prose words and spaces form a natural sentence. ",
+        2u * 1024u * 1024u);
+
+    callbacks.cancel = false;
+    callbacks.cancel_during_compression = true;
+    callbacks.saw_backend_progress = false;
+    callbacks.progress_calls = 0;
+
+    kephir2_result_v1 mid_cancel{};
+    mid_cancel.struct_size = sizeof(mid_cancel);
+    const auto long_input_s = utf8(long_input);
+    const auto mid_cancel_s = utf8(mid_cancel_archive);
+
+    assert(kephir2_compress(
+        engine,
+        long_input_s.c_str(),
+        mid_cancel_s.c_str(),
+        &options,
+        &mid_cancel) == KEPHIR2_CANCELLED);
+    assert(callbacks.saw_backend_progress);
+    assert(!std::filesystem::exists(mid_cancel_archive));
+
+    callbacks.cancel = false;
+    callbacks.cancel_during_compression = false;
 
     kephir2_result_v1 invalid{};
     invalid.struct_size = sizeof(invalid);
