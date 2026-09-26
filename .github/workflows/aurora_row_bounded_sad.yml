@@ -1,0 +1,107 @@
+name: AURORA Row Bounded SAD
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["research/khepri-stream-codec"]
+    paths:
+      - "src/cpp/aurora_media/AuroraVideoMotion.cpp"
+      - "benchmarks/major_codecs/aurora_exact_motion_fastpath.cpp"
+      - "tests/cpp/test_aurora_video_motion.cpp"
+      - ".github/workflows/aurora_row_bounded_sad.yml"
+  push:
+    branches: ["feature/aurora-media-row-bounded-sad"]
+    paths:
+      - "src/cpp/aurora_media/AuroraVideoMotion.cpp"
+      - "benchmarks/major_codecs/aurora_exact_motion_fastpath.cpp"
+      - "tests/cpp/test_aurora_video_motion.cpp"
+      - ".github/workflows/aurora_row_bounded_sad.yml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build regression test
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            src/cpp/aurora_media/AuroraVideoResidual.cpp \
+            tests/cpp/test_aurora_video_motion.cpp \
+            -Isrc/cpp/aurora_media -o test_motion
+
+      - name: Run regression test
+        run: ./test_motion | tee regression.txt
+
+      - name: Build full-SAD baseline
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -DAURORA_DISABLE_ROW_BOUNDED_SAD \
+            -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            benchmarks/major_codecs/aurora_exact_motion_fastpath.cpp \
+            -Isrc/cpp/aurora_media -o bench_full
+
+      - name: Build row-bounded SAD
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            benchmarks/major_codecs/aurora_exact_motion_fastpath.cpp \
+            -Isrc/cpp/aurora_media -o bench_bounded
+
+      - name: Run A/B
+        run: |
+          echo "=== FULL ===" | tee row_bounded_sad_ab.txt
+          ./bench_full | tee -a row_bounded_sad_ab.txt
+          echo "=== BOUNDED ===" | tee -a row_bounded_sad_ab.txt
+          ./bench_bounded | tee -a row_bounded_sad_ab.txt
+
+      - name: Validate equivalence and summarize
+        run: |
+          python3 - <<'PY' | tee row_bounded_sad_summary.txt
+          import re
+          from pathlib import Path
+
+          text=Path("row_bounded_sad_ab.txt").read_text()
+          parts=text.split("=== BOUNDED ===")
+          if len(parts)!=2:
+              raise SystemExit("missing A/B sections")
+
+          def parse(section):
+              rows={}
+              for line in section.splitlines():
+                  if line.startswith("MOTION_BENCH "):
+                      vals=dict(re.findall(r"(\w+)=([^ ]+)",line))
+                      rows[vals["name"]]=vals
+              return rows
+
+          base=parse(parts[0]); fast=parse(parts[1])
+          if base.keys()!=fast.keys():
+              raise SystemExit("scenario mismatch")
+
+          print("AURORA_ROW_BOUNDED_SAD_AB")
+          for name in sorted(base):
+              b,f=base[name],fast[name]
+              for key in ("fingerprint","motion_bytes","residual_bytes"):
+                  if b[key]!=f[key]:
+                      raise SystemExit(f"{name}: mismatch in {key}")
+              bm=float(b["ms"]); fm=float(f["ms"])
+              print(
+                  f"{name}: full_ms={bm:.6f} bounded_ms={fm:.6f} "
+                  f"speedup_x={bm/fm:.3f} "
+                  f"time_reduction_pct={(1-fm/bm)*100:.2f}"
+              )
+          print("BITSTREAM_EQUIVALENCE=PASS")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-row-bounded-sad
+          path: |
+            regression.txt
+            row_bounded_sad_ab.txt
+            row_bounded_sad_summary.txt
