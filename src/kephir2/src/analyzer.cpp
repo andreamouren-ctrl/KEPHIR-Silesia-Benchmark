@@ -13,6 +13,7 @@ namespace kephir2 {
 namespace {
 
 constexpr std::uint64_t kBufferedReadThreshold = 1u * 1024u * 1024u;
+constexpr std::uint64_t kRoutingParentBytes = 512u * 1024u;
 
 bool is_printable(std::uint8_t b) noexcept {
     return b == 9 || b == 10 || b == 13 || (b >= 32 && b < 127);
@@ -273,6 +274,12 @@ ArchiveFeatures ContentAnalyzer::analyze_directory(
 
     std::uint64_t small_files = 0;
 
+    std::uint64_t parent_used = 0;
+    std::uint64_t mixed_parent_bytes = 0;
+    std::uint32_t parent_class = 0;
+    bool parent_has_class = false;
+    bool parent_mixed = false;
+
     for (const auto& path : paths) {
         const auto size = std::filesystem::file_size(path);
         sizes.push_back(size);
@@ -283,6 +290,34 @@ ArchiveFeatures ContentAnalyzer::analyze_directory(
         const auto ci = static_cast<std::size_t>(analysis.content_class);
         ++class_files[ci];
         class_bytes[ci] += size;
+
+        std::uint64_t remaining_file = size;
+        while (remaining_file > 0) {
+            if (parent_used == 0) {
+                parent_has_class = true;
+                parent_class = static_cast<std::uint32_t>(ci);
+                parent_mixed = false;
+            } else if (parent_has_class
+                && parent_class != static_cast<std::uint32_t>(ci)) {
+                parent_mixed = true;
+            }
+
+            const auto room = kRoutingParentBytes - parent_used;
+            const auto take = std::min(room, remaining_file);
+            parent_used += take;
+            remaining_file -= take;
+
+            if (parent_used == kRoutingParentBytes) {
+                ++out.flat_parent_count;
+                if (parent_mixed) {
+                    ++out.flat_mixed_parent_count;
+                    mixed_parent_bytes += parent_used;
+                }
+                parent_used = 0;
+                parent_has_class = false;
+                parent_mixed = false;
+            }
+        }
 
         // Directory aggregate signals are intentionally capped. Diversity
         // counts remain exact per-file decisions; aggregate byte metrics stop
@@ -334,6 +369,20 @@ ArchiveFeatures ContentAnalyzer::analyze_directory(
             }
         }
     }
+
+    if (parent_used != 0) {
+        ++out.flat_parent_count;
+        if (parent_mixed) {
+            ++out.flat_mixed_parent_count;
+            mixed_parent_bytes += parent_used;
+        }
+    }
+
+    out.flat_mixed_parent_byte_fraction =
+        out.logical_bytes
+            ? static_cast<double>(mixed_parent_bytes)
+                / static_cast<double>(out.logical_bytes)
+            : 0.0;
 
     const double file_count = static_cast<double>(out.file_count);
     out.average_file_bytes = static_cast<double>(out.logical_bytes) / file_count;
