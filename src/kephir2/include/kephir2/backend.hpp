@@ -23,6 +23,17 @@ public:
         std::span<std::uint8_t> destination) const = 0;
 };
 
+class ByteSink {
+public:
+    virtual ~ByteSink() = default;
+
+    // Writes bytes at logical offset. Implementations must either accept the
+    // complete span or throw.
+    virtual void write(
+        std::uint64_t offset,
+        std::span<const std::uint8_t> source) = 0;
+};
+
 struct BackendOptions {
     std::size_t workers{0};
     bool allow_local_experience{true};
@@ -39,11 +50,6 @@ struct BackendEncodeResult {
     BackendStats stats{};
 };
 
-struct BackendDecodeResult {
-    std::vector<std::uint8_t> bytes;
-    BackendStats stats{};
-};
-
 class CompressionBackend {
 public:
     virtual ~CompressionBackend() = default;
@@ -55,9 +61,10 @@ public:
         const ByteSource& input,
         const BackendOptions& options) = 0;
 
-    [[nodiscard]] virtual BackendDecodeResult decode(
+    [[nodiscard]] virtual BackendStats decode(
         std::span<const std::uint8_t> blob,
         std::uint64_t expected_raw_bytes,
+        ByteSink& output,
         const BackendOptions& options) = 0;
 };
 
