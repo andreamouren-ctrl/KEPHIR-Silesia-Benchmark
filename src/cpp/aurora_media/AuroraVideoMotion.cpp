@@ -180,8 +180,10 @@ MotionResidual AuroraVideoMotion::encode_mc8r4_limited(ByteView cur,ByteView pre
                     // (the encoder only accepts strictly lower costs), hence
                     // stopping here is bitstream-identical to evaluating all
                     // remaining candidates.
+#if !defined(AURORA_DISABLE_EXACT_MOTION_FASTPATH)
                     if(best_cost==0)
                         break;
+#endif
                 }
             }
 
