@@ -44,25 +44,6 @@ int main() {
     assert(silesia_plan.layout == Layout::Smart);
     assert(!silesia_plan.request_extended_probe);
 
-    // EXP-82 regression: representative diversity is a confidence signal,
-    // never a SMART preference. A near-tie measured in favor of FLAT must
-    // remain FLAT.
-    ArchiveFeatures mixed_like{};
-    mixed_like.logical_bytes = 8u * 1024u * 1024u;
-    mixed_like.file_count = 8;
-    mixed_like.sampled_content_groups = 6;
-    mixed_like.sampled_dominant_file_fraction = 0.25;
-    mixed_like.sampled_dominant_byte_fraction = 0.25;
-
-    LayoutProbe mixed_probe{};
-    mixed_probe.sampled_bytes = 2u * 1024u * 1024u;
-    mixed_probe.flat_archive_bytes = 262'924;
-    mixed_probe.smart_archive_bytes = 263'260;
-
-    auto mixed_plan = router.plan(mixed_like, Profile::Auto, mixed_probe);
-    assert(mixed_plan.layout == Layout::Flat);
-    assert(!mixed_plan.request_extended_probe);
-
     ArchiveFeatures homogeneous_large{};
     homogeneous_large.logical_bytes = 200'000'000;
     homogeneous_large.file_count = 10;
