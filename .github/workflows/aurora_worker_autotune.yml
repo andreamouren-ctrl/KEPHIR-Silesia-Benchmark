@@ -1,0 +1,109 @@
+name: AURORA Worker Autotune
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["research/khepri-stream-codec"]
+  push:
+    branches: ["feature/aurora-media-worker-autotune"]
+    paths:
+      - ".github/workflows/aurora_worker_autotune.yml"
+      - "src/cpp/aurora_media/AuroraWorkerAutotune.h"
+      - "tests/cpp/test_aurora_worker_autotune.cpp"
+      - "benchmarks/major_codecs/aurora_native_4k_parallel.cpp"
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+
+      - name: Unit test autotune policy
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -Wall -Wextra -Werror \
+            tests/cpp/test_aurora_worker_autotune.cpp \
+            -Isrc/cpp/aurora_media \
+            -o test_worker_autotune
+          ./test_worker_autotune | tee worker_autotune_test.txt
+
+      - name: Generate EXP-37A source
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          python3 make_exp37_source.py
+
+      - name: Build native pipeline
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -DNO_INTERNAL_VERIFY \
+            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 \
+            -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 \
+            -pthread -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraKhepriExp37MemoryAdapter.cpp \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            src/cpp/aurora_media/AuroraVideoResidual.cpp \
+            benchmarks/major_codecs/aurora_native_4k_parallel.cpp \
+            -Isrc/cpp/aurora_media -o pipeline_autotune
+
+      - name: Run 4K autotune benchmark
+        run: ./pipeline_autotune | tee worker_autotune_pipeline.txt
+
+      - name: Validate selected worker count
+        run: |
+          python3 - <<'PY' | tee worker_autotune_summary.txt
+          import re
+          from pathlib import Path
+
+          text=Path("worker_autotune_pipeline.txt").read_text()
+          probes={}
+          selected=None
+
+          for line in text.splitlines():
+              if line.startswith("PARALLEL_PASS name=4K_AUTOTUNE_PROBE "):
+                  vals=dict(re.findall(r"(\w+)=([^ ]+)",line))
+                  probes[int(vals["workers"])]=float(vals["total_seconds"])
+              elif line.startswith("AURORA_WORKER_AUTOTUNE_SELECTED "):
+                  vals=dict(re.findall(r"(\w+)=([^ ]+)",line))
+                  selected=int(vals["workers"])
+
+          if not probes:
+              raise SystemExit("missing 4K autotune probes")
+          if selected not in probes:
+              raise SystemExit("selected worker count was not probed")
+
+          fastest=min(probes,key=probes.get)
+          selected_s=probes[selected]
+          fastest_s=probes[fastest]
+          overhead=(selected_s/fastest_s-1.0)*100.0
+
+          # Selection deliberately prefers fewer workers when results are
+          # statistically indistinguishable (within ~1%).
+          if overhead > 1.05:
+              raise SystemExit(
+                  f"autotune selected {selected}, {overhead:.3f}% slower than fastest {fastest}"
+              )
+
+          print("AURORA_WORKER_AUTOTUNE_VALIDATION_PASS")
+          print("probes",probes)
+          print("selected",selected)
+          print("fastest",fastest)
+          print("selected_overhead_percent",f"{overhead:.3f}")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-worker-autotune
+          path: |
+            worker_autotune_test.txt
+            worker_autotune_pipeline.txt
+            worker_autotune_summary.txt
