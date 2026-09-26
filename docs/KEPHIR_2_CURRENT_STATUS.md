@@ -1845,3 +1845,142 @@ Compression:   5.795 MB/s
 Decompression: 56.610 MB/s
 Lossless:      SHA PASS
 ```
+
+
+---
+
+## 43. EXP-96 Production AUTO Finalization
+
+Status:
+
+**PROMOTED**
+
+Production KPF1 + NativeK75 requalification result:
+
+```text
+Datasets:            16
+Correct selections:  16 / 16
+Selection accuracy:  100%
+Total regret:        0 B
+Byte-perfect:        PASS
+Total probe time:    0.291 s
+Total resolve time:  0.634 s
+```
+
+The remaining `many_medium_four_groups` miss was resolved by fully probing only small/medium repeated-mixing candidates up to 4 MiB.
+
+No global probe-budget increase was introduced.
+
+Decision:
+
+**Production AUTO routing is qualified on Router Matrix v1 + holdout v2.**
+
+---
+
+## 44. EXP-98 Bounded Parallel Decode
+
+Status:
+
+**PROMOTED**
+
+The K75 decoder now parses entry descriptors once and decodes independent entries in bounded parallel batches while preserving output order and the archive format.
+
+Canonical Silesia result:
+
+```text
+Workers   Decode MB/s   Speedup vs 1
+1            46.71          1.00x
+2            81.30          1.74x
+4           111.32          2.38x
+8           112.01          2.40x
+16          118.59          2.54x
+```
+
+Archive bytes:
+
+`63,013,168 B`
+
+Ratio:
+
+`29.7318%`
+
+SHA:
+
+**PASS for every worker count**
+
+Decision:
+
+**Parallel decode is promoted.**
+
+The current measured decode ceiling on the GitHub runner is ~118.6 MB/s. Further progress toward the 150–200 MB/s product target will require lower-level decode optimization in addition to thread-level parallelism.
+
+---
+
+## 45. EXP-99 Python/Native K75 Structural Parity Audit
+
+Status:
+
+**DIAGNOSTIC COMPLETE**
+
+The remaining Python RC1 vs native ratio gap after EXP-95 is:
+
+```text
+Native archive: 63,013,168 B
+Python RC1:     62,939,205 B
+Gap:                73,963 B
+```
+
+Key findings:
+
+### dickens
+
+- Python entries: 20
+- Native entries: 20
+- raw segmentation: identical
+- transform modes: identical, mode 6 on all entries
+- native remains ~20 KB larger
+
+### webster
+
+- Python entries: 80
+- Native entries: 80
+- raw segmentation: identical
+- transform modes: identical
+- native remains ~28.7 KB larger
+
+Interpretation:
+
+For the two major text cases, the ratio gap is **below the K75 transform/grain layer**. The same raw ranges and the same text-token transform are sent to EXP-37, but the native in-process adapter emits slightly larger inner blobs.
+
+### mozilla
+
+- both paths use 139 entries;
+- transform-mode counts match;
+- grain layout differs materially;
+- native remains ~37.3 KB larger.
+
+### mr
+
+- native intentionally uses a much finer grain layout;
+- native beats Python by ~18 KB.
+
+Decision:
+
+**Do not change text tokenization or transform selection.**
+
+Next ratio milestone:
+
+**EXP-101 — make the native EXP-37 adapter equivalent to the qualified legacy `kephir37 cp` path before inventing new compression logic.**
+
+---
+
+## 46. Immediate active experiments
+
+- **EXP-100:** bounded parallel encode scaling, with byte-identical archive requirement.
+- **EXP-101:** native EXP-37 adapter vs legacy CLI parity.
+
+Acceptance direction:
+
+1. improve throughput without changing archive bytes;
+2. recover existing proven ratio before adding new algorithmic complexity;
+3. rerun EXP-97 only after a promoted backend milestone.
