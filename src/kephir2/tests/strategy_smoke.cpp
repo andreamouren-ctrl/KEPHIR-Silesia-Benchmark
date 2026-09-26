@@ -160,7 +160,7 @@ int main() {
     auto medium_plan =
         router.plan(medium_mixed, Profile::Auto, std::nullopt);
     assert(medium_plan.request_initial_probe);
-    assert(medium_plan.requested_probe_bytes == 512u * 1024u);
+    assert(medium_plan.requested_probe_bytes == medium_mixed.logical_bytes);
 
 
     ArchiveFeatures weak_multiclass{};
