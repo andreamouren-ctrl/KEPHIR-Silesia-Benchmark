@@ -69,6 +69,9 @@ int main() {
     assert(features.sampled_dominant_file_fraction <= 1.0);
     assert(features.sampled_dominant_byte_fraction > 0.0);
     assert(features.sampled_dominant_byte_fraction <= 1.0);
+    assert(features.multi_file_content_groups <= features.sampled_content_groups);
+    assert(features.repeatable_content_byte_fraction >= 0.0);
+    assert(features.repeatable_content_byte_fraction <= 1.0);
     assert(features.sampled_entropy >= 0.0);
     assert(features.sampled_entropy <= 8.0);
 
