@@ -46,11 +46,18 @@ def make_tracked_snapshot(root):
     return root
 
 
+def fnv1a(data):
+    h=1469598103934665603
+    for b in data:
+        h ^= b
+        h = (h * 1099511628211) & 0xffffffffffffffff
+    return h
+
+
 def python_plan(root):
     records=[]
     group_bytes={}
-    group_counts={}
-    group_offsets={}
+    group_payloads={}
 
     for p in K.collect_directory(root):
         raw=p.read_bytes()
@@ -64,7 +71,7 @@ def python_plan(root):
             "offset":offset,
         })
         group_bytes[group]=offset+len(raw)
-        group_counts[group]=group_counts.get(group,0)+1
+        group_payloads.setdefault(group,bytearray()).extend(raw)
 
     names=sorted(group_bytes)
     gids={g:i for i,g in enumerate(names)}
@@ -76,7 +83,10 @@ def python_plan(root):
 
     return {
         "manifest_hex":manifest.hex(),
-        "groups":[(i,g,group_bytes[g]) for i,g in enumerate(names)],
+        "groups":[
+            (i,g,group_bytes[g],fnv1a(group_payloads[g]))
+            for i,g in enumerate(names)
+        ],
         "files":[
             (
                 r["path"],r["group"],r["group"],gids[r["group"]],
@@ -102,7 +112,9 @@ def native_plan(exe, root):
         if parts[0]=="MANIFEST_HEX":
             manifest_hex=parts[1]
         elif parts[0]=="GROUP":
-            groups.append((int(parts[1]),parts[2],int(parts[3])))
+            groups.append((
+                int(parts[1]),parts[2],int(parts[3]),int(parts[4])
+            ))
         elif parts[0]=="FILE":
             files.append((
                 parts[1],parts[2],parts[3],int(parts[4]),
@@ -153,6 +165,7 @@ def main():
     print("PACKING_MANIFEST_PARITY_PASS")
     print("PACKING_RECORD_PARITY_PASS")
     print("PACKING_GROUP_PARITY_PASS")
+    print("PACKING_GROUP_SOURCE_PARITY_PASS")
 
 
 if __name__=="__main__":
