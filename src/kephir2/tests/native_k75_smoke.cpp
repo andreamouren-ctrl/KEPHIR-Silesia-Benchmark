@@ -58,7 +58,8 @@ int main() {
     const auto base =
         std::filesystem::temp_directory_path() / "kephir2_native_k75_smoke";
     const auto input = base / "input";
-    const auto restored = base / "restored";
+    const auto restored = base / "restored_smart";
+    const auto restored_flat = base / "restored_flat";
     const auto single_out = base / "single";
 
     std::filesystem::remove_all(base);
@@ -110,6 +111,28 @@ int main() {
 
     for (const auto& rel : before) {
         assert(read_all(input / rel) == read_all(restored / rel));
+    }
+
+    const auto flat_archive =
+        executor.compress_directory(
+            input,
+            backend,
+            BackendOptions{},
+            Layout::Flat);
+
+    const auto flat_envelope = decode_kpf1_directory(flat_archive);
+    assert(flat_envelope.group_names.size() == 1);
+    assert(flat_envelope.group_names[0] == "flat");
+
+    executor.extract_directory(
+        flat_archive,
+        restored_flat,
+        backend);
+
+    const auto flat_files = list_files(restored_flat);
+    assert(before == flat_files);
+    for (const auto& rel : before) {
+        assert(read_all(input / rel) == read_all(restored_flat / rel));
     }
 
     const auto single = input / "code.dat";
