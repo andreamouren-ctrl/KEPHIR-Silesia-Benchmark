@@ -6,7 +6,8 @@ Connects the current proprietary AURORA/KHEPRI research codec paths to the
 AURORA Media container without any external muxer/demuxer.
 
 Audio packet:
-  signed PCM 16/24/32-bit LE -> KMRL v2 adaptive residual geometry
+  signed PCM 16-bit LE -> canonical KMRL FULL256 + TAIL16
+  signed PCM 24/32-bit LE -> generalized KMRL v2 adaptive residual geometry
   -> KHEPRI EXP-37A -> packet payload
 
 Video packet:
@@ -19,15 +20,33 @@ from pathlib import Path
 import shutil, tempfile
 
 import kstream_kmrl_frontend as kmrl
+import kstream_kmrl_lab as kmrl_lab
 import ksv09c_cached_motion_router as ksv09c
 
 def _audio_front_encode(raw:Path,front:Path,channels:int,rate:int,
                         bits:int=16,block_ms:int=20):
-    """Encode one independently recoverable AURORA audio packet with KMRL v2."""
-    kmrl.encode_file(raw,front,channels,rate,bits,block_ms,"adaptive")
+    """Encode one independently recoverable AURORA audio packet.
+
+    Canonical s16 path:
+      reversible stereo decorrelation -> KMRL carry prediction
+      -> FULL256 planes -> TAIL16 -> KHEPRI.
+
+    Higher-resolution PCM keeps the generalized KMRL v2 path until its
+    FULL256/TAIL16 geometry receives separate validation.
+    """
+    if bits == 16:
+        kmrl_lab.encode_file(raw,front,channels,rate,block_ms,4)
+    else:
+        kmrl.encode_file(raw,front,channels,rate,bits,block_ms,"adaptive")
 
 def _audio_front_decode(front:Path,raw:Path):
-    kmrl.decode_file(front,raw)
+    magic=front.read_bytes()[:4]
+    if magic == kmrl_lab.MAGIC:
+        kmrl_lab.decode_file(front,raw)
+    elif magic == kmrl.MAGIC:
+        kmrl.decode_file(front,raw)
+    else:
+        raise RuntimeError("unknown AURORA audio frontend magic")
 
 def _khepri_encode(exe:Path,src:Path,arc:Path):
     import subprocess
