@@ -66,4 +66,29 @@ private:
     std::vector<Segment> segments_;
 };
 
+class PackedGroupSink final : public ByteSink {
+public:
+    PackedGroupSink(
+        std::filesystem::path root,
+        std::span<const ManifestRecord> records,
+        std::uint64_t group_id,
+        std::uint64_t expected_raw_length);
+
+    void write(
+        std::uint64_t offset,
+        std::span<const std::uint8_t> source) override;
+
+    [[nodiscard]] std::uint64_t size() const noexcept;
+
+private:
+    struct Segment {
+        std::filesystem::path target_path;
+        std::uint64_t logical_offset{0};
+        std::uint64_t size{0};
+    };
+
+    std::uint64_t size_{0};
+    std::vector<Segment> segments_;
+};
+
 } // namespace kephir2
