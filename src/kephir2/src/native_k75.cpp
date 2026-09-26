@@ -646,10 +646,10 @@ EncodedEntry encode_entry(std::span<const std::uint8_t> raw) {
 }
 
 bool should_exact_grain_probe(std::string_view key) noexcept {
-    // EXP-104: frozen high-impact uncertain grain families discovered by
-    // EXP-103. These are feature buckets, not corpus/file-name exceptions.
-    return key == "l2:h7:z0:p1:s0"
-        || key == "l2:h5:z2:p1:s6"
+    // EXP-106: the high-frequency h7/s0 family is now handled by the cheap
+    // distribution-drift gate. Keep exact probing only for the two rare
+    // ambiguous families where the cheap features are not yet sufficient.
+    return key == "l2:h5:z2:p1:s6"
         || key == "l2:h5:z1:p3:s2";
 }
 
