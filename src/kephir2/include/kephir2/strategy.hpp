@@ -73,6 +73,14 @@ struct StrategyPlan {
     bool allow_structural_transforms{true};
     bool allow_local_experience{true};
     bool require_integrity_verification{true};
+
+    // AUTO routing contract. Zero means the layout decision is final.
+    // A non-zero value asks the caller to measure SMART and FLAT on a
+    // representative sample of at most this many payload bytes.
+    std::size_t requested_probe_bytes{0};
+
+    // Compatibility/status flags derived from requested_probe_bytes.
+    bool request_initial_probe{false};
     bool request_extended_probe{false};
 };
 
