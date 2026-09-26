@@ -1,0 +1,111 @@
+name: AURORA Exact Motion Fast Path
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["feature/aurora-media-exact-motion-fastpath"]
+    paths:
+      - ".github/workflows/aurora_exact_motion_fastpath.yml"
+      - "src/cpp/aurora_media/AuroraVideoMotion.*"
+      - "tests/cpp/test_aurora_video_motion_exact_fastpath.cpp"
+      - "benchmarks/major_codecs/aurora_exact_motion_fastpath.cpp"
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build equivalence test
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            tests/cpp/test_aurora_video_motion_exact_fastpath.cpp \
+            -Isrc/cpp/aurora_media \
+            -o test_exact_motion
+
+      - name: Run equivalence test
+        run: ./test_exact_motion | tee equivalence.txt
+
+      - name: Build exhaustive baseline benchmark
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -DAURORA_DISABLE_EXACT_MOTION_FASTPATH \
+            -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            benchmarks/major_codecs/aurora_exact_motion_fastpath.cpp \
+            -Isrc/cpp/aurora_media \
+            -o bench_exhaustive
+
+      - name: Build exact fast-path benchmark
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            benchmarks/major_codecs/aurora_exact_motion_fastpath.cpp \
+            -Isrc/cpp/aurora_media \
+            -o bench_fastpath
+
+      - name: Run A/B benchmark
+        run: |
+          echo "=== EXHAUSTIVE ===" | tee motion_fastpath_ab.txt
+          ./bench_exhaustive | tee -a motion_fastpath_ab.txt
+          echo "=== FASTPATH ===" | tee -a motion_fastpath_ab.txt
+          ./bench_fastpath | tee -a motion_fastpath_ab.txt
+
+      - name: Validate bitstream equivalence and summarize speed
+        run: |
+          python3 - <<'PY' | tee motion_fastpath_summary.txt
+          import re
+          from pathlib import Path
+
+          text = Path("motion_fastpath_ab.txt").read_text()
+          parts = text.split("=== FASTPATH ===")
+          if len(parts) != 2:
+              raise SystemExit("missing A/B sections")
+
+          def parse(section):
+              rows = {}
+              for line in section.splitlines():
+                  if not line.startswith("MOTION_BENCH "):
+                      continue
+                  vals = dict(re.findall(r"(\w+)=([^ ]+)", line))
+                  rows[vals["name"]] = vals
+              return rows
+
+          base = parse(parts[0])
+          fast = parse(parts[1])
+          if base.keys() != fast.keys():
+              raise SystemExit("scenario mismatch")
+
+          print("AURORA_EXACT_MOTION_FASTPATH_AB")
+          for name in sorted(base):
+              b, f = base[name], fast[name]
+              for key in ("fingerprint", "motion_bytes", "residual_bytes"):
+                  if b[key] != f[key]:
+                      raise SystemExit(f"{name}: output mismatch in {key}")
+              b_ms = float(b["ms"])
+              f_ms = float(f["ms"])
+              speedup = b_ms / f_ms if f_ms else 0.0
+              saving = (1.0 - f_ms / b_ms) * 100.0 if b_ms else 0.0
+              print(
+                  f"{name}: exhaustive_ms={b_ms:.6f} "
+                  f"fast_ms={f_ms:.6f} speedup_x={speedup:.3f} "
+                  f"time_reduction_pct={saving:.2f}"
+              )
+
+          eq = Path("equivalence.txt").read_text()
+          if "AURORA_EXACT_MOTION_FASTPATH_EQUIVALENCE_PASS" not in eq:
+              raise SystemExit("equivalence marker missing")
+          print("BITSTREAM_EQUIVALENCE=PASS")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-exact-motion-fastpath
+          path: |
+            equivalence.txt
+            motion_fastpath_ab.txt
+            motion_fastpath_summary.txt
