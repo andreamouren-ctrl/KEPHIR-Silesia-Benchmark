@@ -3,6 +3,7 @@
 #include "AuroraVideoProfiles.h"
 #include "AuroraVideoResidual.h"
 #include "AuroraVideoTilePlanner.h"
+#include "AuroraWorkerAutotune.h"
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -137,8 +138,15 @@ static void parallel_for(std::size_t count,std::uint32_t workers,Fn fn) {
     for(auto& t:pool) t.join();
 }
 
-static void run_case(const char* label,std::uint32_t workers,
-                     ByteView cur,ByteView prev,const VideoTilePlan& plan) {
+struct CaseTiming {
+    double encode_seconds{};
+    double decode_seconds{};
+    double total_seconds{};
+    std::uint64_t packed_bytes{};
+};
+
+static CaseTiming run_case(const char* label,std::uint32_t workers,
+                           ByteView cur,ByteView prev,const VideoTilePlan& plan) {
     std::vector<EncodedTile> encoded(plan.tiles.size());
     std::vector<WorkerScratch> encode_workers(workers);
     std::vector<WorkerScratch> decode_workers(workers);
@@ -187,6 +195,7 @@ static void run_case(const char* label,std::uint32_t workers,
              <<" total_seconds="<<total
              <<" total_fps="<<(1.0/total)
              <<" packed_bytes="<<packed<<"\n";
+    return CaseTiming{enc,dec,total,packed};
 }
 
 int main() {
@@ -206,7 +215,32 @@ int main() {
             const auto prev=make_frame(r.w,r.h,0);
             const auto cur=make_frame(r.w,r.h,1);
             for(const auto workers:{1u,2u,4u,8u})
-                run_case(r.name,workers,cur,prev,plan);
+                (void)run_case(r.name,workers,cur,prev,plan);
+
+            if(r.w==3840 && r.h==2160) {
+                std::vector<WorkerProbeResult> probes;
+                const auto candidates=worker_probe_candidates(
+                    plan.tiles.size(),cfg.max_concurrent_tiles);
+                for(const auto workers:candidates) {
+                    const auto timing=run_case(
+                        "4K_AUTOTUNE_PROBE",workers,cur,prev,plan);
+                    probes.push_back(WorkerProbeResult{
+                        workers,timing.total_seconds
+                    });
+                }
+                const auto selected=select_fastest_worker_count(probes);
+                std::cout<<"AURORA_WORKER_AUTOTUNE_SELECTED"
+                         <<" workers="<<selected
+                         <<" candidates=";
+                for(std::size_t i=0;i<candidates.size();++i) {
+                    if(i) std::cout<<",";
+                    std::cout<<candidates[i];
+                }
+                std::cout<<" hardware_concurrency="
+                         <<std::thread::hardware_concurrency()
+                         <<" profile_cap="<<cfg.max_concurrent_tiles
+                         <<"\n";
+            }
         }
 
         std::cout<<"AURORA_NATIVE_ADAPTIVE_PARALLEL_PASS\n";
