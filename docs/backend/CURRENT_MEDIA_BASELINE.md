@@ -676,3 +676,22 @@ Decision:
 - hierarchical dense refinement is validated as the right direction;
 - H1 is not sufficient for production because recovery is below the 90% target;
 - next experiment: KSV-19 H2 refinement around the two best sparse-even candidates.
+
+
+## 2026-09-26 KSV-19 H2 hierarchical dense checkpoint
+
+Run 36236356786:
+- baseline: 24,782,482 bytes
+- H2: 24,325,419 bytes
+- exhaustive dense: 24,264,464 bytes
+- H2 improvement: 1.8443%
+- dense improvement: 2.0903%
+- dense gain recovered: 88.233%
+- H2/dense research-time ratio: 0.6526
+- mean H2 candidate evaluations: 35.542/block
+- all streams bit-exact
+
+Decision:
+- H2 is close but below the 90% quality-recovery gate;
+- hierarchical multi-center refinement remains the preferred production direction;
+- next experiment: KSV-20 H3 refinement around the top three sparse-even candidates.
