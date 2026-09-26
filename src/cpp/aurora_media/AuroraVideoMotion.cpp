@@ -27,6 +27,7 @@ std::uint64_t sad8x8(ByteView cur,ByteView prev,
                     std::uint32_t px,std::uint32_t py) {
 #if defined(__SSE2__)
     std::uint64_t sum=0;
+#if defined(AURORA_DISABLE_SAD_ROWPAIR)
     for(std::uint32_t yy=0;yy<8;++yy) {
         const auto* ca=cur.data()+static_cast<std::size_t>(cy+yy)*stride+cx;
         const auto* pa=prev.data()+static_cast<std::size_t>(py+yy)*stride+px;
@@ -35,6 +36,28 @@ std::uint64_t sad8x8(ByteView cur,ByteView prev,
         const __m128i s=_mm_sad_epu8(a,b);
         sum += static_cast<std::uint64_t>(_mm_cvtsi128_si64(s));
     }
+#else
+    // Pack two 8-byte rows into one 128-bit vector. _mm_sad_epu8 then
+    // produces the exact SAD of both rows in its two 64-bit lanes, halving
+    // the number of SAD instructions while preserving every byte comparison.
+    for(std::uint32_t yy=0;yy<8;yy+=2) {
+        const auto* ca0=cur.data()+static_cast<std::size_t>(cy+yy)*stride+cx;
+        const auto* ca1=cur.data()+static_cast<std::size_t>(cy+yy+1)*stride+cx;
+        const auto* pa0=prev.data()+static_cast<std::size_t>(py+yy)*stride+px;
+        const auto* pa1=prev.data()+static_cast<std::size_t>(py+yy+1)*stride+px;
+
+        const __m128i a0=_mm_loadl_epi64(reinterpret_cast<const __m128i*>(ca0));
+        const __m128i a1=_mm_loadl_epi64(reinterpret_cast<const __m128i*>(ca1));
+        const __m128i b0=_mm_loadl_epi64(reinterpret_cast<const __m128i*>(pa0));
+        const __m128i b1=_mm_loadl_epi64(reinterpret_cast<const __m128i*>(pa1));
+        const __m128i a=_mm_unpacklo_epi64(a0,a1);
+        const __m128i b=_mm_unpacklo_epi64(b0,b1);
+        const __m128i s=_mm_sad_epu8(a,b);
+        sum += static_cast<std::uint64_t>(_mm_cvtsi128_si64(s));
+        sum += static_cast<std::uint64_t>(
+            _mm_cvtsi128_si64(_mm_srli_si128(s,8)));
+    }
+#endif
     return sum;
 #else
     std::uint64_t sum=0;
