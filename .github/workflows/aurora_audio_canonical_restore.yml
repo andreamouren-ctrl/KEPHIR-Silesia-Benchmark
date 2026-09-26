@@ -4,6 +4,11 @@ on:
   workflow_dispatch:
   pull_request:
     branches: ["research/khepri-stream-codec"]
+    paths:
+      - ".github/workflows/aurora_audio_canonical_restore.yml"
+      - "research/audio/lab/kstream_kmrl_lab.py"
+      - "src/python/reference/aurora_media_codec_bridge.py"
+      - "benchmarks/major_codecs/benchmark_audio_packet_horizon_v03.py"
   push:
     branches: ["fix/aurora-media-audio-full256-tail16"]
     paths:
