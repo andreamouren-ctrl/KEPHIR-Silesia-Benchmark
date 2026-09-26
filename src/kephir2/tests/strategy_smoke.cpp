@@ -56,8 +56,13 @@ int main() {
     ambiguous_probe.flat_archive_bytes = 700'000;
     ambiguous_probe.smart_archive_bytes = 700'100;
 
+    auto homogeneous_direct = router.plan(homogeneous_large, Profile::Auto, std::nullopt);
+    assert(homogeneous_direct.layout == Layout::Flat);
+    assert(!homogeneous_direct.request_extended_probe);
+
     auto ambiguous_plan = router.plan(homogeneous_large, Profile::Auto, ambiguous_probe);
-    assert(ambiguous_plan.request_extended_probe);
+    assert(ambiguous_plan.layout == Layout::Flat);
+    assert(!ambiguous_plan.request_extended_probe);
 
     ArchiveFeatures mixed_like{};
     mixed_like.logical_bytes = 8u * 1024u * 1024u;
