@@ -1,0 +1,24 @@
+name: KEPHIR 2 Core Smoke
+on:
+  push:
+    branches:
+      - development/kephir-2-core
+    paths:
+      - "src/kephir2/**"
+      - ".github/workflows/kephir2_core_smoke.yml"
+  workflow_dispatch:
+
+jobs:
+  native-core-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S src/kephir2 -B build/kephir2 -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build/kephir2 --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build/kephir2 --output-on-failure
