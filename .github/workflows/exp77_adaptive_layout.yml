@@ -6,6 +6,12 @@ on:
     paths:
       - "research/packaging/exp77_adaptive_layout.py"
       - ".github/workflows/exp77_adaptive_layout.yml"
+  pull_request:
+    branches:
+      - project/aurora-compressor
+    paths:
+      - "research/packaging/exp77_adaptive_layout.py"
+      - ".github/workflows/exp77_adaptive_layout.yml"
   workflow_dispatch:
 
 jobs:
