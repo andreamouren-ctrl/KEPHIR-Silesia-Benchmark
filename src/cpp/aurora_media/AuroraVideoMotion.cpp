@@ -49,6 +49,7 @@ std::uint64_t sad8x8_full(ByteView cur,ByteView prev,
 #endif
 }
 
+#if !defined(AURORA_DISABLE_HALF_SAD_BOUND)
 std::uint64_t sad8x8_half_bounded(ByteView cur,ByteView prev,
                                   std::uint32_t stride,
                                   std::uint32_t cx,std::uint32_t cy,
@@ -96,6 +97,7 @@ std::uint64_t sad8x8_half_bounded(ByteView cur,ByteView prev,
     return sum;
 #endif
 }
+#endif
 
 } // namespace
 
