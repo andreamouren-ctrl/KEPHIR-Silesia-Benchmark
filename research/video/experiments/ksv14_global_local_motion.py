@@ -246,7 +246,20 @@ def global_local_motion(
                 ].astype(np.int16)
                 cost = int(np.abs(cur - ref).sum())
 
-                if cost < best_cost:
+                if (
+                    cost < best_cost
+                    or (
+                        cost == best_cost
+                        and best_index == ZERO_FALLBACK_INDEX
+                        and dx == 0
+                        and dy == 0
+                    )
+                ):
+                    # If the global-local field contains absolute zero motion,
+                    # prefer its normal candidate index on an exact tie. This
+                    # restores MC8R4's historical tie behavior when the global
+                    # vector is (0,0) and avoids polluting the map with the
+                    # reserved fallback symbol.
                     best_cost = cost
                     best_index = i
                     best_dx = dx
