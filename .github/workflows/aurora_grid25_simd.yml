@@ -1,0 +1,102 @@
+name: AURORA Grid25 SIMD
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["research/khepri-stream-codec"]
+  push:
+    branches: ["feature/aurora-media-grid25-simd"]
+    paths:
+      - ".github/workflows/aurora_grid25_simd.yml"
+      - "src/cpp/aurora_media/AuroraVideoMotion.*"
+      - "benchmarks/major_codecs/aurora_grid25_simd.cpp"
+      - "tests/cpp/test_aurora_video_motion.cpp"
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build regression test
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            src/cpp/aurora_media/AuroraVideoResidual.cpp \
+            tests/cpp/test_aurora_video_motion.cpp \
+            -Isrc/cpp/aurora_media -o test_motion
+
+      - name: Run regression test
+        run: ./test_motion | tee regression.txt
+
+      - name: Build scalar-candidate reference
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -DAURORA_DISABLE_GRID25_SIMD \
+            -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            benchmarks/major_codecs/aurora_grid25_simd.cpp \
+            -Isrc/cpp/aurora_media -o bench_reference
+
+      - name: Build Grid25 SIMD
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            benchmarks/major_codecs/aurora_grid25_simd.cpp \
+            -Isrc/cpp/aurora_media -o bench_grid25
+
+      - name: Run A/B
+        run: |
+          echo "=== REFERENCE ===" | tee grid25_ab.txt
+          ./bench_reference | tee -a grid25_ab.txt
+          echo "=== GRID25 ===" | tee -a grid25_ab.txt
+          ./bench_grid25 | tee -a grid25_ab.txt
+
+      - name: Validate equivalence and summarize
+        run: |
+          python3 - <<'PY' | tee grid25_summary.txt
+          import re
+          from pathlib import Path
+          text=Path("grid25_ab.txt").read_text()
+          parts=text.split("=== GRID25 ===")
+          if len(parts)!=2:
+              raise SystemExit("missing A/B sections")
+
+          def parse(section):
+              out={}
+              for line in section.splitlines():
+                  if line.startswith("GRID25_BENCH "):
+                      vals=dict(re.findall(r"(\w+)=([^ ]+)",line))
+                      out[vals["name"]]=vals
+              return out
+
+          base=parse(parts[0]); fast=parse(parts[1])
+          if base.keys()!=fast.keys():
+              raise SystemExit("scenario mismatch")
+
+          print("AURORA_GRID25_SIMD_AB")
+          for name in sorted(base):
+              b=base[name]; f=fast[name]
+              for key in ("fingerprint","motion_bytes","residual_bytes","route"):
+                  if b[key]!=f[key]:
+                      raise SystemExit(f"{name}: mismatch in {key}")
+              bm=float(b["ms"]); fm=float(f["ms"])
+              print(
+                  f"{name}: reference_ms={bm:.6f} grid25_ms={fm:.6f} "
+                  f"speedup_x={bm/fm:.3f} "
+                  f"time_reduction_pct={(1.0-fm/bm)*100.0:.2f} "
+                  f"route={b['route']}"
+              )
+          print("BITSTREAM_EQUIVALENCE=PASS")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-grid25-simd
+          path: |
+            regression.txt
+            grid25_ab.txt
+            grid25_summary.txt
