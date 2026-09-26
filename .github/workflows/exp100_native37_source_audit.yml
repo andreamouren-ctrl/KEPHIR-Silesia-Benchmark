@@ -1,0 +1,36 @@
+name: KEPHIR 2 EXP-100 Native37 Source Audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - development/kephir-2-core
+    paths:
+      - "src/kephir2/backend/generate_native37.py"
+      - "research/generators/general/make_exp26_source.py"
+      - "research/generators/general/make_exp27_source.py"
+      - "research/generators/general/make_exp31_source.py"
+      - "research/generators/general/make_exp33_source.py"
+      - "research/generators/general/make_exp37_source.py"
+      - "research/benchmarks/exp100_native37_source_audit.py"
+      - ".github/workflows/exp100_native37_source_audit.yml"
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate EXP-37 native source
+        run: |
+          python3 src/kephir2/backend/generate_native37.py             --output /tmp/kephir37_native.cpp
+
+      - name: Audit generated path
+        run: |
+          python3 research/benchmarks/exp100_native37_source_audit.py             /tmp/kephir37_native.cpp
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exp100-native37-source-audit
+          path: exp100_source_audit.json
