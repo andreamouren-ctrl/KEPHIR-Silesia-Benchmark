@@ -65,6 +65,13 @@ def _khepri_decode(exe:Path,arc:Path,outdir:Path)->Path:
 def encode_audio_packet(raw_pcm:bytes,exe:Path,channels:int,rate:int,bits:int=16)->bytes:
     if bits not in (16,24,32):
         raise ValueError("AURORA audio supports signed PCM 16/24/32-bit")
+    if channels < 1 or channels > 32:
+        raise ValueError("AURORA audio channel count must be 1..32")
+    if rate < 8_000 or rate > 384_000:
+        raise ValueError("AURORA audio sample rate must be 8000..384000 Hz")
+    frame_bytes=channels*(bits//8)
+    if len(raw_pcm)%frame_bytes:
+        raise ValueError("AURORA audio PCM payload is not frame-aligned")
     with tempfile.TemporaryDirectory(prefix="aua2_") as td:
         t=Path(td); raw=t/"packet.pcm"; front=t/"packet.kmrl"; arc=t/"packet.aur"
         raw.write_bytes(raw_pcm)
