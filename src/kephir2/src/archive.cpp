@@ -1,6 +1,7 @@
 #include "kephir2/archive.hpp"
 
 #include <algorithm>
+#include <array>
 #include <limits>
 #include <stdexcept>
 #include <system_error>
@@ -136,6 +137,159 @@ std::vector<ManifestRecord> decode_manifest(
     }
 
     return records;
+}
+
+ByteBuffer encode_kpf1_file(const Kpf1FileEnvelope& envelope) {
+    ByteBuffer out{'K', 'P', 'F', '1', static_cast<std::uint8_t>(Kpf1Kind::File)};
+
+    put_varint(out, envelope.name.size());
+    out.insert(
+        out.end(),
+        reinterpret_cast<const std::uint8_t*>(envelope.name.data()),
+        reinterpret_cast<const std::uint8_t*>(envelope.name.data() + envelope.name.size()));
+
+    put_varint(out, envelope.compressed_blob.size());
+    out.insert(out.end(), envelope.compressed_blob.begin(), envelope.compressed_blob.end());
+    return out;
+}
+
+Kpf1FileEnvelope decode_kpf1_file(std::span<const std::uint8_t> data) {
+    static constexpr std::array<std::uint8_t, 4> magic{'K', 'P', 'F', '1'};
+
+    if (data.size() < 5 || !std::equal(magic.begin(), magic.end(), data.begin())) {
+        throw std::runtime_error("not a KPF1 archive");
+    }
+    if (data[4] != static_cast<std::uint8_t>(Kpf1Kind::File)) {
+        throw std::runtime_error("KPF1 archive is not a file envelope");
+    }
+
+    std::size_t pos = 5;
+    const auto name_length = get_varint(data, pos);
+    if (name_length > data.size() - pos) {
+        throw std::runtime_error("truncated KPF1 file name");
+    }
+
+    std::string name(
+        reinterpret_cast<const char*>(data.data() + pos),
+        static_cast<std::size_t>(name_length));
+    pos += static_cast<std::size_t>(name_length);
+
+    const auto blob_length = get_varint(data, pos);
+    if (blob_length > data.size() - pos) {
+        throw std::runtime_error("truncated KPF1 file payload");
+    }
+
+    ByteBuffer blob(
+        data.begin() + static_cast<std::ptrdiff_t>(pos),
+        data.begin() + static_cast<std::ptrdiff_t>(pos + static_cast<std::size_t>(blob_length)));
+    pos += static_cast<std::size_t>(blob_length);
+
+    if (pos != data.size()) {
+        throw std::runtime_error("KPF1 file trailing bytes");
+    }
+
+    return {std::move(name), std::move(blob)};
+}
+
+ByteBuffer encode_kpf1_directory(const Kpf1DirectoryEnvelope& envelope) {
+    if (envelope.group_names.size() != envelope.groups.size()) {
+        throw std::runtime_error("KPF1 directory group table/payload count mismatch");
+    }
+
+    // Validate manifest structure and group references before emission.
+    (void)decode_manifest(envelope.manifest, envelope.group_names.size());
+
+    ByteBuffer out{'K', 'P', 'F', '1', static_cast<std::uint8_t>(Kpf1Kind::Directory)};
+    put_varint(out, envelope.group_names.size());
+
+    for (const auto& name : envelope.group_names) {
+        put_varint(out, name.size());
+        out.insert(
+            out.end(),
+            reinterpret_cast<const std::uint8_t*>(name.data()),
+            reinterpret_cast<const std::uint8_t*>(name.data() + name.size()));
+    }
+
+    put_varint(out, envelope.manifest.size());
+    out.insert(out.end(), envelope.manifest.begin(), envelope.manifest.end());
+
+    for (const auto& group : envelope.groups) {
+        put_varint(out, group.raw_length);
+        put_varint(out, group.compressed_blob.size());
+        out.insert(
+            out.end(),
+            group.compressed_blob.begin(),
+            group.compressed_blob.end());
+    }
+
+    return out;
+}
+
+Kpf1DirectoryEnvelope decode_kpf1_directory(std::span<const std::uint8_t> data) {
+    static constexpr std::array<std::uint8_t, 4> magic{'K', 'P', 'F', '1'};
+
+    if (data.size() < 5 || !std::equal(magic.begin(), magic.end(), data.begin())) {
+        throw std::runtime_error("not a KPF1 archive");
+    }
+    if (data[4] != static_cast<std::uint8_t>(Kpf1Kind::Directory)) {
+        throw std::runtime_error("KPF1 archive is not a directory envelope");
+    }
+
+    std::size_t pos = 5;
+    const auto group_count = get_varint(data, pos);
+    if (group_count > data.size()) {
+        throw std::runtime_error("KPF1 group count is not plausible");
+    }
+
+    Kpf1DirectoryEnvelope envelope;
+    envelope.group_names.reserve(static_cast<std::size_t>(group_count));
+    envelope.groups.reserve(static_cast<std::size_t>(group_count));
+
+    for (std::uint64_t i = 0; i < group_count; ++i) {
+        const auto name_length = get_varint(data, pos);
+        if (name_length > data.size() - pos) {
+            throw std::runtime_error("truncated KPF1 group name");
+        }
+
+        envelope.group_names.emplace_back(
+            reinterpret_cast<const char*>(data.data() + pos),
+            static_cast<std::size_t>(name_length));
+        pos += static_cast<std::size_t>(name_length);
+    }
+
+    const auto manifest_length = get_varint(data, pos);
+    if (manifest_length > data.size() - pos) {
+        throw std::runtime_error("truncated KPF1 manifest");
+    }
+
+    envelope.manifest.assign(
+        data.begin() + static_cast<std::ptrdiff_t>(pos),
+        data.begin() + static_cast<std::ptrdiff_t>(pos + static_cast<std::size_t>(manifest_length)));
+    pos += static_cast<std::size_t>(manifest_length);
+
+    // Validate manifest before accepting group payloads.
+    (void)decode_manifest(envelope.manifest, group_count);
+
+    for (std::uint64_t i = 0; i < group_count; ++i) {
+        const auto raw_length = get_varint(data, pos);
+        const auto blob_length = get_varint(data, pos);
+        if (blob_length > data.size() - pos) {
+            throw std::runtime_error("truncated KPF1 group payload");
+        }
+
+        ByteBuffer blob(
+            data.begin() + static_cast<std::ptrdiff_t>(pos),
+            data.begin() + static_cast<std::ptrdiff_t>(pos + static_cast<std::size_t>(blob_length)));
+        pos += static_cast<std::size_t>(blob_length);
+
+        envelope.groups.push_back({raw_length, std::move(blob)});
+    }
+
+    if (pos != data.size()) {
+        throw std::runtime_error("KPF1 directory trailing bytes");
+    }
+
+    return envelope;
 }
 
 std::filesystem::path safe_archive_target(
