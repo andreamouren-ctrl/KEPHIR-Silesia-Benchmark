@@ -42,7 +42,7 @@ int main(int argc, char** argv) {
     if (argc < 4) {
         std::cerr
             << "usage:\n"
-            << "  kephir2_native_k75_cli c <input-file> <archive.kpf> [workers]\n"
+            << "  kephir2_native_k75_cli c <input-file> <archive.kpf> [workers] [context-kib]\n"
             << "  kephir2_native_k75_cli d <archive.kpf> <output-dir> [workers]\n";
         return 2;
     }
@@ -65,6 +65,19 @@ int main(int argc, char** argv) {
             backend_options.workers = static_cast<std::size_t>(parsed);
         }
 
+        std::size_t research_context_kib = 0;
+        if (mode == "c" && argc >= 6) {
+            const auto parsed = std::strtoul(argv[5], nullptr, 10);
+            if (parsed < 128 || parsed > 8192) {
+                throw std::runtime_error("invalid research context KiB");
+            }
+            research_context_kib = static_cast<std::size_t>(parsed);
+            const auto bytes = research_context_kib * 1024u;
+            backend_options.research_parent_bytes = bytes;
+            backend_options.research_inner_chunk_bytes = bytes;
+            backend_options.research_force_parent_grain = true;
+        }
+
         const auto t0 = std::chrono::steady_clock::now();
 
         if (mode == "c") {
@@ -78,6 +91,7 @@ int main(int argc, char** argv) {
                 << "INPUT_BYTES=" << std::filesystem::file_size(input) << "\n"
                 << "OUTPUT_BYTES=" << archive.size() << "\n"
                 << "WORKERS=" << backend_options.workers << "\n"
+                << "CONTEXT_KIB=" << research_context_kib << "\n"
                 << "SECONDS="
                 << std::chrono::duration<double>(t1 - t0).count()
                 << "\n";
