@@ -595,16 +595,17 @@ std::vector<std::uint8_t> inverse(
 
 EncodedEntry encode_entry_impl(
     std::span<const std::uint8_t> raw,
-    bool allow_word_xor) {
+    bool allow_word_xor,
+    std::size_t inner_chunk_bytes) {
 
     if (raw.size() > std::numeric_limits<std::uint32_t>::max())
         throw std::runtime_error("K75 grain too large");
 
     std::uint8_t mode = choose_mode(raw);
-    auto compressed = native37::encode_aur2_blob(transform(raw, mode));
+    auto compressed = native37::encode_aur2_blob(transform(raw, mode), inner_chunk_bytes);
 
     if (mode != 0) {
-        auto baseline = native37::encode_aur2_blob(raw);
+        auto baseline = native37::encode_aur2_blob(raw, inner_chunk_bytes);
         if (baseline.size() <= compressed.size()) {
             mode = 0;
             compressed = std::move(baseline);
@@ -613,7 +614,7 @@ EncodedEntry encode_entry_impl(
 
     if (allow_word_xor && mode == 0 && should_probe_word_xor(raw)) {
         auto wx_compressed =
-            native37::encode_aur2_blob(transform(raw, 3));
+            native37::encode_aur2_blob(transform(raw, 3), inner_chunk_bytes);
         if (wx_compressed.size() < compressed.size()) {
             mode = 3;
             compressed = std::move(wx_compressed);
@@ -626,7 +627,7 @@ EncodedEntry encode_entry_impl(
             static_cast<std::size_t>(
                 static_cast<double>(raw.size()) * 0.99)) {
             auto token_compressed =
-                native37::encode_aur2_blob(tokenized);
+                native37::encode_aur2_blob(tokenized, inner_chunk_bytes);
             if (token_compressed.size() < compressed.size()) {
                 mode = 6;
                 compressed = std::move(token_compressed);
@@ -641,8 +642,11 @@ EncodedEntry encode_entry_impl(
     };
 }
 
-EncodedEntry encode_entry(std::span<const std::uint8_t> raw) {
-    return encode_entry_impl(raw, true);
+EncodedEntry encode_entry(
+    std::span<const std::uint8_t> raw,
+    std::size_t inner_chunk_bytes) {
+
+    return encode_entry_impl(raw, true, inner_chunk_bytes);
 }
 
 bool should_exact_grain_probe(std::string_view key) noexcept {
@@ -655,13 +659,17 @@ bool should_exact_grain_probe(std::string_view key) noexcept {
 
 std::size_t measure_grain_exact_native(
     std::span<const std::uint8_t> parent,
-    std::size_t grain) {
+    std::size_t grain,
+    std::size_t inner_chunk_bytes) {
 
     std::size_t total = 0;
     for (std::size_t offset = 0; offset < parent.size(); offset += grain) {
         const auto bytes = std::min(grain, parent.size() - offset);
         const auto encoded =
-            encode_entry_impl(parent.subspan(offset, bytes), false);
+            encode_entry_impl(
+                parent.subspan(offset, bytes),
+                false,
+                inner_chunk_bytes);
 
         if (encoded.compressed.size()
             > std::numeric_limits<std::size_t>::max() - total - 9u) {
@@ -672,7 +680,15 @@ std::size_t measure_grain_exact_native(
     return total;
 }
 
-std::size_t select_grain(std::span<const std::uint8_t> parent) {
+std::size_t select_grain(
+    std::span<const std::uint8_t> parent,
+    std::size_t inner_chunk_bytes,
+    bool force_parent_grain) {
+
+    if (force_parent_grain) {
+        return parent.size();
+    }
+
     const auto baseline = trusted_factory_grain(parent);
     const auto key = grain_feature_bucket(parent);
 
@@ -688,7 +704,7 @@ std::size_t select_grain(std::span<const std::uint8_t> parent) {
 
     std::size_t best_grain = baseline;
     std::size_t best_size =
-        measure_grain_exact_native(parent, baseline);
+        measure_grain_exact_native(parent, baseline, inner_chunk_bytes);
 
     for (const auto grain : candidates) {
         if (!valid_grain_candidate(parent.size(), grain)
@@ -696,7 +712,7 @@ std::size_t select_grain(std::span<const std::uint8_t> parent) {
             continue;
         }
 
-        const auto size = measure_grain_exact_native(parent, grain);
+        const auto size = measure_grain_exact_native(parent, grain, inner_chunk_bytes);
         if (size < best_size) {
             best_size = size;
             best_grain = grain;
