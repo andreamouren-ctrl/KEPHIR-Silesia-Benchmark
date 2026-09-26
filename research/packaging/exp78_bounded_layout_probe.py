@@ -242,7 +242,9 @@ def probe_smart(root,label):
     with tempfile.TemporaryDirectory(prefix="exp78_smart_") as td:
         td=Path(td)
         arc=td/"probe.kpf"
-        stats=K.compress_directory(root,arc,fresh_factory_model(),td/"engine")
+        engine_tmp=td/"engine"
+        engine_tmp.mkdir(parents=True,exist_ok=True)
+        stats=K.compress_directory(root,arc,fresh_factory_model(),engine_tmp)
         size=arc.stat().st_size
     return {
         "layout":"smart",
