@@ -646,7 +646,92 @@ A second reproducibility limitation was identified: the live repository workload
 
 ---
 
-## 14. Current validated facts
+## 14. EXP-83 — Reduced-Budget Representative Router
+
+Status:
+
+**REJECTED AS FINAL / SPEED DIRECTION VALIDATED**
+
+EXP-83 kept the EXP-82 routing semantics but reduced the bounded compression-probe budgets:
+
+```text
+stage 1: 2 MiB  → 512 KiB
+stage 2: 12 MiB → 2 MiB
+```
+
+Result on the live eight-workload matrix:
+
+```text
+Correct selections: 7 / 8
+Selection accuracy: 87.5%
+Total regret:       2,172 bytes
+Routing time:       14.24 s aggregate
+SHA roundtrip:      PASS on all datasets
+```
+
+Compared with EXP-82:
+
+```text
+Routing time: 41.96 s → 14.24 s
+Reduction:    ~66.1%
+```
+
+The failure was the live repository workload:
+
+```text
+selected: FLAT
+oracle:   SMART
+regret:   2,172 B
+reason:   stage1-strong-margin
+```
+
+Important interpretation:
+
+The reduced budgets are highly effective on larger workloads, including Silesia, but a small changing repository is too sensitive to partial sampling.
+
+EXP-83 is therefore not promoted as the final policy.
+
+Two production rules follow:
+
+1. Small archives should use either an exact/full-input decision or a value-aware fast path.
+2. Homogeneous directories do not need a SMART/FLAT compression probe when every file belongs to the same content class.
+
+---
+
+## 15. Canonical Router Matrix v1
+
+Status:
+
+**ESTABLISHED**
+
+A frozen benchmark dataset definition now exists at:
+
+`research/packaging/router_matrix_v1.py`
+
+The repository workload is pinned to:
+
+`31f7e6099cec307ad934fd9ec8e6760441567ab5`
+
+This prevents future code changes from silently changing the benchmark input.
+
+Canonical matrix:
+
+- pinned KEPHIR repository snapshot;
+- canonical Silesia;
+- many tiny source-like files;
+- homogeneous large files;
+- mixed content;
+- incompressible data;
+- zero-rich structured data;
+- redundant backup-like data.
+
+Synthetic datasets are deterministic and use neutral `.dat` names.
+
+Future router comparisons should use this matrix rather than the live development tree.
+
+---
+
+## 16. Current validated facts
 
 At the present checkpoint:
 
@@ -664,7 +749,7 @@ At the present checkpoint:
 
 ---
 
-## 15. Current product architecture priority
+## 17. Current product architecture priority
 
 The current production path now contains both the native Content Analyzer and the native Global Router:
 
@@ -684,7 +769,7 @@ The next architectural task is to validate this decision layer over a broader wo
 
 ---
 
-## 16. Validation matrix still required
+## 18. Validation matrix still required
 
 Before EXP-79 can be declared the final production Global Router, it must be tested on:
 
@@ -713,7 +798,7 @@ For every workload, record:
 
 ---
 
-## 17. Current engineering rules
+## 19. Current engineering rules
 
 Every future milestone must follow:
 
@@ -738,41 +823,45 @@ Production functionality should progressively migrate into the native KEPHIR 2 C
 
 ---
 
-## 18. Immediate next milestone
+## 20. Immediate next milestone
 
-**EXP-83 — Fast AUTO Router**
+**EXP-84 — Deterministic-Dominance Fast Router**
 
 Goal:
 
-Reduce routing overhead without sacrificing EXP-82's 8/8 correctness and zero regret.
+Combine EXP-82 correctness with EXP-83 speed improvements.
 
-Primary directions:
-
-- freeze the validation matrix so comparisons are reproducible;
-- avoid stage-2 probing when stage-1 evidence is already operationally sufficient;
-- identify high-entropy homogeneous data where SMART grouping cannot justify extra routing work;
-- reduce the strong-margin threshold only when supported by the frozen matrix;
-- preserve content-first routing and exact lossless validation.
-
-Current baseline to beat:
+New rules:
 
 ```text
-EXP-82 correctness: 8 / 8
-EXP-82 regret:      0 B
-EXP-82 routing:     41.96 s aggregate
+one content class across the directory
+    → FLAT directly
+    → no compression probe
+
+total logical size <= 1 MiB
+    → full-input SMART/FLAT probe
+
+otherwise
+    → 512 KiB stage-1 probe
+    → 2 MiB stage-2 only if needed
 ```
 
-Acceptance criteria:
+Rationale for the single-class rule:
 
-- 8/8 correct on the frozen canonical matrix;
+With one content group, SMART concatenates the same files in the same order as FLAT and feeds the same payload to the inner engine, while SMART carries additional group metadata. FLAT therefore dominates the layout decision and probing is unnecessary.
+
+Acceptance criteria on Canonical Router Matrix v1:
+
+- 8/8 correct selections;
 - 0 B aggregate regret;
 - all SHA PASS;
-- materially lower routing time than 41.96 s;
-- no new layout-specific special case tied to filenames/extensions.
+- materially lower routing time than EXP-82's 41.96 s;
+- preferably lower than EXP-83's 14.24 s;
+- no filename/extension routing.
 
 ---
 
-## 19. Current checkpoint summary
+## 21. Current checkpoint summary
 
 ```text
 KEPHIR 1.0
@@ -797,14 +886,16 @@ KEPHIR 2
             ├── EXP-81 ................. REJECTED, 7/8, 54.11 s routing
             ├── EXP-82 ................. PROMOTED, 8/8, 0 B regret
             ├── EXP-82 routing ......... 41.96 s aggregate
+            ├── EXP-83 ................. REJECTED, 7/8, 14.24 s
+            ├── Router Matrix v1 ....... FROZEN
             ├── Native EXP-82 policy ... PASS
-            ├── Routing SHA ............ PASS all 8 datasets
-            └── Next ................... EXP-83 Fast AUTO Router
+            ├── Routing SHA ............ PASS
+            └── Next ................... EXP-84 deterministic-dominance router
 ```
 
 ---
 
-## 20. Update policy
+## 22. Update policy
 
 This document is mandatory project state.
 
