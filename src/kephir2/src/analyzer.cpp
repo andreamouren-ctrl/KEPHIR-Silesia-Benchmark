@@ -12,6 +12,8 @@
 namespace kephir2 {
 namespace {
 
+constexpr std::uint64_t kBufferedReadThreshold = 1u * 1024u * 1024u;
+
 bool is_printable(std::uint8_t b) noexcept {
     return b == 9 || b == 10 || b == 13 || (b >= 32 && b < 127);
 }
@@ -214,14 +216,29 @@ FileAnalysis ContentAnalyzer::analyze_file(const std::filesystem::path& path) co
     std::vector<std::uint8_t> sample;
     sample.reserve(static_cast<std::size_t>((size + step - 1) / step));
 
-    for (std::uint64_t pos = 0; pos < size; pos += step) {
-        in.seekg(static_cast<std::streamoff>(pos), std::ios::beg);
-        char ch = 0;
-        in.read(&ch, 1);
+    if (size <= kBufferedReadThreshold) {
+        // EXP-90: preserve the exact Python-compatible stride positions while
+        // replacing thousands of tiny seek/read operations with one bounded
+        // sequential read.
+        std::vector<std::uint8_t> data(static_cast<std::size_t>(size));
+        in.read(reinterpret_cast<char*>(data.data()),
+                static_cast<std::streamsize>(data.size()));
         if (!in) {
-            throw std::runtime_error("unable to sample file for KEPHIR content analysis");
+            throw std::runtime_error("unable to read buffered file for KEPHIR content analysis");
         }
-        sample.push_back(static_cast<std::uint8_t>(static_cast<unsigned char>(ch)));
+        for (std::uint64_t pos = 0; pos < size; pos += step) {
+            sample.push_back(data[static_cast<std::size_t>(pos)]);
+        }
+    } else {
+        for (std::uint64_t pos = 0; pos < size; pos += step) {
+            in.seekg(static_cast<std::streamoff>(pos), std::ios::beg);
+            char ch = 0;
+            in.read(&ch, 1);
+            if (!in) {
+                throw std::runtime_error("unable to sample file for KEPHIR content analysis");
+            }
+            sample.push_back(static_cast<std::uint8_t>(static_cast<unsigned char>(ch)));
+        }
     }
 
     auto metrics = compute_metrics(size, sample);
@@ -282,19 +299,37 @@ ArchiveFeatures ContentAnalyzer::analyze_directory(
             if (want != 0) {
                 const std::uint64_t step = std::max<std::uint64_t>(1, size / want);
                 std::uint64_t taken = 0;
-                for (std::uint64_t pos = 0; pos < size && taken < want; pos += step) {
-                    in.seekg(static_cast<std::streamoff>(pos), std::ios::beg);
-                    char ch = 0;
-                    in.read(&ch, 1);
+
+                if (size <= kBufferedReadThreshold) {
+                    std::vector<std::uint8_t> data(static_cast<std::size_t>(size));
+                    in.read(reinterpret_cast<char*>(data.data()),
+                            static_cast<std::streamsize>(data.size()));
                     if (!in) {
-                        break;
+                        throw std::runtime_error("unable to read buffered file for directory sampling");
                     }
-                    const auto b = static_cast<std::uint8_t>(static_cast<unsigned char>(ch));
-                    ++aggregate_counts[b];
-                    aggregate_printable += is_printable(b) ? 1u : 0u;
-                    aggregate_zero += b == 0 ? 1u : 0u;
-                    ++aggregate_sampled;
-                    ++taken;
+                    for (std::uint64_t pos = 0; pos < size && taken < want; pos += step) {
+                        const auto b = data[static_cast<std::size_t>(pos)];
+                        ++aggregate_counts[b];
+                        aggregate_printable += is_printable(b) ? 1u : 0u;
+                        aggregate_zero += b == 0 ? 1u : 0u;
+                        ++aggregate_sampled;
+                        ++taken;
+                    }
+                } else {
+                    for (std::uint64_t pos = 0; pos < size && taken < want; pos += step) {
+                        in.seekg(static_cast<std::streamoff>(pos), std::ios::beg);
+                        char ch = 0;
+                        in.read(&ch, 1);
+                        if (!in) {
+                            break;
+                        }
+                        const auto b = static_cast<std::uint8_t>(static_cast<unsigned char>(ch));
+                        ++aggregate_counts[b];
+                        aggregate_printable += is_printable(b) ? 1u : 0u;
+                        aggregate_zero += b == 0 ? 1u : 0u;
+                        ++aggregate_sampled;
+                        ++taken;
+                    }
                 }
             }
         }
