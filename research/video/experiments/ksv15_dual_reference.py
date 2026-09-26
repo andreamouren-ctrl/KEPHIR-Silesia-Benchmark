@@ -40,14 +40,14 @@ import numpy as np
 
 import ksv13_natural_radius_sweep as k13
 from kstream_video_baseline import (
-    spatial_frame,
-    spatial_frame_inv,
     decode_file as temp_decode,
 )
 from kstream_video_motion_control import (
     candidates as local_candidates,
     frame_sizes,
     split_frame,
+    spatial_frame,
+    spatial_frame_inv,
     decode_file as mc_decode,
 )
 from kstream_video_residual_symbols_v7 import (
