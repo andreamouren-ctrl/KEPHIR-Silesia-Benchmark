@@ -737,3 +737,20 @@ Decision:
 - four workers remain the preferred CI-runner parallelism point;
 - do not yet switch the full production router;
 - next checkpoint: KSV-22 cheap FLOOR/TRUNC + MOD8/ZZ policy selection with one KHEPRI encode.
+
+
+## 2026-09-26 KSV-23 native H3 variants checkpoint
+
+Run 36243748939:
+- existing native H3 regression: PASS
+- one-pass FLOOR/TRUNC residual generation: PASS
+- one-pass: 0.905197 ms
+- two independent H3 searches: 1.81554 ms
+- speedup: 2.00568x
+- motion/FLOOR/TRUNC fingerprints unchanged
+- both chroma variants decode bit-exactly
+
+Decision:
+- promote one-pass H3 residual-variant generation;
+- do not repeat H3 motion search to evaluate FLOOR/TRUNC;
+- KSV-24 should focus only on MOD8 versus ZZ_INTER selection because KSV-22 chroma choice matched oracle on all 15 natural-corpus windows.
