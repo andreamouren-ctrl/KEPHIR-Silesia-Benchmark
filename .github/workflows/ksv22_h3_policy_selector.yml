@@ -2,6 +2,15 @@ name: KSV-22 H3 Policy Selector
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: ["research/khepri-stream-codec"]
+    paths:
+      - ".github/workflows/ksv22_h3_policy_selector.yml"
+      - "research/video/experiments/ksv22_h3_policy_selector.py"
+      - "research/video/experiments/ksv20_h3_refinement.py"
+      - "research/video/experiments/ksv17_dense_integer_motion.py"
+      - "research/video/experiments/ksv13_natural_radius_sweep.py"
+      - "make_exp40_source.py"
   push:
     branches: ["feature/aurora-media-ksv22-h3-policy-selector"]
     paths:
