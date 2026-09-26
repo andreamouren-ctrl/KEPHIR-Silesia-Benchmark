@@ -19,8 +19,9 @@ int main() {
     repo_like.sampled_dominant_byte_fraction = 0.85;
 
     auto repo_initial = router.plan(repo_like, Profile::Auto, std::nullopt);
-    assert(repo_initial.request_initial_probe);
-    assert(repo_initial.requested_probe_bytes == repo_like.logical_bytes);
+    assert(repo_initial.layout == Layout::Flat);
+    assert(!repo_initial.request_initial_probe);
+    assert(repo_initial.requested_probe_bytes == 0);
 
     LayoutProbe flat_probe{};
     flat_probe.sampled_bytes = 800'000;
@@ -39,8 +40,10 @@ int main() {
     silesia_like.small_file_fraction = 0.0;
 
     silesia_like.sampled_content_groups = 5;
+    silesia_like.multi_file_content_groups = 4;
     silesia_like.sampled_dominant_file_fraction = 1.0 / 3.0;
     silesia_like.sampled_dominant_byte_fraction = 1.0 / 3.0;
+    silesia_like.repeatable_content_byte_fraction = 0.80;
 
     auto silesia_initial = router.plan(silesia_like, Profile::Auto, std::nullopt);
     assert(silesia_initial.request_initial_probe);
@@ -92,6 +95,31 @@ int main() {
     auto mixed_plan = router.plan(mixed_like, Profile::Auto, mixed_probe);
     assert(mixed_plan.layout == Layout::Flat);
     assert(!mixed_plan.request_extended_probe);
+
+    // EXP-88 holdout regression: the cheap gate may nominate a SMART
+    // candidate, but it may never choose SMART without measured evidence.
+    ArchiveFeatures holdout_candidate{};
+    holdout_candidate.logical_bytes = 6u * 1024u * 1024u;
+    holdout_candidate.file_count = 6;
+    holdout_candidate.average_file_bytes = 1u * 1024u * 1024u;
+    holdout_candidate.sampled_content_groups = 2;
+    holdout_candidate.multi_file_content_groups = 2;
+    holdout_candidate.sampled_dominant_file_fraction = 0.5;
+    holdout_candidate.sampled_dominant_byte_fraction = 0.5;
+    holdout_candidate.repeatable_content_byte_fraction = 1.0;
+
+    auto holdout_initial = router.plan(holdout_candidate, Profile::Auto, std::nullopt);
+    assert(holdout_initial.request_initial_probe);
+    assert(holdout_initial.requested_probe_bytes == 512u * 1024u);
+
+    LayoutProbe holdout_probe{};
+    holdout_probe.sampled_bytes = 512u * 1024u;
+    holdout_probe.flat_archive_bytes = 100'000;
+    holdout_probe.smart_archive_bytes = 103'000;
+
+    auto holdout_final = router.plan(holdout_candidate, Profile::Auto, holdout_probe);
+    assert(holdout_final.layout == Layout::Flat);
+    assert(!holdout_final.request_extended_probe);
 
 
     ArchiveFeatures weak_multiclass{};
