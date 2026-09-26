@@ -10,6 +10,19 @@ namespace kephir2 {
 
 using CompressedBlob = std::vector<std::uint8_t>;
 
+class ByteSource {
+public:
+    virtual ~ByteSource() = default;
+
+    [[nodiscard]] virtual std::uint64_t size() const noexcept = 0;
+
+    // Reads up to destination.size() bytes starting at logical offset.
+    // Returns the number of bytes read. Reading at EOF returns zero.
+    [[nodiscard]] virtual std::size_t read(
+        std::uint64_t offset,
+        std::span<std::uint8_t> destination) const = 0;
+};
+
 struct BackendOptions {
     std::size_t workers{0};
     bool allow_local_experience{true};
@@ -39,7 +52,7 @@ public:
     [[nodiscard]] virtual std::uint32_t format_version() const noexcept = 0;
 
     [[nodiscard]] virtual BackendEncodeResult encode(
-        std::span<const std::uint8_t> input,
+        const ByteSource& input,
         const BackendOptions& options) = 0;
 
     [[nodiscard]] virtual BackendDecodeResult decode(
