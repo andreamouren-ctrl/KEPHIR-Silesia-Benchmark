@@ -10,6 +10,9 @@ on:
       - ".github/workflows/ksv21_native_h3.yml"
       - "src/cpp/aurora_media/AuroraVideoMotion.*"
       - "tests/cpp/test_aurora_video_motion_h3.cpp"
+      - "tests/cpp/test_aurora_video_h3_conformance.cpp"
+      - "benchmarks/major_codecs/aurora_native_h3_4k.cpp"
+      - "research/video/experiments/ksv21_emit_native_conformance.py"
       - "research/video/experiments/ksv20_h3_refinement.py"
       - "research/video/experiments/ksv17_dense_integer_motion.py"
 
@@ -146,6 +149,49 @@ jobs:
           print("trunc_residual_fp",cpp["trunc_residual_fp"])
           PY
 
+      - name: Emit direct Python H3 binary vectors
+        env:
+          PYTHONPATH: research/video/lab:research/video/experiments:research/backend
+        run: |
+          python3 research/video/experiments/ksv21_emit_native_conformance.py \
+            --out ksv21_vectors | tee ksv21_python_vector.txt
+
+      - name: Build direct byte-for-byte H3 conformance
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            tests/cpp/test_aurora_video_h3_conformance.cpp \
+            -Isrc/cpp/aurora_media \
+            -o test_h3_direct
+
+      - name: Run direct byte-for-byte H3 conformance
+        run: |
+          ./test_h3_direct ksv21_vectors | tee ksv21_direct_conformance.txt
+
+      - name: Build native 4K H3 scaling benchmark
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -Wall -Wextra -Werror -pthread \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            benchmarks/major_codecs/aurora_native_h3_4k.cpp \
+            -Isrc/cpp/aurora_media \
+            -o bench_native_h3_4k
+
+      - name: Run native 4K H3 scaling benchmark
+        run: |
+          ./bench_native_h3_4k | tee ksv21_native_h3_4k.txt
+
+      - name: Validate native H3 extended gates
+        run: |
+          grep -q "KSV21_PYTHON_CONFORMANCE_VECTOR_PASS" ksv21_python_vector.txt
+          grep -q "AURORA_NATIVE_H3_CONFORMANCE_PASS" ksv21_direct_conformance.txt
+          grep -q "AURORA_NATIVE_H3_4K_PASS workers=1" ksv21_native_h3_4k.txt
+          grep -q "AURORA_NATIVE_H3_4K_PASS workers=2" ksv21_native_h3_4k.txt
+          grep -q "AURORA_NATIVE_H3_4K_PASS workers=4" ksv21_native_h3_4k.txt
+          grep -q "AURORA_NATIVE_H3_4K_PASS workers=8" ksv21_native_h3_4k.txt
+          echo "KSV21_NATIVE_H3_EXTENDED_PASS"
+
       - uses: actions/upload-artifact@v4
         with:
           name: ksv21-native-h3-conformance
@@ -153,3 +199,7 @@ jobs:
             native_h3.txt
             python_h3.txt
             h3_conformance_summary.txt
+            ksv21_python_vector.txt
+            ksv21_direct_conformance.txt
+            ksv21_native_h3_4k.txt
+            ksv21_vectors/meta.json
