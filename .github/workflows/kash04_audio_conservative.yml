@@ -1,0 +1,91 @@
+name: KASH-04 Conservative Macro Recovery
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["research/khepri-stream-codec"]
+  push:
+    branches: ["feature/aurora-media-kash04-conservative"]
+    paths:
+      - ".github/workflows/kash04_audio_conservative.yml"
+      - "research/audio/experiments/kash04_conservative_macro.py"
+      - "research/audio/experiments/kash02_reset_predictor.py"
+      - "src/python/reference/aurora_media_codec_bridge.py"
+      - "research/audio/lab/kstream_kmrl_lab.py"
+
+jobs:
+  kash04:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential ffmpeg curl python3-numpy
+
+      - name: Build EXP-37A
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          python3 make_exp37_source.py
+          g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY \
+            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 \
+            -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 -pthread \
+            KEPHIR_2_EXP37_DUAL_MATCH.cpp -o kephir37
+
+      - name: Prepare four lossless sources
+        run: |
+          ffmpeg -hide_banner -loglevel error -y \
+            -i https://media.xiph.org/sintel/sintel_trailer-audio.flac \
+            -t 30 -ac 2 -ar 48000 -sample_fmt s16 -f s16le sintel.raw
+          ffmpeg -hide_banner -loglevel error -y \
+            -i https://beaufish.xiph.org/ED/ED-CM-St-16bit.flac \
+            -t 30 -ac 2 -ar 48000 -sample_fmt s16 -f s16le elephants.raw
+          ffmpeg -hide_banner -loglevel error -y \
+            -i https://beaufish.xiph.org/BBB/BigBuckBunny-stereo.flac \
+            -t 30 -ac 2 -ar 48000 -sample_fmt s16 -f s16le bunny.raw
+          ffmpeg -hide_banner -loglevel error -y \
+            -i https://beaufish.xiph.org/tearsofsteel/tearsofsteel-stereo.flac \
+            -t 30 -ac 2 -ar 48000 -sample_fmt s16 -f s16le steel.raw
+
+      - name: Run KASH-04
+        env:
+          PYTHONPATH: src/python/reference:research/audio/lab:research/audio/experiments:research/video/lab:research/video/experiments:research/backend
+        run: |
+          python3 research/audio/experiments/kash04_conservative_macro.py \
+            --kephir ./kephir37 \
+            --source sintel=sintel.raw \
+            --source elephants=elephants.raw \
+            --source bunny=bunny.raw \
+            --source steel=steel.raw | tee kash04_summary.txt
+
+      - name: Validate correctness
+        run: |
+          grep -q "KASH04_PASS" kash04_summary.txt
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path("results/audio/kash04/KASH04_RESULTS.json").read_text())
+          assert len(r["sources"]) == 4
+          assert len(r["leave_one_source_out"]) == 4
+          assert r["production_candidate_duplicate_encodes"] == 0
+          for x in r["results"]:
+              assert x["fixed"]["sha_ok"]
+              assert x["predictor"]["sha_ok"]
+              assert x["oracle"]["sha_ok"]
+              assert x["production_candidate_duplicate_encodes"] == 0
+          print("KASH04_CORRECTNESS_PASS")
+          print("PROCEDURE_PROMOTION_CANDIDATE",r["procedure_promotion_candidate"])
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kash04-conservative
+          path: |
+            results/audio/kash04/KASH04_RESULTS.json
+            kash04_summary.txt

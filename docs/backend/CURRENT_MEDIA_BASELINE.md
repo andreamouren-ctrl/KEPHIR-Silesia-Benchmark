@@ -321,3 +321,32 @@ Decision:
 - do not promote the frozen KASH-02 rule;
 - adaptive horizon remains valuable, but the single-feature threshold does not generalize;
 - next gate: KASH-04 multi-feature, leave-one-source-out predictor with conservative false-split cost.
+
+
+## 2026-09-26 KASH-04 conservative recovery checkpoint
+
+Validation:
+- GitHub Actions run 36225130012
+- four 30-second lossless source families
+- fixed 2-second macro-windows, optionally split into 1 s + 1 s
+- all outputs bit-exact
+- production duplicate candidate encodes: 0
+
+Fit-all diagnostic:
+- fixed aggregate: 12,133,166 bytes
+- macro oracle: 12,106,992 bytes
+- predictor: 12,108,096 bytes
+- predictor gain: 25,070 bytes
+- oracle gain recovered: 95.782%
+
+Leave-one-source-out procedure:
+- Sintel: 0-byte gain
+- Elephants Dream: -262 bytes
+- Big Buck Bunny: -232 bytes
+- Tears of Steel: -18,892 bytes
+
+Decision:
+- no production promotion;
+- fixed 2-second recovery remains the canonical production baseline;
+- KASH stays research-only until a substantially broader corpus exists;
+- do not increase classifier complexity on the current small corpus.
