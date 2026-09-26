@@ -41,3 +41,10 @@ print("EXP37_CORE_CONTEXT_BEGIN")
 for i in range(690,min(len(lines),920)):
     print(f"{i+1}: {lines[i]}")
 print("EXP37_CORE_CONTEXT_END")
+
+
+print("EXP37_CHUNK_DEFINE_BEGIN")
+for i,line in enumerate(lines,1):
+    if "K2_CHUNK_KIB" in line:
+        print(f"{i}: {line}")
+print("EXP37_CHUNK_DEFINE_END")
