@@ -412,3 +412,73 @@ Decision:
 - promote the audio format-support capability gate;
 - synthetic compression ratios from this matrix are not product claims;
 - 24/32-bit correctness is validated, but compression maturity still requires a real high-resolution corpus.
+
+
+## 2026-09-26 native 4K stage-profile checkpoint
+
+Validation:
+- GitHub Actions run 36225901734
+- 3840x2160 YUV420p8
+- 135 tiles
+- native C++20 pipeline
+- KHEPRI EXP-37A in process
+- payload: 256,727 bytes
+- lossless reconstruction: PASS
+
+Sequential stage profile:
+
+Encode:
+- total: 465.522 ms / 2.14813 fps
+- tile extraction: 2.97542 ms / 0.639%
+- MC8R4 motion + residual generation: 15.7182 ms / 3.376%
+- residual choose/map: 11.6246 ms / 2.497%
+- **KHEPRI encode: 435.204 ms / 93.487%**
+
+Decode:
+- total: 42.3723 ms / 23.6003 fps
+- reference extraction: 1.39619 ms / 3.295%
+- **KHEPRI decode: 23.9979 ms / 56.636%**
+- residual unmap: 9.43947 ms / 22.278%
+- MC8R4 reconstruction: 6.70973 ms / 15.835%
+- tile paste: 0.82900 ms / 1.956%
+
+Decision:
+- the previous assumption that MC8R4 was the primary encoder bottleneck is superseded;
+- motion micro-optimization is no longer the highest-ROI work;
+- primary encoder target is now KHEPRI parser/encode;
+- primary decoder targets are KHEPRI decode and residual unmap.
+
+Rejected after this profile:
+- AVX2 batch SAD: exact, +5.02% on difficult-motion microbenchmark, but motion is only 3.376% of total encode time;
+- Grid25 SIMD: exact but slower on route-25 content;
+- half-SAD pruning: exact but not robustly faster.
+
+## 2026-09-26 EXP-38 fused backend checkpoint
+
+Validation:
+- GitHub Actions run 36226321603
+- same precomputed 4K mapped-residual corpus
+- 135 tiles / 12,441,600 input bytes
+- lossless roundtrip: PASS
+- deterministic output: PASS
+
+EXP-37A:
+- packed: 126,992 bytes
+- encode: 433.036 ms
+- decode: 24.0516 ms
+
+EXP-38 fused:
+- packed: 142,201 bytes
+- encode: 405.482 ms
+- decode: 25.3281 ms
+
+Delta:
+- encode speedup: 1.068x / 6.36% less time
+- payload regression: +15,209 bytes / +11.976%
+- decode regression: ~5.31%
+
+Decision:
+- do not promote EXP-38 as the Media backend;
+- retain EXP-37A as the canonical backend;
+- next backend gate: measured CHAIN_DEPTH / LAZY_DEPTH frontier on the actual Media residual corpus;
+- exact parser fusion may be revisited later only if it preserves EXP-37A decisions or materially improves the speed/ratio frontier.
