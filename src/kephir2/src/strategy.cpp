@@ -4,6 +4,23 @@
 
 namespace kephir2 {
 
+namespace {
+constexpr double kStage1StrongMargin = 0.02;
+constexpr double kStage2MaterialMargin = 0.002;
+constexpr std::uint32_t kDiversityMinGroups = 3;
+constexpr double kDiversityMaxDominantFileFraction = 0.75;
+constexpr double kDiversityMaxDominantByteFraction = 0.80;
+constexpr std::uint64_t kDiversityMinLogicalBytes = 8u * 1024u * 1024u;
+constexpr std::uint64_t kStage2ProbeBudget = 12u * 1024u * 1024u;
+
+bool diversity_prefers_smart(const ArchiveFeatures& features) noexcept {
+    return features.logical_bytes >= kDiversityMinLogicalBytes
+        && features.sampled_content_groups >= kDiversityMinGroups
+        && features.sampled_dominant_file_fraction <= kDiversityMaxDominantFileFraction
+        && features.sampled_dominant_byte_fraction <= kDiversityMaxDominantByteFraction;
+}
+} // namespace
+
 Layout GlobalRouter::fallback_layout(const ArchiveFeatures& features) noexcept {
     // Conservative bootstrap rule used only when no bounded probe exists.
     // KEPHIR 2 is intentionally probe-first; metadata is a fallback, not the
@@ -34,9 +51,30 @@ StrategyPlan GlobalRouter::plan(
     out.profile = requested_profile;
 
     if (probe && probe->valid()) {
-        out.layout = (probe->smart_archive_bytes < probe->flat_archive_bytes)
+        const auto measured_layout = (probe->smart_archive_bytes < probe->flat_archive_bytes)
             ? Layout::Smart
             : Layout::Flat;
+        const bool full_input_probe = features.logical_bytes != 0
+            && probe->sampled_bytes >= features.logical_bytes;
+        const double margin = probe->relative_margin();
+
+        if (full_input_probe || margin >= kStage1StrongMargin) {
+            out.layout = measured_layout;
+        } else if (diversity_prefers_smart(features)) {
+            // EXP-79: an almost tied probe on a genuinely heterogeneous
+            // archive is resolved in favor of content-homogeneous grouping.
+            out.layout = Layout::Smart;
+        } else if (probe->sampled_bytes < kStage2ProbeBudget
+                   && probe->sampled_bytes < features.logical_bytes) {
+            // The caller should obtain the larger bounded probe before
+            // finalizing the plan. We still provide a deterministic fallback.
+            out.layout = measured_layout;
+            out.request_extended_probe = true;
+        } else if (margin >= kStage2MaterialMargin) {
+            out.layout = measured_layout;
+        } else {
+            out.layout = measured_layout;
+        }
     } else {
         out.layout = fallback_layout(features);
     }
