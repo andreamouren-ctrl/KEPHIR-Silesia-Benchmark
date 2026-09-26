@@ -123,7 +123,7 @@ def unpack_classes_rle(buf: bytes, pos: int, n: int):
     return out, pos
 
 
-def encode_component(values):
+def encode_component(values, classmap_mode="adaptive"):
     candidates = []
     for mode in (0, 1, 2):
         rs = residuals_for(values, mode)
@@ -134,7 +134,14 @@ def encode_component(values):
     classes = [residual_class(u) for u in us]
     raw_classes = pack_classes(classes)
     rle_classes = pack_classes_rle(classes)
-    use_rle = len(rle_classes) < len(raw_classes)
+    if classmap_mode == "raw":
+        use_rle = False
+    elif classmap_mode == "rle":
+        use_rle = True
+    elif classmap_mode == "adaptive":
+        use_rle = len(rle_classes) < len(raw_classes)
+    else:
+        raise ValueError("bad class-map mode")
 
     # Predictor byte: low 2 bits predictor, bit 7 class-map RLE flag.
     out = bytearray([mode | (0x80 if use_rle else 0)])
@@ -383,7 +390,8 @@ def merge_components(comps, channels, bits):
     return out
 
 
-def encode_payload(samples, channels, frames, bits, multichannel_mode="adaptive"):
+def encode_payload(samples, channels, frames, bits, multichannel_mode="adaptive",
+                   classmap_mode="adaptive"):
     out = bytearray()
     frame_pos = 0
     while frame_pos < frames:
@@ -397,7 +405,7 @@ def encode_payload(samples, channels, frames, bits, multichannel_mode="adaptive"
         if bits == 32 and channels >= 6:
             out.append(transform)
         for comp in comps:
-            out.extend(encode_component(comp))
+            out.extend(encode_component(comp, classmap_mode))
         frame_pos += tile_frames
     return bytes(out)
 
@@ -429,7 +437,8 @@ def decode_payload(payload: bytes, channels: int, frames: int, bits: int, versio
     return out
 
 
-def encode_file(src: Path, dst: Path, channels: int, rate: int, bits: int, block_ms: int, multichannel_mode="adaptive"):
+def encode_file(src: Path, dst: Path, channels: int, rate: int, bits: int, block_ms: int,
+                multichannel_mode="adaptive", classmap_mode="adaptive"):
     raw = src.read_bytes()
     if channels < 1:
         raise SystemExit("invalid channel count")
@@ -450,7 +459,8 @@ def encode_file(src: Path, dst: Path, channels: int, rate: int, bits: int, block
             frames = min(block_frames, total_frames - offset)
             block = raw[offset * frame_bytes:(offset + frames) * frame_bytes]
             samples = unpack_pcm_le(block, bits)
-            payload = encode_payload(samples, channels, frames, bits, multichannel_mode)
+            payload = encode_payload(samples, channels, frames, bits,
+                                     multichannel_mode, classmap_mode)
             f.write(CHUNK.pack(frames, len(payload), zlib.crc32(payload) & 0xFFFFFFFF))
             f.write(payload)
             offset += frames
@@ -501,6 +511,7 @@ def main():
     enc.add_argument("--bits", type=int, choices=(16, 24, 32), required=True)
     enc.add_argument("--block-ms", type=int, default=20)
     enc.add_argument("--multichannel-mode", choices=("adaptive", "independent", "hierarchical"), default="adaptive")
+    enc.add_argument("--classmap-mode", choices=("adaptive", "raw", "rle"), default="adaptive")
 
     dec = sp.add_parser("decode")
     dec.add_argument("src", type=Path)
@@ -508,7 +519,8 @@ def main():
 
     args = ap.parse_args()
     if args.cmd == "encode":
-        encode_file(args.src, args.dst, args.channels, args.rate, args.bits, args.block_ms, args.multichannel_mode)
+        encode_file(args.src, args.dst, args.channels, args.rate, args.bits,
+                    args.block_ms, args.multichannel_mode, args.classmap_mode)
     else:
         decode_file(args.src, args.dst)
 
