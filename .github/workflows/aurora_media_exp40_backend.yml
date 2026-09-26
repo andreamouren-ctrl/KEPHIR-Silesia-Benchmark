@@ -61,66 +61,82 @@ jobs:
             benchmarks/major_codecs/aurora_khepri_exp40_backend_ab.cpp \
             -Isrc/cpp/aurora_media -o media_exp40
 
-      - name: Run backend A/B
+      - name: Run repeated alternating backend A/B
         run: |
-          echo "=== EXP37 ===" | tee exp40_backend_ab.txt
-          ./media_exp37 | tee -a exp40_backend_ab.txt
-          echo "=== EXP40 ===" | tee -a exp40_backend_ab.txt
-          ./media_exp40 | tee -a exp40_backend_ab.txt
+          : > exp40_backend_ab.txt
+          for i in 1 2 3 4 5; do
+            echo "=== ROUND $i ===" | tee -a exp40_backend_ab.txt
+            if [ $((i % 2)) -eq 1 ]; then
+              ./media_exp37 | tee -a exp40_backend_ab.txt
+              ./media_exp40 | tee -a exp40_backend_ab.txt
+            else
+              ./media_exp40 | tee -a exp40_backend_ab.txt
+              ./media_exp37 | tee -a exp40_backend_ab.txt
+            fi
+          done
 
       - name: Validate byte identity and summarize
         run: |
           python3 - <<'PY' | tee exp40_backend_summary.txt
           import re
+          import statistics
           from pathlib import Path
 
           rows=[]
           for line in Path("exp40_backend_ab.txt").read_text().splitlines():
               if line.startswith("AURORA_KHEPRI_MEDIA_BACKEND_PASS "):
-                  rows.append(dict(re.findall(r"(\w+)=([^ ]+)",line)))
+                  rows.append(dict(re.findall(r"(\\w+)=([^ ]+)",line)))
 
-          if len(rows)!=2:
-              raise SystemExit("expected EXP37 and EXP40 rows")
-          base,cached=rows
-          if base["backend"]!="EXP37_DUAL" or cached["backend"]!="EXP40_SHARED_CACHE":
-              raise SystemExit("backend order mismatch")
+          groups={}
+          for row in rows:
+              groups.setdefault(row["backend"],[]).append(row)
 
-          for key in ("tiles","input_bytes","input_fingerprint"):
-              if base[key]!=cached[key]:
-                  raise SystemExit(f"input mismatch: {key}")
+          base=groups.get("EXP37_DUAL",[])
+          cached=groups.get("EXP40_SHARED_CACHE",[])
+          if len(base)!=5 or len(cached)!=5:
+              raise SystemExit(f"expected 5 trials/backend, got {len(base)} and {len(cached)}")
 
-          exact=(
-              base["packed_bytes"]==cached["packed_bytes"] and
-              base["payload_fingerprint"]==cached["payload_fingerprint"]
-          )
-          if not exact:
-              raise SystemExit("EXP40 is not byte-identical to EXP37")
+          reference=base[0]
+          for row in base+cached:
+              for key in ("tiles","input_bytes","input_fingerprint"):
+                  if row[key]!=reference[key]:
+                      raise SystemExit(f"input mismatch: {key}")
+              if row["packed_bytes"]!=reference["packed_bytes"]:
+                  raise SystemExit("packed byte count changed")
+              if row["payload_fingerprint"]!=reference["payload_fingerprint"]:
+                  raise SystemExit("payload fingerprint changed")
 
-          b_enc=float(base["encode_ms"])
-          c_enc=float(cached["encode_ms"])
-          b_dec=float(base["decode_ms"])
-          c_dec=float(cached["decode_ms"])
+          def med(group,key):
+              return statistics.median(float(x[key]) for x in group)
+
+          b_enc=med(base,"encode_ms")
+          c_enc=med(cached,"encode_ms")
+          b_dec=med(base,"decode_ms")
+          c_dec=med(cached,"decode_ms")
           speed=b_enc/c_enc
           enc_reduction=(1.0-c_enc/b_enc)*100.0
           dec_delta=(c_dec/b_dec-1.0)*100.0
 
-          print("AURORA_MEDIA_EXP40_EXACT_AB")
+          print("AURORA_MEDIA_EXP40_REPEATED_AB")
           print("BITSTREAM_IDENTITY=PASS")
           print(
-              "encode",
+              "encode_median",
               f"exp37_ms={b_enc:.6f}",
               f"exp40_ms={c_enc:.6f}",
               f"speedup_x={speed:.3f}",
               f"time_reduction_pct={enc_reduction:.2f}",
           )
           print(
-              "decode",
+              "decode_median",
               f"exp37_ms={b_dec:.6f}",
               f"exp40_ms={c_dec:.6f}",
               f"delta_pct={dec_delta:.2f}",
           )
-          candidate=(c_enc <= b_enc*0.95 and c_dec <= b_dec*1.03)
-          print("EXP40_MEDIA_CANDIDATE",str(candidate).lower())
+
+          exact_gain=(c_enc <= b_enc*0.98 and c_dec <= b_dec*1.03)
+          strong_gain=(c_enc <= b_enc*0.95 and c_dec <= b_dec*1.03)
+          print("EXP40_EXACT_GAIN_CANDIDATE",str(exact_gain).lower())
+          print("EXP40_STRONG_GAIN_CANDIDATE",str(strong_gain).lower())
           PY
 
       - uses: actions/upload-artifact@v4
