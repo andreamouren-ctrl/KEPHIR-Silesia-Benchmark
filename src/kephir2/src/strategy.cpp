@@ -6,14 +6,13 @@ namespace kephir2 {
 
 namespace {
 constexpr double kStage1StrongMargin = 0.02;
-constexpr double kStage2MaterialMargin = 0.002;
 constexpr std::uint32_t kDiversityMinGroups = 3;
 constexpr double kDiversityMaxDominantFileFraction = 0.75;
 constexpr double kDiversityMaxDominantByteFraction = 0.80;
 constexpr std::uint64_t kDiversityMinLogicalBytes = 8u * 1024u * 1024u;
 constexpr std::uint64_t kStage2ProbeBudget = 12u * 1024u * 1024u;
 
-bool diversity_prefers_smart(const ArchiveFeatures& features) noexcept {
+bool sample_is_representative(const ArchiveFeatures& features) noexcept {
     return features.logical_bytes >= kDiversityMinLogicalBytes
         && features.sampled_content_groups >= kDiversityMinGroups
         && features.sampled_dominant_file_fraction <= kDiversityMaxDominantFileFraction
@@ -60,19 +59,17 @@ StrategyPlan GlobalRouter::plan(
 
         if (full_input_probe || margin >= kStage1StrongMargin) {
             out.layout = measured_layout;
-        } else if (diversity_prefers_smart(features)) {
-            // EXP-79: an almost tied probe on a genuinely heterogeneous
-            // archive is resolved in favor of content-homogeneous grouping.
-            out.layout = Layout::Smart;
+        } else if (sample_is_representative(features)) {
+            // EXP-82: diversity is a confidence signal, not a SMART vote.
+            // Preserve the measured direction, whether SMART or FLAT.
+            out.layout = measured_layout;
         } else if (probe->sampled_bytes < kStage2ProbeBudget
                    && probe->sampled_bytes < features.logical_bytes) {
-            // The caller should obtain the larger bounded probe before
-            // finalizing the plan. We still provide a deterministic fallback.
+            // Homogeneous / weak evidence: request the larger bounded probe.
             out.layout = measured_layout;
             out.request_extended_probe = true;
-        } else if (margin >= kStage2MaterialMargin) {
-            out.layout = measured_layout;
         } else {
+            // Maximum bounded evidence reached: preserve what was measured.
             out.layout = measured_layout;
         }
     } else {
