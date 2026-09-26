@@ -591,51 +591,113 @@ BackendEncodeResult NativeK75Backend::encode(
         });
     }
 
-    std::vector<EncodedEntry> entries;
-    std::vector<std::uint8_t> parent(kParentBytes);
+    std::size_t workers = options.workers;
+    if (workers == 0) {
+        workers = std::thread::hardware_concurrency();
+        if (workers == 0) workers = 1;
+    }
+    workers = std::clamp<std::size_t>(workers, 1, 16);
 
+    std::vector<EncodedEntry> entries;
+    std::vector<std::vector<std::uint8_t>> pending;
+    pending.reserve(workers);
+
+    auto flush_pending = [&]() {
+        if (pending.empty()) return;
+
+        if (options.operation) {
+            options.operation->throw_if_cancelled();
+        }
+
+        std::vector<std::future<EncodedEntry>> futures;
+        futures.reserve(pending.size());
+
+        for (auto& raw : pending) {
+            futures.push_back(std::async(
+                std::launch::async,
+                [raw = std::move(raw)]() mutable {
+                    return encode_entry(raw);
+                }));
+        }
+
+        for (auto& future : futures) {
+            entries.push_back(future.get());
+        }
+
+        pending.clear();
+    };
+
+    std::vector<std::uint8_t> parent(kParentBytes);
     std::uint64_t offset = 0;
+    std::uint64_t scheduled_bytes = 0;
+
     while (offset < input.size()) {
         if (options.operation) {
             options.operation->throw_if_cancelled();
         }
+
         const auto want = static_cast<std::size_t>(
-            std::min<std::uint64_t>(kParentBytes, input.size() - offset));
+            std::min<std::uint64_t>(
+                kParentBytes,
+                input.size() - offset));
+
         const auto got = input.read(
             offset,
             std::span<std::uint8_t>(parent.data(), want));
-        if (got != want)
-            throw std::runtime_error("short read from K75 byte source");
 
-        if (options.operation) {
-            options.operation->throw_if_cancelled();
-        }
+        if (got != want)
+            throw std::runtime_error(
+                "short read from K75 byte source");
 
         const auto parent_span =
             std::span<const std::uint8_t>(parent.data(), got);
+
         const auto grain = trusted_factory_grain(parent_span);
-        if (!grain) throw std::runtime_error("invalid zero K75 grain");
+        if (!grain)
+            throw std::runtime_error("invalid zero K75 grain");
 
         for (std::size_t local = 0; local < got; local += grain) {
-            if (options.operation) {
-                options.operation->throw_if_cancelled();
-            }
-
             const auto bytes = std::min(grain, got - local);
-            entries.push_back(encode_entry(parent_span.subspan(local, bytes)));
+
+            pending.emplace_back(
+                parent_span.begin()
+                    + static_cast<std::ptrdiff_t>(local),
+                parent_span.begin()
+                    + static_cast<std::ptrdiff_t>(local + bytes));
+
+            scheduled_bytes += bytes;
+
+            if (pending.size() >= workers) {
+                flush_pending();
+
+                if (options.operation) {
+                    options.operation->report({
+                        OperationPhase::Compressing,
+                        input.size()
+                            ? static_cast<double>(scheduled_bytes)
+                                / static_cast<double>(input.size())
+                            : 1.0,
+                        scheduled_bytes,
+                        input.size(),
+                        {}
+                    });
+                }
+            }
         }
 
         offset += got;
+    }
 
-        if (options.operation) {
-            options.operation->report({
-                OperationPhase::Compressing,
-                input.size() ? static_cast<double>(offset) / static_cast<double>(input.size()) : 1.0,
-                offset,
-                input.size(),
-                {}
-            });
-        }
+    flush_pending();
+
+    if (options.operation) {
+        options.operation->report({
+            OperationPhase::Compressing,
+            1.0,
+            input.size(),
+            input.size(),
+            {}
+        });
     }
 
     if (entries.size() > std::numeric_limits<std::uint32_t>::max())
@@ -646,18 +708,29 @@ BackendEncodeResult NativeK75Backend::encode(
     put_u32(blob, static_cast<std::uint32_t>(entries.size()));
 
     for (const auto& entry : entries) {
-        if (entry.compressed.size() > std::numeric_limits<std::uint32_t>::max())
-            throw std::runtime_error("K75 compressed entry too large");
+        if (entry.compressed.size()
+            > std::numeric_limits<std::uint32_t>::max()) {
+            throw std::runtime_error(
+                "K75 compressed entry too large");
+        }
+
         blob.push_back(entry.mode);
         put_u32(blob, entry.raw_size);
-        put_u32(blob, static_cast<std::uint32_t>(entry.compressed.size()));
-        blob.insert(blob.end(), entry.compressed.begin(), entry.compressed.end());
+        put_u32(
+            blob,
+            static_cast<std::uint32_t>(
+                entry.compressed.size()));
+        blob.insert(
+            blob.end(),
+            entry.compressed.begin(),
+            entry.compressed.end());
     }
 
     BackendEncodeResult result;
     result.stats.input_bytes = input.size();
     result.stats.output_bytes = blob.size();
-    result.stats.workers_used = entries.empty() ? 0 : 1;
+    result.stats.workers_used =
+        entries.empty() ? 0 : workers;
     result.blob = std::move(blob);
     return result;
 }
