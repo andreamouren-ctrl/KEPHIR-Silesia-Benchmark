@@ -16,6 +16,7 @@ patterns=[
     "struct Chunk",
     "ch.comp",
     "Parallel BYTE-PERFECT",
+    "K2_CHUNK_KIB",
 ]
 
 out={"source_bytes":len(src.encode()),"snippets":{}}
