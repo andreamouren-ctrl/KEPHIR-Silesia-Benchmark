@@ -1,6 +1,50 @@
 cmake_minimum_required(VERSION 3.20)
 project(kephir2_core LANGUAGES CXX)
 
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+
+file(GLOB KEPHIR37_SOURCE_PARTS CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../engine/source_parts/src_gz_*.b64"
+)
+
+set(KEPHIR37_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
+set(KEPHIR37_GENERATED_CPP "${KEPHIR37_GENERATED_DIR}/kephir37_native.cpp")
+
+add_custom_command(
+    OUTPUT "${KEPHIR37_GENERATED_CPP}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${KEPHIR37_GENERATED_DIR}"
+    COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/backend/generate_native37.py"
+            --output "${KEPHIR37_GENERATED_CPP}"
+    DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/backend/generate_native37.py"
+        ${KEPHIR37_SOURCE_PARTS}
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../research/generators/general/make_exp26_source.py"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../research/generators/general/make_exp27_source.py"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../research/generators/general/make_exp31_source.py"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../research/generators/general/make_exp33_source.py"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../research/generators/general/make_exp37_source.py"
+    VERBATIM
+)
+
+add_library(kephir37_native STATIC
+    "${KEPHIR37_GENERATED_CPP}"
+)
+target_include_directories(kephir37_native
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+target_compile_features(kephir37_native PUBLIC cxx_std_20)
+target_compile_definitions(kephir37_native PRIVATE
+    NO_INTERNAL_VERIFY
+    K2_ADAPT_MODE=9
+    K2_LAZY_MODE=1
+    K2_PSG_MODE=3
+    K2_DIST_TOPO_MODE=8
+    K2_DUAL_MATCH_MODE=1
+)
+set_target_properties(kephir37_native PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 add_library(kephir2_core STATIC
     src/analyzer.cpp
     src/archive.cpp
@@ -16,6 +60,8 @@ target_include_directories(kephir2_core
 )
 
 target_compile_features(kephir2_core PUBLIC cxx_std_20)
+target_link_libraries(kephir2_core PUBLIC kephir37_native)
+set_target_properties(kephir2_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 if (MSVC)
     target_compile_options(kephir2_core PRIVATE /W4 /permissive-)
@@ -73,6 +119,11 @@ add_executable(kephir2_execution_smoke
 )
 target_link_libraries(kephir2_execution_smoke PRIVATE kephir2_core)
 
+add_executable(kephir2_native37_smoke
+    tests/native37_smoke.cpp
+)
+target_link_libraries(kephir2_native37_smoke PRIVATE kephir37_native)
+
 enable_testing()
 add_test(NAME kephir2_strategy_smoke COMMAND kephir2_strategy_smoke)
 add_test(NAME kephir2_analyzer_smoke COMMAND kephir2_analyzer_smoke)
@@ -80,6 +131,7 @@ add_test(NAME kephir2_planner_smoke COMMAND kephir2_planner_smoke)
 add_test(NAME kephir2_archive_smoke COMMAND kephir2_archive_smoke)
 add_test(NAME kephir2_packing_smoke COMMAND kephir2_packing_smoke)
 add_test(NAME kephir2_execution_smoke COMMAND kephir2_execution_smoke)
+add_test(NAME kephir2_native37_smoke COMMAND kephir2_native37_smoke)
 
 
 add_library(kephir2_api SHARED
