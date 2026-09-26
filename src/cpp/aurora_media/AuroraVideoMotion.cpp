@@ -174,6 +174,16 @@ MotionResidual AuroraVideoMotion::encode_mc8r4_limited(ByteView cur,ByteView pre
                 if(cost<best_cost) {
                     best_cost=cost;
                     best_idx=static_cast<int>(i);
+
+                    // Exact fast path: SAD is non-negative, so zero is the
+                    // global optimum. Candidate order is the tie-break rule
+                    // (the encoder only accepts strictly lower costs), hence
+                    // stopping here is bitstream-identical to evaluating all
+                    // remaining candidates.
+#if !defined(AURORA_DISABLE_EXACT_MOTION_FASTPATH)
+                    if(best_cost==0)
+                        break;
+#endif
                 }
             }
 
