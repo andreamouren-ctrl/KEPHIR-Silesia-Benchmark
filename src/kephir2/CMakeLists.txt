@@ -61,3 +61,21 @@ add_test(NAME kephir2_strategy_smoke COMMAND kephir2_strategy_smoke)
 add_test(NAME kephir2_analyzer_smoke COMMAND kephir2_analyzer_smoke)
 add_test(NAME kephir2_planner_smoke COMMAND kephir2_planner_smoke)
 add_test(NAME kephir2_archive_smoke COMMAND kephir2_archive_smoke)
+
+
+add_library(kephir2_api SHARED
+    src/kephir2_c.cpp
+)
+target_include_directories(kephir2_api
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+target_compile_features(kephir2_api PUBLIC cxx_std_20)
+target_compile_definitions(kephir2_api PRIVATE KEPHIR2_BUILD_DLL=1)
+target_link_libraries(kephir2_api PRIVATE kephir2_core)
+
+add_executable(kephir2_api_smoke
+    tests/api_smoke.cpp
+)
+target_link_libraries(kephir2_api_smoke PRIVATE kephir2_api)
+add_test(NAME kephir2_api_smoke COMMAND kephir2_api_smoke)
