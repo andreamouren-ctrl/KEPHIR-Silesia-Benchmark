@@ -994,7 +994,56 @@ EXP-84 remains the measured authority whenever EXP-88 cannot safely finalize FLA
 
 ---
 
-## 21. Current validated facts
+## 21. EXP-89 — Native Planner Gate Parity & Performance
+
+Status:
+
+**PARITY PASS / PERFORMANCE OPTIMIZATION REQUIRED**
+
+EXP-89 measured the actual native C++ path:
+
+```text
+ContentAnalyzer
+    → CompressionPlanner
+    → GlobalRouter EXP-88 gate
+```
+
+on Matrix v1 + holdout v2.
+
+Result:
+
+```text
+Initial-action parity: 16 / 16
+Feature mismatches:    0
+Core Smoke:            PASS
+Aggregate native time: 11.818 s
+```
+
+Selected native timings:
+
+```text
+repository               1.466 s
+Silesia                  0.259 s
+many_tiny_source         7.558 s
+many_medium_four_groups  0.791 s
+redundant_backup         0.316 s
+```
+
+Conclusion:
+
+The native decision logic is semantically correct, but the current Analyzer I/O implementation is inefficient for many small/medium files.
+
+Root cause:
+
+`analyze_file()` currently performs a seek/read operation for each stride sample. With thousands of small files this produces millions of tiny file operations. Directory aggregate sampling can repeat similar work.
+
+The router itself is not the bottleneck.
+
+This defines EXP-90.
+
+---
+
+## 22. Current validated facts
 
 At the present checkpoint:
 
@@ -1012,7 +1061,7 @@ At the present checkpoint:
 
 ---
 
-## 22. Current product architecture priority
+## 23. Current product architecture priority
 
 The current production path now contains both the native Content Analyzer and the native Global Router:
 
@@ -1032,7 +1081,7 @@ The next architectural task is to validate this decision layer over a broader wo
 
 ---
 
-## 23. Validation matrix still required
+## 24. Validation matrix still required
 
 Before EXP-79 can be declared the final production Global Router, it must be tested on:
 
@@ -1061,7 +1110,7 @@ For every workload, record:
 
 ---
 
-## 24. Current engineering rules
+## 25. Current engineering rules
 
 Every future milestone must follow:
 
@@ -1086,35 +1135,31 @@ Production functionality should progressively migrate into the native KEPHIR 2 C
 
 ---
 
-## 25. Immediate next milestone
+## 26. Immediate next milestone
 
-**EXP-89 — Native Planner Gate Parity & Performance**
+**EXP-90 — Buffered Small/Medium-File Analyzer Fast Path**
 
 Goal:
 
-Measure the actual C++ ContentAnalyzer + GlobalRouter gate on Matrix v1 + holdout v2.
+Eliminate the millions of per-byte seek/read operations responsible for EXP-89 native planning overhead while preserving exact classifier semantics.
 
-The test must compare the native initial action against the validated EXP-88 policy:
+Implementation direction:
 
-- final FLAT;
-- or request bounded probe.
-
-Metrics:
-
-- action parity across all 16 workloads;
-- native analysis/planning time per workload;
-- aggregate native planning time;
-- groupability feature parity where practical.
+- for files up to a bounded threshold, perform one buffered sequential read;
+- derive the exact Python-compatible stride sample from that in-memory buffer;
+- apply the same optimization to directory aggregate sampling;
+- retain sparse sampling for large files to avoid reading huge archives in full.
 
 Acceptance criteria:
 
-- 16/16 initial-action parity with EXP-88;
-- Native Core Smoke PASS;
-- no Python dependency in the measured planner path itself;
-- use the result to decide whether ContentAnalyzer optimization is required before native archive/execution integration.
+- 16/16 EXP-88 initial-action parity;
+- 0 groupability feature mismatches;
+- Python↔C++ classifier parity remains PASS;
+- materially reduce EXP-89's 11.818 s aggregate native planning time;
+- especially reduce many_tiny_source from 7.558 s.
 
 ---
-## 26. Current checkpoint summary
+## 27. Current checkpoint summary
 
 ```text
 KEPHIR 1.0
@@ -1146,16 +1191,18 @@ KEPHIR 2
             ├── EXP-86 ................. 8/8 v1, overfit
             ├── EXP-87 holdout ......... 4/8, 262 B regret
             ├── EXP-88 ................. PROMOTED, 16/16, 0 B
+            ├── EXP-89 native parity ... 16/16, 0 feature mismatches
+            ├── EXP-89 native time ..... 11.818 s, OPTIMIZE ANALYZER
             ├── Router Matrix v1 ....... FROZEN
             ├── Router Matrix v2 ....... HOLDOUT ESTABLISHED
             ├── Native EXP-84 policy ... PASS
             ├── Routing SHA ............ PASS
-            └── Next ................... EXP-89 native planner benchmark
+            └── Next ................... EXP-90 buffered native analyzer
 ```
 
 ---
 
-## 27. Update policy
+## 28. Update policy
 
 This document is mandatory project state.
 
