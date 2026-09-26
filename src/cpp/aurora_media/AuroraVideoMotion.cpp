@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <limits>
 #include <tuple>
+#include <utility>
 #if defined(__SSE2__)
 #include <emmintrin.h>
 #endif
@@ -115,10 +116,9 @@ std::vector<std::pair<int,int>> AuroraVideoMotion::dense_candidates(int radius) 
     return c;
 }
 
-MotionResidual AuroraVideoMotion::encode_mc8r4_h3(
+H3ResidualVariants AuroraVideoMotion::encode_mc8r4_h3_variants(
         ByteView cur,ByteView prev,
-        std::uint32_t w,std::uint32_t h,
-        DenseChromaPolicy chroma_policy) {
+        std::uint32_t w,std::uint32_t h) {
     constexpr std::uint32_t block=8;
     constexpr int radius=4;
 
@@ -154,11 +154,13 @@ MotionResidual AuroraVideoMotion::encode_mc8r4_h3(
     const auto us=uv_size(w,h);
     const auto cw=w/2;
 
-    MotionResidual out;
+    H3ResidualVariants out;
     out.motion_map.reserve(static_cast<std::size_t>(w/block)*(h/block));
-    out.residual_yuv420.resize(fs);
+    out.residual_floor_yuv420.resize(fs);
+    out.residual_trunc_yuv420.resize(fs);
 
-    auto residual_plane=[&](std::size_t cur_off,std::size_t prev_off,std::size_t out_off,
+    auto residual_plane=[&](Bytes& target,
+                            std::size_t cur_off,std::size_t prev_off,std::size_t out_off,
                             std::uint32_t stride,std::uint32_t x,std::uint32_t y,
                             std::uint32_t bs,int dx,int dy) {
         for(std::uint32_t yy=0;yy<bs;++yy) {
@@ -175,13 +177,13 @@ MotionResidual AuroraVideoMotion::encode_mc8r4_h3(
                     reinterpret_cast<const __m128i*>(prev.data()+pi));
                 const __m128i d=_mm_sub_epi8(a,b);
                 _mm_storel_epi64(
-                    reinterpret_cast<__m128i*>(out.residual_yuv420.data()+oi),d);
+                    reinterpret_cast<__m128i*>(target.data()+oi),d);
                 continue;
             }
 #endif
             for(std::uint32_t xx=0;xx<bs;++xx) {
                 const int d=static_cast<int>(cur[ci+xx])-static_cast<int>(prev[pi+xx]);
-                out.residual_yuv420[oi+xx]=static_cast<Byte>(d & 0xff);
+                target[oi+xx]=static_cast<Byte>(d & 0xff);
             }
         }
     };
@@ -202,7 +204,7 @@ MotionResidual AuroraVideoMotion::encode_mc8r4_h3(
             std::array<bool,81> evaluated{};
             std::array<bool,81> refine{};
 
-            for(const auto& [dx,dy]:sparse) {
+            for(const auto [dx,dy]:sparse) {
                 const int sx=static_cast<int>(bx)+dx;
                 const int sy=static_cast<int>(by)+dy;
                 if(sx<0 || sy<0 ||
@@ -269,9 +271,7 @@ MotionResidual AuroraVideoMotion::encode_mc8r4_h3(
 
                     if(cost<best.cost ||
                        (cost==best.cost && static_cast<int>(idx)<best.dense_idx)) {
-                        best=Ranked{
-                            cost,static_cast<int>(idx),dx,dy
-                        };
+                        best=Ranked{cost,static_cast<int>(idx),dx,dy};
                     }
 
                     if(best.cost==0)
@@ -280,19 +280,55 @@ MotionResidual AuroraVideoMotion::encode_mc8r4_h3(
             }
 
             out.motion_map.push_back(static_cast<Byte>(best.dense_idx));
-            residual_plane(0,0,0,w,bx,by,block,best.dx,best.dy);
+
+            // Luma prediction is independent of chroma rounding. Compute it
+            // once, then copy the exact modulo-256 residual into the TRUNC
+            // variant before generating the two chroma residuals.
+            residual_plane(out.residual_floor_yuv420,0,0,0,w,bx,by,block,best.dx,best.dy);
+            for(std::uint32_t yy=0;yy<block;++yy) {
+                const auto off=static_cast<std::size_t>(by+yy)*w+bx;
+                std::copy_n(
+                    out.residual_floor_yuv420.begin()+static_cast<std::ptrdiff_t>(off),
+                    block,
+                    out.residual_trunc_yuv420.begin()+static_cast<std::ptrdiff_t>(off));
+            }
 
             const auto cb=block/2;
             const auto cx=bx/2;
             const auto cy=by/2;
-            const auto cdx=dense_chroma_shift(best.dx,chroma_policy);
-            const auto cdy=dense_chroma_shift(best.dy,chroma_policy);
 
-            residual_plane(ys,ys,ys,cw,cx,cy,cb,cdx,cdy);
-            residual_plane(ys+us,ys+us,ys+us,cw,cx,cy,cb,cdx,cdy);
+            const auto floor_dx=dense_chroma_shift(best.dx,DenseChromaPolicy::Floor);
+            const auto floor_dy=dense_chroma_shift(best.dy,DenseChromaPolicy::Floor);
+            residual_plane(out.residual_floor_yuv420,ys,ys,ys,cw,cx,cy,cb,floor_dx,floor_dy);
+            residual_plane(out.residual_floor_yuv420,ys+us,ys+us,ys+us,cw,cx,cy,cb,floor_dx,floor_dy);
+
+            const auto trunc_dx=dense_chroma_shift(best.dx,DenseChromaPolicy::Trunc);
+            const auto trunc_dy=dense_chroma_shift(best.dy,DenseChromaPolicy::Trunc);
+            residual_plane(out.residual_trunc_yuv420,ys,ys,ys,cw,cx,cy,cb,trunc_dx,trunc_dy);
+            residual_plane(out.residual_trunc_yuv420,ys+us,ys+us,ys+us,cw,cx,cy,cb,trunc_dx,trunc_dy);
         }
     }
 
+    return out;
+}
+
+MotionResidual AuroraVideoMotion::encode_mc8r4_h3(
+        ByteView cur,ByteView prev,
+        std::uint32_t w,std::uint32_t h,
+        DenseChromaPolicy chroma_policy) {
+    auto variants=encode_mc8r4_h3_variants(cur,prev,w,h);
+
+    MotionResidual out;
+    out.motion_map=std::move(variants.motion_map);
+
+    if(chroma_policy==DenseChromaPolicy::Floor) {
+        out.residual_yuv420=std::move(variants.residual_floor_yuv420);
+    } else if(chroma_policy==DenseChromaPolicy::Trunc) {
+        out.residual_yuv420=std::move(variants.residual_trunc_yuv420);
+    } else {
+        throw AuroraMediaError(ErrorCode::InvalidArgument,
+                               "unknown H3 chroma policy");
+    }
     return out;
 }
 
