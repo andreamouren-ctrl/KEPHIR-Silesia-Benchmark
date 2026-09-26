@@ -15,8 +15,9 @@ Active codec path:
 - AUM v0.1
 
 Current full-AUM Sintel result:
-- 5,546,958 bytes
+- 5,546,982 bytes
 - bit-exact
+- canonical FULL256 + TAIL16 bridge revalidated on 2026-09-26
 
 KASH-01 research result:
 - 5,541,589 bytes
@@ -228,3 +229,36 @@ Rejected during the same cycle:
 
 Current primary performance bottleneck:
 - encode-side MC8R4 motion search.
+
+
+## 2026-09-26 canonical audio bridge restoration
+
+Validation:
+- GitHub Actions run 36220062460
+- explicit FULL256 + TAIL16 frontend roundtrip: PASS
+- complete AUM horizon roundtrip: PASS
+
+Root cause fixed:
+- the bridge had drifted to generalized KMRL v2 for s16 PCM;
+- the promoted FULL256 + TAIL16 geometry was documented but not wired into the packet bridge.
+
+Canonical s16 path is now explicit KRL2 layout 4:
+- KMRL carry prediction;
+- FULL256;
+- TAIL16;
+- KHEPRI EXP-37A;
+- AUM v0.1.
+
+Recovery-horizon results:
+- 200 ms: 5,825,154 bytes;
+- 500 ms: 5,715,715 bytes;
+- 1000 ms: 5,599,488 bytes;
+- 2000 ms: 5,546,982 bytes.
+
+The 2000 ms result is only 24 bytes above the historical 5,546,958-byte checkpoint
+(~0.00043%) while removing the research-time monkey-patched layout ambiguity.
+
+Decision:
+- promote the wiring fix;
+- invalidate KASH-02 predictor conclusions collected on the generalized frontend;
+- rerun adaptive recovery prediction only on this restored canonical path.
