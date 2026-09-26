@@ -6,7 +6,6 @@ on:
     branches:
       - development/kephir-2-core
     paths:
-      - "src/kephir2/**"
       - "research/benchmarks/exp100_parallel_encode.py"
       - ".github/workflows/exp100_parallel_encode.yml"
 
