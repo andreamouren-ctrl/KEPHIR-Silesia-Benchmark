@@ -1,0 +1,135 @@
+name: KSV-22 H3 Policy Selector
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["feature/aurora-media-ksv22-h3-policy-selector"]
+    paths:
+      - ".github/workflows/ksv22_h3_policy_selector.yml"
+      - "research/video/experiments/ksv22_h3_policy_selector.py"
+      - "research/video/experiments/ksv20_h3_refinement.py"
+      - "research/video/experiments/ksv17_dense_integer_motion.py"
+      - "research/video/experiments/ksv13_natural_radius_sweep.py"
+      - "make_exp40_source.py"
+
+jobs:
+  ksv22:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential ffmpeg curl python3-numpy
+
+      - name: Build optimized byte-identical KHEPRI EXP-40
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          python3 make_exp37_source.py
+          python3 make_exp40_source.py
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -DNO_INTERNAL_VERIFY \
+            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 \
+            -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 \
+            -DK2_SHARED_MATCH_CACHE_MODE=1 -pthread \
+            KEPHIR_2_EXP40_SHARED_MATCH_CACHE.cpp -o kephir40
+
+      - name: Download Xiph natural video corpus
+        run: |
+          mkdir -p natural_sources
+          curl -L --fail --retry 4 -o natural_sources/container.y4m \
+            https://media.xiph.org/video/derf/y4m/container_cif.y4m
+          curl -L --fail --retry 4 -o natural_sources/coastguard.y4m \
+            https://media.xiph.org/video/derf/y4m/coastguard_cif.y4m
+          curl -L --fail --retry 4 -o natural_sources/mobile.y4m \
+            https://media.xiph.org/video/derf/y4m/mobile_cif.y4m
+          curl -L --fail --retry 4 -o natural_sources/football.y4m \
+            https://media.xiph.org/video/derf/y4m/football_cif.y4m
+          curl -L --fail --retry 4 -o natural_sources/stefan.y4m \
+            https://media.xiph.org/video/derf/y4m/stefan_sif.y4m
+
+      - name: Prepare deterministic 60-frame corpus
+        run: |
+          mkdir -p natural_raw
+          ffmpeg -hide_banner -loglevel error -y -i natural_sources/container.y4m \
+            -frames:v 60 -pix_fmt yuv420p -f rawvideo natural_raw/container.yuv
+          ffmpeg -hide_banner -loglevel error -y -i natural_sources/coastguard.y4m \
+            -frames:v 60 -pix_fmt yuv420p -f rawvideo natural_raw/coastguard.yuv
+          ffmpeg -hide_banner -loglevel error -y -i natural_sources/mobile.y4m \
+            -frames:v 60 -pix_fmt yuv420p -f rawvideo natural_raw/mobile.yuv
+          ffmpeg -hide_banner -loglevel error -y -i natural_sources/football.y4m \
+            -frames:v 60 -pix_fmt yuv420p -f rawvideo natural_raw/football.yuv
+          ffmpeg -hide_banner -loglevel error -y -i natural_sources/stefan.y4m \
+            -frames:v 60 -pix_fmt yuv420p -f rawvideo natural_raw/stefan.yuv
+
+      - name: Run KSV-22 policy-selector experiment
+        env:
+          PYTHONPATH: research/video/lab:research/video/experiments:research/backend
+        run: |
+          python3 research/video/experiments/ksv22_h3_policy_selector.py \
+            --kephir ./kephir40 \
+            --clip container:natural_raw/container.yuv:352:288:30:1 \
+            --clip coastguard:natural_raw/coastguard.yuv:352:288:30:1 \
+            --clip mobile:natural_raw/mobile.yuv:352:288:30:1 \
+            --clip football:natural_raw/football.yuv:352:288:30:1 \
+            --clip stefan:natural_raw/stefan.yuv:352:240:30:1 \
+            | tee ksv22_policy.log
+
+      - name: Validate KSV-22 result
+        run: |
+          grep -q "KSV22_H3_POLICY_SELECTOR_PASS" ksv22_policy.log
+          python3 - <<'PY' | tee ksv22_summary.txt
+          import json
+          from pathlib import Path
+
+          r=json.loads(
+              Path("results/video/ksv22_h3_policy_selector/KSV22_RESULTS.json").read_text()
+          )
+          assert len(r["rows"]) == 5
+          assert r["production_candidate_duplicate_khepri_encodes"] == 0
+          for row in r["rows"]:
+              for policy in ("h0","h1","oracle"):
+                  assert row[policy]["sha_ok"]
+
+          a=r["aggregate"]
+          print("KSV22_VALIDATION_PASS")
+          print("BASELINE_BYTES",a["baseline_bytes"])
+          print("H0_BYTES",a["h0"]["bytes"])
+          print("H1_BYTES",a["h1"]["bytes"])
+          print("ORACLE_BYTES",a["oracle_bytes"])
+          print("H0_GAIN_RECOVERED_PCT",f'{a["h0"]["gain_recovered_percent"]:.3f}')
+          print("H1_GAIN_RECOVERED_PCT",f'{a["h1"]["gain_recovered_percent"]:.3f}')
+          print("H0_MATCH_WINDOWS",a["h0"]["oracle_mode_match_windows"])
+          print("H1_MATCH_WINDOWS",a["h1"]["oracle_mode_match_windows"])
+          print("WINDOW_COUNT",a["h1"]["window_count"])
+          print("DECISION_SECONDS",f'{a["decision_seconds"]:.6f}')
+          candidate=(
+              a["h1"]["gain_recovered_percent"] >= 95.0
+              and a["h1"]["delta_vs_oracle_percent"] <= 0.10
+          )
+          print("KSV22_H1_PRODUCTION_CANDIDATE",str(candidate).lower())
+
+          for row in r["rows"]:
+              print(
+                  "SOURCE",row["name"],
+                  "baseline",row["baseline_bytes"],
+                  "h0",row["h0"]["bytes"],
+                  "h1",row["h1"]["bytes"],
+                  "oracle",row["oracle"]["bytes"],
+                  "h1_recovered",f'{row["h1"]["gain_recovered_percent"]:.3f}',
+              )
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ksv22-h3-policy-selector
+          path: |
+            results/video/ksv22_h3_policy_selector/KSV22_RESULTS.json
+            ksv22_policy.log
+            ksv22_summary.txt
