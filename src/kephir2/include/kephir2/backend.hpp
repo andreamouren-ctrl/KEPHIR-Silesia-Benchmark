@@ -1,5 +1,7 @@
 #pragma once
 
+#include "kephir2/operation.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -37,6 +39,7 @@ public:
 struct BackendOptions {
     std::size_t workers{0};
     bool allow_local_experience{true};
+    const OperationContext* operation{nullptr};
 };
 
 struct BackendStats {
