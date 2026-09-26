@@ -1,0 +1,78 @@
+name: AURORA Audio Format Matrix
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["research/khepri-stream-codec"]
+  push:
+    branches: ["feature/aurora-media-audio-format-matrix"]
+    paths:
+      - ".github/workflows/aurora_audio_format_matrix.yml"
+      - "benchmarks/major_codecs/benchmark_audio_format_matrix.py"
+      - "src/python/reference/aurora_media_codec_bridge.py"
+      - "src/python/reference/aurora_media_container.py"
+      - "research/audio/lab/kstream_kmrl_lab.py"
+      - "research/audio/lab/kstream_kmrl_frontend.py"
+
+jobs:
+  matrix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential python3-numpy
+
+      - name: Build EXP-37A
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          python3 make_exp37_source.py
+          g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY \
+            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 \
+            -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 -pthread \
+            KEPHIR_2_EXP37_DUAL_MATCH.cpp -o kephir37
+
+      - name: Run audio format matrix
+        env:
+          PYTHONPATH: src/python/reference:research/audio/lab:research/audio/experiments:research/video/lab:research/video/experiments:research/backend
+        run: |
+          python3 benchmarks/major_codecs/benchmark_audio_format_matrix.py \
+            --kephir ./kephir37 | tee audio_format_matrix.txt
+
+      - name: Validate matrix
+        run: |
+          grep -q "AURORA_AUDIO_FORMAT_MATRIX_PASS 7" audio_format_matrix.txt
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path("results/audio/format_matrix/AUDIO_FORMAT_MATRIX.json").read_text())
+          assert r["case_count"] == 7
+          assert r["all_bit_exact"]
+          assert r["all_aum_metadata_ok"]
+          required={
+              (1,44100,16),
+              (2,48000,16),
+              (6,48000,16),
+              (2,96000,24),
+              (6,96000,24),
+              (2,192000,32),
+              (8,96000,32),
+          }
+          got={(x["channels"],x["sample_rate"],x["bits_per_sample"]) for x in r["cases"]}
+          assert got == required
+          print("AURORA_AUDIO_FORMAT_MATRIX_JSON_PASS")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-audio-format-matrix
+          path: |
+            results/audio/format_matrix/AUDIO_FORMAT_MATRIX.json
+            audio_format_matrix.txt
