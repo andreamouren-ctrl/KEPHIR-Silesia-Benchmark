@@ -24,10 +24,28 @@ std::size_t frame_size(std::uint32_t w,std::uint32_t h) {
 std::uint64_t sad8x8(ByteView cur,ByteView prev,
                     std::uint32_t stride,
                     std::uint32_t cx,std::uint32_t cy,
-                    std::uint32_t px,std::uint32_t py) {
+                    std::uint32_t px,std::uint32_t py,
+                    std::uint64_t stop_at) {
+#if defined(AURORA_DISABLE_HALF_SAD_BOUND)
+    (void)stop_at;
+#endif
 #if defined(__SSE2__)
     std::uint64_t sum=0;
-    for(std::uint32_t yy=0;yy<8;++yy) {
+    for(std::uint32_t yy=0;yy<4;++yy) {
+        const auto* ca=cur.data()+static_cast<std::size_t>(cy+yy)*stride+cx;
+        const auto* pa=prev.data()+static_cast<std::size_t>(py+yy)*stride+px;
+        const __m128i a=_mm_loadl_epi64(reinterpret_cast<const __m128i*>(ca));
+        const __m128i b=_mm_loadl_epi64(reinterpret_cast<const __m128i*>(pa));
+        const __m128i s=_mm_sad_epu8(a,b);
+        sum += static_cast<std::uint64_t>(_mm_cvtsi128_si64(s));
+    }
+#if !defined(AURORA_DISABLE_HALF_SAD_BOUND)
+    // The partial SAD is monotonic. If half the block already reaches the
+    // current best cost, the candidate cannot become strictly better.
+    if(sum>=stop_at)
+        return sum;
+#endif
+    for(std::uint32_t yy=4;yy<8;++yy) {
         const auto* ca=cur.data()+static_cast<std::size_t>(cy+yy)*stride+cx;
         const auto* pa=prev.data()+static_cast<std::size_t>(py+yy)*stride+px;
         const __m128i a=_mm_loadl_epi64(reinterpret_cast<const __m128i*>(ca));
@@ -38,7 +56,18 @@ std::uint64_t sad8x8(ByteView cur,ByteView prev,
     return sum;
 #else
     std::uint64_t sum=0;
-    for(std::uint32_t yy=0;yy<8;++yy)
+    for(std::uint32_t yy=0;yy<4;++yy)
+        for(std::uint32_t xx=0;xx<8;++xx) {
+            const auto ci=static_cast<std::size_t>(cy+yy)*stride+(cx+xx);
+            const auto pi=static_cast<std::size_t>(py+yy)*stride+(px+xx);
+            sum += static_cast<std::uint64_t>(
+                std::abs(static_cast<int>(cur[ci])-static_cast<int>(prev[pi])));
+        }
+#if !defined(AURORA_DISABLE_HALF_SAD_BOUND)
+    if(sum>=stop_at)
+        return sum;
+#endif
+    for(std::uint32_t yy=4;yy<8;++yy)
         for(std::uint32_t xx=0;xx<8;++xx) {
             const auto ci=static_cast<std::size_t>(cy+yy)*stride+(cx+xx);
             const auto pi=static_cast<std::size_t>(py+yy)*stride+(px+xx);
@@ -201,7 +230,8 @@ MotionResidual AuroraVideoMotion::encode_mc8r4_limited(ByteView cur,ByteView pre
                 const std::uint64_t cost=sad8x8(
                     cur,prev,w,bx,by,
                     static_cast<std::uint32_t>(sx),
-                    static_cast<std::uint32_t>(sy));
+                    static_cast<std::uint32_t>(sy),
+                    best_cost);
                 if(cost<best_cost) {
                     best_cost=cost;
                     best_idx=static_cast<int>(i);
