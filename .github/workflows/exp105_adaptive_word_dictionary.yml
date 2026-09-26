@@ -1,0 +1,59 @@
+name: KEPHIR 2 EXP-105 Adaptive Word Dictionary
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - development/kephir-2-core
+    paths:
+      - "research/benchmarks/exp105_adaptive_word_dictionary.py"
+      - ".github/workflows/exp105_adaptive_word_dictionary.yml"
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build native KEPHIR
+        run: |
+          cmake -S src/kephir2 -B build/kephir2 -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/kephir2 --config Release --parallel
+
+      - name: Native test suite
+        run: ctest --test-dir build/kephir2 --output-on-failure
+
+      - name: Download canonical Silesia
+        run: |
+          mkdir -p corpora/silesia
+          curl -L --fail --retry 4 -o /tmp/silesia.zip             https://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip
+          echo "c240c17d6805fb8a0bde763f1b94cd99  /tmp/silesia.zip" | md5sum -c -
+          unzip -q /tmp/silesia.zip -d corpora/silesia
+          test "$(find corpora/silesia -type f -printf '%s\n' | awk '{s+=$1} END {print s}')" -eq 211938580
+
+      - name: Run EXP-105
+        run: |
+          python3 research/benchmarks/exp105_adaptive_word_dictionary.py             build/kephir2/kephir2_native_k75_cli             build/kephir2/kephir2_native37_blob_cli
+
+      - name: Validate result
+        run: |
+          python3 - <<'PY'
+          import json
+          d=json.load(open("exp105_results.json"))
+          assert d["raw_bytes"] == 211938580
+          assert d["current_archive_bytes"] > 0
+          assert d["projected_archive_bytes"] <= d["current_archive_bytes"]
+          print("EXP105_VALIDATION_PASS", json.dumps({
+              "gain":d["potential_gain_bytes"],
+              "current_ratio":d["current_ratio"],
+              "projected_ratio":d["projected_ratio"],
+              "wins":d["winning_entries"],
+          },sort_keys=True))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exp105-adaptive-word-dictionary
+          path: exp105_results.json
