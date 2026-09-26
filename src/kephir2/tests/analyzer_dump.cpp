@@ -1,7 +1,7 @@
 #include "kephir2/analyzer.hpp"
 
 #include <filesystem>
-#include <iostream>
+#include <iomanip>\n#include <iostream>
 
 int main(int argc, char** argv) {
     using namespace kephir2;
@@ -11,7 +11,7 @@ int main(int argc, char** argv) {
         return 2;
     }
 
-    ContentAnalyzer analyzer;
+    std::cout << std::setprecision(17);\n\n    ContentAnalyzer analyzer;
     for (int i = 1; i < argc; ++i) {
         const std::filesystem::path path(argv[i]);
         try {
