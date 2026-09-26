@@ -1106,7 +1106,52 @@ Decision:
 
 ---
 
-## 23. Current validated facts
+## 23. Native Archive Layer v1
+
+Status:
+
+**PROMOTED**
+
+Native files:
+
+```text
+src/kephir2/include/kephir2/archive.hpp
+src/kephir2/src/archive.cpp
+src/kephir2/tests/archive_smoke.cpp
+src/kephir2/tests/archive_dump.cpp
+src/kephir2/tests/archive_parity.py
+```
+
+Implemented:
+
+- unsigned 64-bit varint encode/decode;
+- prefix-compressed KPF1 manifest encode/decode;
+- deterministic byte-prefix handling for UTF-8 paths;
+- manifest group-id validation;
+- manifest truncation/trailing-byte detection;
+- deterministic directory file ordering;
+- archive extraction path-safety validation;
+- Python↔C++ byte-parity fixture.
+
+Validation:
+
+```text
+C++ tests:                    4/4 PASS
+Analyzer parity:              307 files PASS
+Varint Python↔C++ parity:     PASS
+Manifest Python↔C++ parity:   PASS
+Python decode of C++ manifest: PASS
+```
+
+The native layer preserves the existing KPF1 manifest byte format for valid production values while adding stricter malformed-input checks.
+
+Decision:
+
+**Native Archive Layer v1 is promoted into the KEPHIR 2 production core.**
+
+---
+
+## 24. Current validated facts
 
 At the present checkpoint:
 
@@ -1124,7 +1169,7 @@ At the present checkpoint:
 
 ---
 
-## 24. Current product architecture priority
+## 25. Current product architecture priority
 
 The current production path now contains both the native Content Analyzer and the native Global Router:
 
@@ -1144,7 +1189,7 @@ The next architectural task is to validate this decision layer over a broader wo
 
 ---
 
-## 25. Validation matrix still required
+## 26. Validation matrix still required
 
 Before EXP-79 can be declared the final production Global Router, it must be tested on:
 
@@ -1173,7 +1218,7 @@ For every workload, record:
 
 ---
 
-## 26. Current engineering rules
+## 27. Current engineering rules
 
 Every future milestone must follow:
 
@@ -1198,32 +1243,30 @@ Production functionality should progressively migrate into the native KEPHIR 2 C
 
 ---
 
-## 27. Immediate next milestone
+## 28. Immediate next milestone
 
-**Native Archive Layer v1**
+**Native KPF1 Envelope v1**
 
 Goal:
 
-Begin replacing Python archive orchestration with stable native C++ production components without changing compression semantics.
+Move the outer KPF1 file/directory container framing into C++ while keeping the existing inner compressed blobs opaque.
 
-First milestone:
+Implement next:
 
-- native unsigned-varint codec;
-- native prefix-compressed path manifest;
-- deterministic file ordering;
-- manifest encode/decode roundtrip;
-- path-safety validation;
-- byte-parity tests against the current Python manifest format where applicable;
-- no compression backend changes yet.
+- KPF1 magic/kind parsing;
+- file envelope encode/decode;
+- directory group-name table;
+- embedded manifest length framing;
+- per-group raw-length + compressed-blob framing;
+- strict bounds/trailing-byte validation;
+- Python↔C++ byte-parity fixtures.
 
-Rationale:
+No compression algorithm changes yet.
 
-The Analyzer/Planner decision layer is now validated and fast. The next largest architectural debt is Python archive orchestration and temporary-file/subprocess handling.
-
-The archive layer will be migrated incrementally before integrating the compression backend as a native library.
+This isolates archive framing from the backend and is the next step toward eliminating Python orchestration.
 
 ---
-## 28. Current checkpoint summary
+## 29. Current checkpoint summary
 
 ```text
 KEPHIR 1.0
@@ -1259,16 +1302,18 @@ KEPHIR 2
             ├── EXP-89 native time ..... 11.818 s baseline
             ├── EXP-90 ................. PROMOTED, 0.574 s
             ├── EXP-90 speedup ......... ~20.6x vs EXP-89
+            ├── Native Archive v1 ...... PROMOTED
+            ├── Manifest parity ........ PASS
             ├── Router Matrix v1 ....... FROZEN
             ├── Router Matrix v2 ....... HOLDOUT ESTABLISHED
             ├── Native EXP-84 policy ... PASS
             ├── Routing SHA ............ PASS
-            └── Next ................... Native Archive Layer v1
+            └── Next ................... Native KPF1 Envelope v1
 ```
 
 ---
 
-## 29. Update policy
+## 30. Update policy
 
 This document is mandatory project state.
 
