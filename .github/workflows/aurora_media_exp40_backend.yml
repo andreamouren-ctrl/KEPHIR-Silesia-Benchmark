@@ -1,0 +1,254 @@
+name: AURORA Media EXP40 Exact Cache
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["research/khepri-stream-codec"]
+  push:
+    branches: ["feature/aurora-media-exp40-shared-match-cache"]
+    paths:
+      - ".github/workflows/aurora_media_exp40_backend.yml"
+      - "make_exp40_source.py"
+      - "src/cpp/aurora_media/AuroraKhepriExp40MemoryAdapter.*"
+      - "benchmarks/major_codecs/aurora_khepri_exp40_backend_ab.cpp"
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+
+      - name: Generate EXP-37A and EXP-40 exact-cache source
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          python3 make_exp37_source.py
+          python3 make_exp40_source.py
+
+      - name: Build EXP-37A baseline
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -DNO_INTERNAL_VERIFY \
+            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 \
+            -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 \
+            -pthread -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraKhepriExp37MemoryAdapter.cpp \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            src/cpp/aurora_media/AuroraVideoResidual.cpp \
+            benchmarks/major_codecs/aurora_khepri_exp40_backend_ab.cpp \
+            -Isrc/cpp/aurora_media -o media_exp37
+
+      - name: Build EXP-40 exact shared-cache implementation
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -DNO_INTERNAL_VERIFY -DAURORA_KHEPRI_EXP40 \
+            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 \
+            -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 \
+            -DK2_SHARED_MATCH_CACHE_MODE=1 \
+            -pthread -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraKhepriExp40MemoryAdapter.cpp \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            src/cpp/aurora_media/AuroraVideoResidual.cpp \
+            benchmarks/major_codecs/aurora_khepri_exp40_backend_ab.cpp \
+            -Isrc/cpp/aurora_media -o media_exp40
+
+      - name: Run repeated alternating backend A/B
+        run: |
+          : > exp40_backend_ab.txt
+          for i in 1 2 3 4 5; do
+            echo "=== ROUND $i ===" | tee -a exp40_backend_ab.txt
+            if [ $((i % 2)) -eq 1 ]; then
+              ./media_exp37 | tee -a exp40_backend_ab.txt
+              ./media_exp40 | tee -a exp40_backend_ab.txt
+            else
+              ./media_exp40 | tee -a exp40_backend_ab.txt
+              ./media_exp37 | tee -a exp40_backend_ab.txt
+            fi
+          done
+
+      - name: Validate byte identity and summarize
+        run: |
+          python3 - <<'PY' | tee exp40_backend_summary.txt
+          import re
+          import statistics
+          from pathlib import Path
+
+          rows=[]
+          for line in Path("exp40_backend_ab.txt").read_text().splitlines():
+              if line.startswith("AURORA_KHEPRI_MEDIA_BACKEND_PASS "):
+                  rows.append(dict(re.findall(r"(\\w+)=([^ ]+)",line)))
+
+          groups={}
+          for row in rows:
+              groups.setdefault(row["backend"],[]).append(row)
+
+          base=groups.get("EXP37_DUAL",[])
+          cached=groups.get("EXP40_SHARED_CACHE",[])
+          if len(base)!=5 or len(cached)!=5:
+              raise SystemExit(f"expected 5 trials/backend, got {len(base)} and {len(cached)}")
+
+          reference=base[0]
+          for row in base+cached:
+              for key in ("tiles","input_bytes","input_fingerprint"):
+                  if row[key]!=reference[key]:
+                      raise SystemExit(f"input mismatch: {key}")
+              if row["packed_bytes"]!=reference["packed_bytes"]:
+                  raise SystemExit("packed byte count changed")
+              if row["payload_fingerprint"]!=reference["payload_fingerprint"]:
+                  raise SystemExit("payload fingerprint changed")
+
+          def med(group,key):
+              return statistics.median(float(x[key]) for x in group)
+
+          b_enc=med(base,"encode_ms")
+          c_enc=med(cached,"encode_ms")
+          b_dec=med(base,"decode_ms")
+          c_dec=med(cached,"decode_ms")
+          speed=b_enc/c_enc
+          enc_reduction=(1.0-c_enc/b_enc)*100.0
+          dec_delta=(c_dec/b_dec-1.0)*100.0
+
+          print("AURORA_MEDIA_EXP40_REPEATED_AB")
+          print("BITSTREAM_IDENTITY=PASS")
+          print(
+              "encode_median",
+              f"exp37_ms={b_enc:.6f}",
+              f"exp40_ms={c_enc:.6f}",
+              f"speedup_x={speed:.3f}",
+              f"time_reduction_pct={enc_reduction:.2f}",
+          )
+          print(
+              "decode_median",
+              f"exp37_ms={b_dec:.6f}",
+              f"exp40_ms={c_dec:.6f}",
+              f"delta_pct={dec_delta:.2f}",
+          )
+
+          exact_gain=(c_enc <= b_enc*0.98 and c_dec <= b_dec*1.03)
+          strong_gain=(c_enc <= b_enc*0.95 and c_dec <= b_dec*1.03)
+          print("EXP40_EXACT_GAIN_CANDIDATE",str(exact_gain).lower())
+          print("EXP40_STRONG_GAIN_CANDIDATE",str(strong_gain).lower())
+          PY
+
+      - name: Build focused 4K EXP-37 pipeline
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -DNO_INTERNAL_VERIFY \
+            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 \
+            -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 \
+            -pthread -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraKhepriExp37MemoryAdapter.cpp \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            src/cpp/aurora_media/AuroraVideoResidual.cpp \
+            benchmarks/major_codecs/aurora_exp40_4k_pipeline_ab.cpp \
+            -Isrc/cpp/aurora_media -o pipeline_exp37
+
+      - name: Build focused 4K EXP-40 pipeline
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -DNO_INTERNAL_VERIFY -DAURORA_KHEPRI_EXP40 \
+            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 \
+            -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 \
+            -DK2_SHARED_MATCH_CACHE_MODE=1 \
+            -pthread -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraKhepriExp40MemoryAdapter.cpp \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            src/cpp/aurora_media/AuroraVideoResidual.cpp \
+            benchmarks/major_codecs/aurora_exp40_4k_pipeline_ab.cpp \
+            -Isrc/cpp/aurora_media -o pipeline_exp40
+
+      - name: Run repeated focused 4K pipeline A/B
+        run: |
+          : > exp40_4k_pipeline_ab.txt
+          for i in 1 2 3; do
+            echo "=== ROUND $i ===" | tee -a exp40_4k_pipeline_ab.txt
+            if [ $((i % 2)) -eq 1 ]; then
+              ./pipeline_exp37 | tee -a exp40_4k_pipeline_ab.txt
+              ./pipeline_exp40 | tee -a exp40_4k_pipeline_ab.txt
+            else
+              ./pipeline_exp40 | tee -a exp40_4k_pipeline_ab.txt
+              ./pipeline_exp37 | tee -a exp40_4k_pipeline_ab.txt
+            fi
+          done
+
+      - name: Summarize focused 4K pipeline gain
+        run: |
+          python3 - <<'PY' | tee exp40_4k_pipeline_summary.txt
+          import re
+          import statistics
+          from pathlib import Path
+
+          current=None
+          rows={"EXP37_DUAL":[],"EXP40_SHARED_CACHE":[]}
+          for line in Path("exp40_4k_pipeline_ab.txt").read_text().splitlines():
+              if line.startswith("backend="):
+                  current=line.split()[0].split("=",1)[1]
+              elif line.startswith("PARALLEL_PASS name=4K workers=4 "):
+                  if current not in rows:
+                      raise SystemExit("unknown pipeline backend")
+                  vals=dict(re.findall(r"(\\w+)=([^ ]+)",line))
+                  rows[current].append(vals)
+
+          if any(len(v)!=3 for v in rows.values()):
+              raise SystemExit(f"expected 3 pipeline trials/backend: { {k:len(v) for k,v in rows.items()} }")
+
+          base=rows["EXP37_DUAL"]
+          fast=rows["EXP40_SHARED_CACHE"]
+
+          for group in (base,fast):
+              if len({x["packed_bytes"] for x in group})!=1:
+                  raise SystemExit("non-deterministic pipeline payload size")
+          if base[0]["packed_bytes"]!=fast[0]["packed_bytes"]:
+              raise SystemExit("pipeline payload size changed")
+
+          def med(group,key):
+              return statistics.median(float(x[key]) for x in group)
+
+          be=med(base,"encode_seconds")
+          fe=med(fast,"encode_seconds")
+          bd=med(base,"decode_seconds")
+          fd=med(fast,"decode_seconds")
+          bt=med(base,"total_seconds")
+          ft=med(fast,"total_seconds")
+
+          print("AURORA_EXP40_4K_PIPELINE_AB")
+          print("PAYLOAD_SIZE_EQUIVALENCE=PASS")
+          print(
+              "encode",
+              f"exp37_fps={1.0/be:.6f}",
+              f"exp40_fps={1.0/fe:.6f}",
+              f"speedup_x={be/fe:.3f}",
+              f"time_reduction_pct={(1.0-fe/be)*100.0:.2f}",
+          )
+          print(
+              "decode",
+              f"exp37_fps={1.0/bd:.6f}",
+              f"exp40_fps={1.0/fd:.6f}",
+              f"speedup_x={bd/fd:.3f}",
+          )
+          print(
+              "total",
+              f"exp37_fps={1.0/bt:.6f}",
+              f"exp40_fps={1.0/ft:.6f}",
+              f"speedup_x={bt/ft:.3f}",
+              f"time_reduction_pct={(1.0-ft/bt)*100.0:.2f}",
+          )
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-media-exp40-exact-cache
+          path: |
+            exp40_backend_ab.txt
+            exp40_backend_summary.txt
+            exp40_4k_pipeline_ab.txt
+            exp40_4k_pipeline_summary.txt
