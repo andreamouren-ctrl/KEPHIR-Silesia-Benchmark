@@ -7,7 +7,7 @@ on:
   push:
     branches: ["feature/aurora-media-ksv19-h2-refinement"]
     paths:
-      - ".github/workflows/ksv19_hierarchical_dense_h2.yml"
+      - ".github/workflows/ksv19_h2_refinement.yml"
       - "research/video/experiments/ksv19_h2_refinement.py"
       - "research/video/experiments/ksv17_dense_integer_motion.py"
       - "research/video/experiments/ksv13_natural_radius_sweep.py"
