@@ -156,3 +156,38 @@ Measured native tile-motion speed:
 Decision:
 - promote Exact Motion Fast Path to the AURORA Media research baseline;
 - next exact-speed target: remove tile extraction/copy overhead through reference-view/zero-copy motion input.
+
+
+## 2026-09-26 interior motion fast-path checkpoint
+
+Validation:
+- GitHub Actions run 36219179822
+- result: PASS
+- regression test: PASS
+- A/B output fingerprints: identical
+- bitstream input equivalence: PASS
+
+Optimization:
+- interior MC8R4 blocks skip redundant per-candidate boundary checks;
+- edge blocks retain the historical validation path;
+- candidate set/order, SAD score and first-minimum tie rule are unchanged.
+
+Native tile-motion timing:
+- static: 1.003x, 0.34% time reduction;
+- low motion: 1.073x, 6.80% time reduction;
+- noise/high activity: 1.177x, 15.02% time reduction.
+
+Decision:
+- promote Interior Motion Fast Path.
+
+Rejected CPU experiment:
+- zero-copy full-frame region MC8R4, run 36219053497;
+- correctness PASS;
+- removed 37,324,800 copied bytes/inter-frame at 4K;
+- total motion encode+decode became ~2.3% slower because compact tile buffers improve CPU cache locality;
+- do not promote zero-copy on CPU; retain for future GPU/direct-frame research.
+
+Next exact-speed targets:
+- lower-instruction SSE2 SAD evaluation;
+- SIMD residual generation/reconstruction;
+- re-run native 4K full-pipeline throughput after each isolated promotion.

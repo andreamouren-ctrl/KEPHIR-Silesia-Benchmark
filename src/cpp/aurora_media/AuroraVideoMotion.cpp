@@ -160,12 +160,29 @@ MotionResidual AuroraVideoMotion::encode_mc8r4_limited(ByteView cur,ByteView pre
             int best_idx=-1;
             std::uint64_t best_cost=std::numeric_limits<std::uint64_t>::max();
 
+#if defined(AURORA_DISABLE_INTERIOR_MOTION_FASTPATH)
+            constexpr bool interior=false;
+#else
+            // For blocks at least radius pixels from every tile edge, every
+            // ordered MC8R4 candidate is guaranteed in bounds. The candidate
+            // set and order remain unchanged; only redundant boundary checks
+            // are removed from the hot loop.
+            const bool interior=
+                bx>=static_cast<std::uint32_t>(radius) &&
+                by>=static_cast<std::uint32_t>(radius) &&
+                bx+block+static_cast<std::uint32_t>(radius)<=w &&
+                by+block+static_cast<std::uint32_t>(radius)<=h;
+#endif
+
             for(std::size_t i=0;i<candidate_count;++i) {
                 const auto [dx,dy]=cand[i];
                 const int sx=static_cast<int>(bx)+dx;
                 const int sy=static_cast<int>(by)+dy;
-                if(sx<0 || sy<0 || sx+static_cast<int>(block)>static_cast<int>(w) ||
-                   sy+static_cast<int>(block)>static_cast<int>(h)) continue;
+                if(!interior &&
+                   (sx<0 || sy<0 ||
+                    sx+static_cast<int>(block)>static_cast<int>(w) ||
+                    sy+static_cast<int>(block)>static_cast<int>(h)))
+                    continue;
 
                 const std::uint64_t cost=sad8x8(
                     cur,prev,w,bx,by,
