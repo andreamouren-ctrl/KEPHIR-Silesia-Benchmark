@@ -14,6 +14,18 @@ constexpr double kDiversityMaxDominantFileFraction = 0.75;
 constexpr double kDiversityMaxDominantByteFraction = 0.80;
 constexpr std::uint64_t kDiversityMinLogicalBytes = 8u * 1024u * 1024u;
 
+// EXP-88 cheap gate. These values are inherited unchanged from EXP-86;
+// holdout validation showed they are safe only as a FLAT fast-path gate.
+constexpr double kGroupabilityMinAverageFileBytes = 512.0 * 1024.0;
+constexpr double kGroupabilityMinRepeatableByteFraction = 0.60;
+constexpr double kGroupabilityMaxDominantByteFraction = 0.75;
+
+bool groupability_smart_candidate(const ArchiveFeatures& features) noexcept {
+    return features.average_file_bytes >= kGroupabilityMinAverageFileBytes
+        && features.repeatable_content_byte_fraction >= kGroupabilityMinRepeatableByteFraction
+        && features.sampled_dominant_byte_fraction <= kGroupabilityMaxDominantByteFraction;
+}
+
 bool sample_is_representative(const ArchiveFeatures& features) noexcept {
     return features.logical_bytes >= kDiversityMinLogicalBytes
         && features.sampled_content_groups >= kDiversityMinGroups
@@ -84,16 +96,23 @@ StrategyPlan GlobalRouter::plan(
             }
         }
     } else {
-        // No compression probe yet. Small multi-class archives are cheap
-        // enough to measure in full; larger archives start with 512 KiB.
-        out.layout = fallback_layout(features);
-        const auto target = static_cast<std::size_t>(
-            features.logical_bytes <= kSmallFullProbeLimit
-                ? features.logical_bytes
-                : std::min<std::uint64_t>(kStage1ProbeBudget, features.logical_bytes));
-        if (target != 0) {
-            out.requested_probe_bytes = target;
-            out.request_initial_probe = true;
+        // EXP-88 hybrid gate:
+        // a negative cheap groupability signal is allowed to finalize FLAT;
+        // a positive SMART candidate is never trusted directly and must still
+        // pass the measured EXP-84 bounded probe.
+        if (requested_profile == Profile::Auto
+            && !groupability_smart_candidate(features)) {
+            out.layout = Layout::Flat;
+        } else {
+            out.layout = fallback_layout(features);
+            const auto target = static_cast<std::size_t>(
+                features.logical_bytes <= kSmallFullProbeLimit
+                    ? features.logical_bytes
+                    : std::min<std::uint64_t>(kStage1ProbeBudget, features.logical_bytes));
+            if (target != 0) {
+                out.requested_probe_bytes = target;
+                out.request_initial_probe = true;
+            }
         }
     }
 
