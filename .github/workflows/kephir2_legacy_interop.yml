@@ -1,0 +1,48 @@
+name: KEPHIR 2 Legacy Interop
+on:
+  push:
+    branches:
+      - development/kephir-2-core
+    paths:
+      - "src/kephir2/**"
+      - "release/kephir_final.py"
+      - "research/routers/exp75_lazy_wx_fingerprint.py"
+      - "research/generators/general/make_exp26_source.py"
+      - "research/generators/general/make_exp27_source.py"
+      - "research/generators/general/make_exp31_source.py"
+      - "research/generators/general/make_exp33_source.py"
+      - "research/generators/general/make_exp37_source.py"
+      - ".github/workflows/kephir2_legacy_interop.yml"
+  workflow_dispatch:
+
+jobs:
+  legacy-interop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure native KEPHIR 2
+        run: cmake -S src/kephir2 -B build/kephir2 -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build native KEPHIR 2
+        run: cmake --build build/kephir2 --config Release --parallel
+
+      - name: Materialize historical EXP-37 CLI
+        run: |
+          cat engine/source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 research/generators/general/make_exp26_source.py
+          python3 research/generators/general/make_exp27_source.py
+          python3 research/generators/general/make_exp31_source.py
+          python3 research/generators/general/make_exp33_source.py
+          python3 research/generators/general/make_exp37_source.py
+          g++ -O3 -std=c++20 -DNDEBUG -DNO_INTERNAL_VERIFY \
+            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 \
+            -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 \
+            -DK2_CHUNK_KIB=512 -pthread \
+            KEPHIR_2_EXP37_DUAL_MATCH.cpp -o kephir37
+
+      - name: Bidirectional KPF1/K75/AUR2 interoperability
+        run: |
+          python3 src/kephir2/tests/legacy_interop.py \
+            build/kephir2/kephir2_interop_tool
