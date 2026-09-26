@@ -60,7 +60,7 @@ def synthetic_fixtures(root):
     fixtures["binary-zero"]=(b"\x00"*16+b"\xff"*112)*32
     fixtures["binary-low"]=bytes(range(16))*256
     fixtures["binary-mid"]=bytes(range(64))*128
-    fixtures["binary-high"]=bytes(range(256))*64
+    fixtures["binary-high"]=bytes(range(256))*32
 
     paths=[]
     for name,data in fixtures.items():
