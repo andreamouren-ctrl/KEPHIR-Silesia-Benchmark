@@ -580,7 +580,73 @@ This defines EXP-82.
 
 ---
 
-## 13. Current validated facts
+## 13. EXP-82 — Representative-Sample Direction Router
+
+Status:
+
+**PROMOTED**
+
+EXP-82 removes the asymmetric SMART bias from the uncertainty policy.
+
+Core rule:
+
+> Content diversity determines whether a bounded sample is representative. It does not select the layout.
+
+Policy:
+
+```text
+full-input probe
+    → preserve measured SMART/FLAT direction
+
+strong stage-1 margin
+    → preserve measured direction
+
+near-tie + representative diversity
+    → preserve measured direction
+
+near-tie + homogeneous/non-representative sample
+    → bounded stage-2 probe
+
+stage 2
+    → preserve measured direction
+```
+
+Validation matrix result:
+
+```text
+repository          selected SMART  oracle SMART  regret 0 B
+silesia             selected SMART  oracle SMART  regret 0 B
+many_tiny_source    selected FLAT   oracle FLAT   regret 0 B
+homogeneous_large   selected FLAT   oracle FLAT   regret 0 B
+mixed_content       selected FLAT   oracle FLAT   regret 0 B
+incompressible      selected FLAT   oracle FLAT   regret 0 B
+zero_rich           selected FLAT   oracle FLAT   regret 0 B
+redundant_backup    selected FLAT   oracle FLAT   regret 0 B
+```
+
+Aggregate:
+
+```text
+Correct selections: 8 / 8
+Selection accuracy: 100%
+Total regret:       0 bytes
+Routing time:       41.96 s aggregate
+SHA roundtrip:      PASS on all datasets
+```
+
+The policy has been promoted into the native C++ Global Router.
+
+Native strategy smoke tests, planner integration tests and Python↔C++ analyzer parity remain **PASS** after promotion.
+
+Important limitation:
+
+Routing correctness is now strong on the current matrix, but routing overhead is still too high for a commercial AUTO path.
+
+A second reproducibility limitation was identified: the live repository workload changes as the development branch grows. Future comparison matrices must pin that workload to a fixed commit or replace it with a canonical frozen fixture.
+
+---
+
+## 14. Current validated facts
 
 At the present checkpoint:
 
@@ -598,7 +664,7 @@ At the present checkpoint:
 
 ---
 
-## 14. Current product architecture priority
+## 15. Current product architecture priority
 
 The current production path now contains both the native Content Analyzer and the native Global Router:
 
@@ -618,7 +684,7 @@ The next architectural task is to validate this decision layer over a broader wo
 
 ---
 
-## 15. Validation matrix still required
+## 16. Validation matrix still required
 
 Before EXP-79 can be declared the final production Global Router, it must be tested on:
 
@@ -647,7 +713,7 @@ For every workload, record:
 
 ---
 
-## 16. Current engineering rules
+## 17. Current engineering rules
 
 Every future milestone must follow:
 
@@ -672,46 +738,41 @@ Production functionality should progressively migrate into the native KEPHIR 2 C
 
 ---
 
-## 17. Immediate next milestone
+## 18. Immediate next milestone
 
-**EXP-82 — Representative-Sample Direction Router**
+**EXP-83 — Fast AUTO Router**
 
 Goal:
 
-Make content diversity symmetric and use it only to establish whether the bounded sample is representative.
+Reduce routing overhead without sacrificing EXP-82's 8/8 correctness and zero regret.
 
-Policy:
+Primary directions:
+
+- freeze the validation matrix so comparisons are reproducible;
+- avoid stage-2 probing when stage-1 evidence is already operationally sufficient;
+- identify high-entropy homogeneous data where SMART grouping cannot justify extra routing work;
+- reduce the strong-margin threshold only when supported by the frozen matrix;
+- preserve content-first routing and exact lossless validation.
+
+Current baseline to beat:
 
 ```text
-full-input stage 1
-    → trust measured direction
-
-strong stage-1 margin
-    → trust measured direction
-
-near-tie + representative content diversity
-    → trust measured direction
-       (SMART or FLAT)
-
-near-tie + non-representative/homogeneous sample
-    → stage-2 bounded probe
-
-stage 2
-    → trust measured direction
+EXP-82 correctness: 8 / 8
+EXP-82 regret:      0 B
+EXP-82 routing:     41.96 s aggregate
 ```
 
 Acceptance criteria:
 
-- 8/8 correct selections on the validation matrix;
-- aggregate regret 0 B;
-- all full-layout runs SHA PASS;
-- lower routing cost than EXP-81;
-- no regression on Silesia;
-- native router updated only after successful CI.
+- 8/8 correct on the frozen canonical matrix;
+- 0 B aggregate regret;
+- all SHA PASS;
+- materially lower routing time than 41.96 s;
+- no new layout-specific special case tied to filenames/extensions.
 
 ---
 
-## 18. Current checkpoint summary
+## 19. Current checkpoint summary
 
 ```text
 KEPHIR 1.0
@@ -734,13 +795,16 @@ KEPHIR 2
             ├── EXP-79 ................. PROMOTED PRINCIPLE
             ├── EXP-80 ................. 7/8 correct, 178 B regret
             ├── EXP-81 ................. REJECTED, 7/8, 54.11 s routing
+            ├── EXP-82 ................. PROMOTED, 8/8, 0 B regret
+            ├── EXP-82 routing ......... 41.96 s aggregate
+            ├── Native EXP-82 policy ... PASS
             ├── Routing SHA ............ PASS all 8 datasets
-            └── Next ................... EXP-82 representative-sample router
+            └── Next ................... EXP-83 Fast AUTO Router
 ```
 
 ---
 
-## 19. Update policy
+## 20. Update policy
 
 This document is mandatory project state.
 
