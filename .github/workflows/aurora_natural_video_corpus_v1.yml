@@ -1,0 +1,118 @@
+name: AURORA Natural Video Corpus v1
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["research/khepri-stream-codec"]
+  push:
+    branches: ["feature/aurora-media-natural-video-corpus-v1"]
+    paths:
+      - ".github/workflows/aurora_natural_video_corpus_v1.yml"
+      - "benchmarks/major_codecs/benchmark_natural_video_corpus_v01.py"
+      - "src/python/reference/aurora_media_codec_bridge.py"
+      - "research/video/experiments/ksv09c_cached_motion_router.py"
+
+jobs:
+  natural-video:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential ffmpeg curl python3-numpy
+
+      - name: Build optimized byte-identical KHEPRI EXP-40
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          python3 make_exp37_source.py
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -DNO_INTERNAL_VERIFY \
+            -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3 \
+            -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1 -pthread \
+            KEPHIR_2_EXP37_DUAL_MATCH.cpp -o kephir37
+
+      - name: Download Xiph uncompressed Y4M sources
+        run: |
+          mkdir -p natural_sources
+          curl -L --fail --retry 4 -o natural_sources/container.y4m \
+            https://media.xiph.org/video/derf/y4m/container_cif.y4m
+          curl -L --fail --retry 4 -o natural_sources/coastguard.y4m \
+            https://media.xiph.org/video/derf/y4m/coastguard_cif.y4m
+          curl -L --fail --retry 4 -o natural_sources/mobile.y4m \
+            https://media.xiph.org/video/derf/y4m/mobile_cif.y4m
+          curl -L --fail --retry 4 -o natural_sources/football.y4m \
+            https://media.xiph.org/video/derf/y4m/football_cif.y4m
+          curl -L --fail --retry 4 -o natural_sources/stefan.y4m \
+            https://media.xiph.org/video/derf/y4m/stefan_sif.y4m
+
+      - name: Prepare deterministic 60-frame YUV420p corpus
+        run: |
+          mkdir -p natural_raw
+          ffmpeg -hide_banner -loglevel error -y -i natural_sources/container.y4m \
+            -frames:v 60 -pix_fmt yuv420p -f rawvideo natural_raw/container.yuv
+          ffmpeg -hide_banner -loglevel error -y -i natural_sources/coastguard.y4m \
+            -frames:v 60 -pix_fmt yuv420p -f rawvideo natural_raw/coastguard.yuv
+          ffmpeg -hide_banner -loglevel error -y -i natural_sources/mobile.y4m \
+            -frames:v 60 -pix_fmt yuv420p -f rawvideo natural_raw/mobile.yuv
+          ffmpeg -hide_banner -loglevel error -y -i natural_sources/football.y4m \
+            -frames:v 60 -pix_fmt yuv420p -f rawvideo natural_raw/football.yuv
+          ffmpeg -hide_banner -loglevel error -y -i natural_sources/stefan.y4m \
+            -frames:v 60 -pix_fmt yuv420p -f rawvideo natural_raw/stefan.yuv
+
+          test "$(stat -c%s natural_raw/container.yuv)" -eq $((352*288*3/2*60))
+          test "$(stat -c%s natural_raw/coastguard.yuv)" -eq $((352*288*3/2*60))
+          test "$(stat -c%s natural_raw/mobile.yuv)" -eq $((352*288*3/2*60))
+          test "$(stat -c%s natural_raw/football.yuv)" -eq $((352*288*3/2*60))
+          test "$(stat -c%s natural_raw/stefan.yuv)" -eq $((352*240*3/2*60))
+
+      - name: Run real-content lossless codec benchmark
+        env:
+          PYTHONPATH: src/python/reference:research/audio/lab:research/audio/experiments:research/video/lab:research/video/experiments:research/backend
+        run: |
+          python3 benchmarks/major_codecs/benchmark_natural_video_corpus_v01.py \
+            --kephir ./kephir40 \
+            --clip container:natural_raw/container.yuv:352:288:30:1:low-motion \
+            --clip coastguard:natural_raw/coastguard.yuv:352:288:30:1:camera-motion \
+            --clip mobile:natural_raw/mobile.yuv:352:288:30:1:texture-pan \
+            --clip football:natural_raw/football.yuv:352:288:30:1:high-motion \
+            --clip stefan:natural_raw/stefan.yuv:352:240:30:1:human-motion \
+            | tee natural_video_corpus_v1.log
+
+      - name: Validate corpus result
+        run: |
+          grep -q "AURORA_NATURAL_VIDEO_CORPUS_V1_PASS" natural_video_corpus_v1.log
+          python3 - <<'PY' | tee natural_video_corpus_v1_summary.txt
+          import json
+          from pathlib import Path
+
+          p=Path("results/benchmarks/natural_video_corpus_v1/NATURAL_VIDEO_CORPUS_V1_RESULTS.json")
+          r=json.loads(p.read_text())
+          assert len(r["clips"]) == 5
+          for clip in r["clips"]:
+              for row in clip["rows"]:
+                  if row.get("available",True):
+                      assert row["sha_ok"], (clip["name"],row["codec"])
+          aurora=next(x for x in r["aggregate"] if x["codec"]=="AURORA Media")
+          print("AURORA_NATURAL_VIDEO_CORPUS_VALIDATION_PASS")
+          print("AURORA_AGGREGATE_BYTES",aurora["bytes"])
+          print("AURORA_AGGREGATE_RATIO",f'{aurora["ratio_percent"]:.6f}')
+          for row in r["aggregate"]:
+              print("CODEC",row["codec"],"bytes",row["bytes"],
+                    "ratio_percent",f'{row["ratio_percent"]:.6f}')
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-natural-video-corpus-v1
+          path: |
+            results/benchmarks/natural_video_corpus_v1/NATURAL_VIDEO_CORPUS_V1_RESULTS.json
+            results/benchmarks/natural_video_corpus_v1/NATURAL_VIDEO_CORPUS_V1_RESULTS.md
+            natural_video_corpus_v1.log
+            natural_video_corpus_v1_summary.txt
