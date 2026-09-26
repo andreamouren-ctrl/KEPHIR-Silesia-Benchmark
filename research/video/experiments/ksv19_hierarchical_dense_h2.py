@@ -439,7 +439,7 @@ def decode_outer(src: Path, dst: Path, exe: Path):
     pos = OUTER_HDR.size
     out = bytearray()
 
-    with tempfile.TemporaryDirectory(prefix="ksv18_dec_") as td:
+    with tempfile.TemporaryDirectory(prefix="ksv19_dec_") as td:
         tmp = Path(td)
         index = 0
 
@@ -557,7 +557,7 @@ def encode_source(
     h2_research_seconds = 0.0
     dense_research_seconds = 0.0
 
-    with tempfile.TemporaryDirectory(prefix="ksv18_enc_") as td:
+    with tempfile.TemporaryDirectory(prefix="ksv19_enc_") as td:
         tmp = Path(td)
 
         for window_index, off in enumerate(range(0, total, route_span)):
@@ -607,7 +607,7 @@ def encode_source(
                 "dense_bytes": len(dense_policy["payload"]),
                 "h2_search_seconds": best_h2["search_seconds"],
                 "dense_search_seconds": best_dense["search_seconds"],
-                "h2_mean_candidate_evaluations": best_h1[
+                "h2_mean_candidate_evaluations": best_h2[
                     "mean_candidate_evaluations"
                 ],
                 "h2_mean_odd_fraction": best_h2["mean_odd_fraction"],
