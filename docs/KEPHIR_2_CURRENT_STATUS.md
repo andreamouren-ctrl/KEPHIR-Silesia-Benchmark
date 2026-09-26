@@ -1342,7 +1342,53 @@ The backend is therefore a **candidate**, not yet the qualified production repla
 
 ---
 
-## 29. Current validated facts
+## 29. Legacy Interoperability
+
+Status:
+
+**PROMOTED COMPATIBILITY GATE**
+
+Bidirectional interoperability is verified between the current Python KEPHIR 1.0 release path and the native KEPHIR 2 candidate.
+
+Validated:
+
+```text
+Native archive  → legacy extractor, file:       PASS
+Legacy archive  → native extractor, file:       PASS
+Native archive  → legacy extractor, directory:  PASS
+Legacy archive  → native extractor, directory:  PASS
+```
+
+Overall marker:
+
+`KEPHIR2_LEGACY_INTEROP_ALL_PASS`
+
+This means the application migration can keep the old engine and KEPHIR 2 side by side without invalidating existing KPF1/K75 archives.
+
+---
+
+## 30. Native FLAT KPF1 Execution
+
+Status:
+
+**IMPLEMENTED / ROUNDTRIP PASS**
+
+The native execution layer now supports explicit:
+
+- `Layout::Smart`
+- `Layout::Flat`
+
+FLAT is represented as a single logical KPF1 group named `flat`, preserving deterministic file ordering and KPF1 extraction semantics.
+
+NativeK75 smoke tests now validate both SMART and FLAT directory roundtrips.
+
+Important:
+
+The production KPF1 FLAT metadata differs slightly from the historical research FLAT framing. AUTO therefore requires a production-layout requalification before the public DLL exposes AUTO compression.
+
+---
+
+## 31. Current validated facts
 
 At the present checkpoint:
 
@@ -1360,7 +1406,7 @@ At the present checkpoint:
 
 ---
 
-## 30. Current product architecture priority
+## 32. Current product architecture priority
 
 The current production path now contains both the native Content Analyzer and the native Global Router:
 
@@ -1380,7 +1426,7 @@ The next architectural task is to validate this decision layer over a broader wo
 
 ---
 
-## 31. Validation matrix still required
+## 33. Validation matrix still required
 
 Before EXP-79 can be declared the final production Global Router, it must be tested on:
 
@@ -1409,7 +1455,7 @@ For every workload, record:
 
 ---
 
-## 32. Current engineering rules
+## 34. Current engineering rules
 
 Every future milestone must follow:
 
@@ -1434,30 +1480,37 @@ Production functionality should progressively migrate into the native KEPHIR 2 C
 
 ---
 
-## 33. Immediate next milestone
+## 35. Immediate next milestone
 
-**Native FLAT KPF1 Layout + Production Layout Requalification**
+**EXP-91 — Backend Gap Qualification**
 
 Goal:
 
-Make the native execution layer capable of executing both layout decisions required by AUTO.
+Measure the exact product gap between:
 
-Implement:
+- qualified Python KEPHIR 1.0.0-rc1;
+- current fully in-process NativeK75 candidate.
 
-- one-group FLAT directory packing;
-- deterministic file ordering and offsets;
-- KPF1-compatible single-group envelope;
-- native FLAT roundtrip;
-- explicit SMART/FLAT selection in ArchiveExecutor.
+Use canonical Silesia single-file KPF1 archives.
 
-Then requalify the AUTO router against the actual production KPF1 SMART and KPF1 FLAT representations using the native backend.
+Metrics:
 
-Reason:
+- full archive bytes;
+- compression ratio;
+- compression time;
+- decompression time;
+- per-file deltas;
+- aggregate deltas;
+- SHA roundtrip.
 
-The research FLAT framing and production KPF1 FLAT framing have slightly different metadata overhead. Because some historical layout wins were only tens or hundreds of bytes, the production oracle must be measured again before AUTO is exposed through the application API.
+Decision rule:
+
+Do not wire the public application DLL to the native backend until this gap is understood and acceptable, or the missing higher-level techniques are migrated natively.
+
+After EXP-91, run production SMART/FLAT oracle requalification with the actual native backend and KPF1 framing.
 
 ---
-## 34. Current checkpoint summary
+## 36. Current checkpoint summary
 
 ```text
 KEPHIR 1.0
@@ -1503,16 +1556,18 @@ KEPHIR 2
             ├── Group Source/Sink ....... PROMOTED
             ├── Native Executor ......... ROUNDTRIP PASS
             ├── Native K75 candidate .... FILE+DIR PASS
+            ├── SMART+FLAT native ....... ROUNDTRIP PASS
+            ├── Legacy interop .......... 4/4 PASS
             ├── Router Matrix v1 ....... FROZEN
             ├── Router Matrix v2 ....... HOLDOUT ESTABLISHED
             ├── Native EXP-84 policy ... PASS
             ├── Routing SHA ............ PASS
-            └── Next ................... Native FLAT + layout requalification
+            └── Next ................... EXP-91 backend gap qualification
 ```
 
 ---
 
-## 35. Update policy
+## 37. Update policy
 
 This document is mandatory project state.
 
