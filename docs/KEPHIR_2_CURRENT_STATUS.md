@@ -2168,3 +2168,64 @@ Required gates before promotion:
 Current decision:
 
 **Do not promote until all four gates pass.**
+
+
+---
+
+## 47. EXP-100 — Bounded Parallel Encode
+
+Status:
+
+**PROMOTED**
+
+The native K75 encoder now schedules independent entries in bounded parallel batches while preserving deterministic archive order.
+
+Canonical Silesia results:
+
+```text
+Workers   Comp MB/s   Speedup vs 1   Archive bytes   Identical
+1            4.594       1.00x        63,013,168      YES
+2            8.599       1.87x        63,013,168      YES
+4           11.865       2.58x        63,013,168      YES
+8           11.955       2.60x        63,013,168      YES
+16          11.467       2.50x        63,013,168      YES
+```
+
+All SHA checks: **PASS**
+
+Best observed point on the CI runner:
+
+`8 workers = 11.955 MB/s`
+
+Decision:
+
+**Promote bounded parallel encode.**
+
+The archive is byte-identical across worker counts, so this is a pure throughput win with zero ratio/format regression.
+
+---
+
+## 48. EXP-101 — Native37 Adapter Parity
+
+Status:
+
+**PROMOTED AS VERIFIED PARITY**
+
+Direct tests compared the legacy `kephir37 cp` path with the in-process native37 adapter on representative raw and tokenized chunks.
+
+Results:
+
+```text
+dickens raw 512 KiB:      payload identical
+dickens tokenized 512:    payload identical
+webster raw 512 KiB:      payload identical
+webster tokenized 512:    payload identical
+mozilla raw 512 KiB:      payload identical
+mozilla tokenized 512:    payload identical
+```
+
+The observed 7–9 byte total-size difference was only AUR2 envelope metadata, not compressed payload.
+
+Conclusion:
+
+The remaining text ratio deficit was **not** inside EXP-37 parse/encode. This finding directly enabled EXP-102 to isolate the actual tokenization bug.
