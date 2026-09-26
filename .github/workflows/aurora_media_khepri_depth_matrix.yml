@@ -51,11 +51,13 @@ jobs:
           build_variant 2 24 12
           build_variant 3 16 8
           build_variant 4 12 6
+          build_variant 5 48 24
+          build_variant 6 64 32
 
       - name: Run Media depth matrix
         run: |
           : > media_depth_matrix.txt
-          for ID in 0 1 2 3 4; do
+          for ID in 0 1 2 3 4 5 6; do
             echo "=== PROFILE_$ID ===" | tee -a media_depth_matrix.txt
             "./media_depth_$ID" | tee -a media_depth_matrix.txt
           done
@@ -72,6 +74,8 @@ jobs:
               2:(24,12),
               3:(16,8),
               4:(12,6),
+              5:(48,24),
+              6:(64,32),
           }
           rows={}
           for line in Path("media_depth_matrix.txt").read_text().splitlines():
