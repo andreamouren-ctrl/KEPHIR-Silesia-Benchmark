@@ -7,6 +7,7 @@
 #include <iostream>
 #include <iterator>
 #include <string>
+#include <cstdlib>
 #include <vector>
 
 namespace {
@@ -41,8 +42,8 @@ int main(int argc, char** argv) {
     if (argc < 4) {
         std::cerr
             << "usage:\n"
-            << "  kephir2_native_k75_cli c <input-file> <archive.kpf>\n"
-            << "  kephir2_native_k75_cli d <archive.kpf> <output-dir>\n";
+            << "  kephir2_native_k75_cli c <input-file> <archive.kpf> [workers]\n"
+            << "  kephir2_native_k75_cli d <archive.kpf> <output-dir> [workers]\n";
         return 2;
     }
 
@@ -54,11 +55,21 @@ int main(int argc, char** argv) {
         NativeK75Backend backend;
         ArchiveExecutor executor;
 
+        BackendOptions backend_options{};
+        backend_options.workers = 1;
+        if (argc >= 5) {
+            const auto parsed = std::strtoul(argv[4], nullptr, 10);
+            if (parsed == 0 || parsed > 64) {
+                throw std::runtime_error("invalid worker count");
+            }
+            backend_options.workers = static_cast<std::size_t>(parsed);
+        }
+
         const auto t0 = std::chrono::steady_clock::now();
 
         if (mode == "c") {
             const auto archive =
-                executor.compress_file(input, backend);
+                executor.compress_file(input, backend, backend_options);
             write_all(output, archive);
 
             const auto t1 = std::chrono::steady_clock::now();
@@ -66,6 +77,7 @@ int main(int argc, char** argv) {
                 << "MODE=c\n"
                 << "INPUT_BYTES=" << std::filesystem::file_size(input) << "\n"
                 << "OUTPUT_BYTES=" << archive.size() << "\n"
+                << "WORKERS=" << backend_options.workers << "\n"
                 << "SECONDS="
                 << std::chrono::duration<double>(t1 - t0).count()
                 << "\n";
@@ -77,12 +89,14 @@ int main(int argc, char** argv) {
             executor.extract_file(
                 archive,
                 output,
-                backend);
+                backend,
+                backend_options);
 
             const auto t1 = std::chrono::steady_clock::now();
             std::cout
                 << "MODE=d\n"
                 << "INPUT_BYTES=" << archive.size() << "\n"
+                << "WORKERS=" << backend_options.workers << "\n"
                 << "SECONDS="
                 << std::chrono::duration<double>(t1 - t0).count()
                 << "\n";
