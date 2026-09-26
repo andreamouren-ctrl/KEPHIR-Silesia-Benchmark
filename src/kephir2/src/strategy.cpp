@@ -25,6 +25,19 @@ constexpr std::uint64_t kMediumGroupabilityMinFiles = 16;
 constexpr std::uint32_t kMediumGroupabilityMinMultiGroups = 3;
 constexpr double kMediumGroupabilityMinRepeatableByteFraction = 0.75;
 constexpr double kMediumGroupabilityMinMixedParentFraction = 0.05;
+constexpr std::uint64_t kMediumMixingFullProbeLimit = 4u * 1024u * 1024u;
+
+bool medium_repeated_mixing_candidate(
+    const ArchiveFeatures& features) noexcept {
+
+    return features.file_count >= kMediumGroupabilityMinFiles
+        && features.average_file_bytes >= kMediumGroupabilityMinAverageFileBytes
+        && features.multi_file_content_groups >= kMediumGroupabilityMinMultiGroups
+        && features.repeatable_content_byte_fraction
+            >= kMediumGroupabilityMinRepeatableByteFraction
+        && features.flat_mixed_parent_byte_fraction
+            >= kMediumGroupabilityMinMixedParentFraction;
+}
 
 bool groupability_smart_candidate(const ArchiveFeatures& features) noexcept {
     const bool large_repeated =
@@ -32,16 +45,8 @@ bool groupability_smart_candidate(const ArchiveFeatures& features) noexcept {
         && features.repeatable_content_byte_fraction >= kGroupabilityMinRepeatableByteFraction
         && features.sampled_dominant_byte_fraction <= kGroupabilityMaxDominantByteFraction;
 
-    const bool medium_repeated_mixing =
-        features.file_count >= kMediumGroupabilityMinFiles
-        && features.average_file_bytes >= kMediumGroupabilityMinAverageFileBytes
-        && features.multi_file_content_groups >= kMediumGroupabilityMinMultiGroups
-        && features.repeatable_content_byte_fraction
-            >= kMediumGroupabilityMinRepeatableByteFraction
-        && features.flat_mixed_parent_byte_fraction
-            >= kMediumGroupabilityMinMixedParentFraction;
-
-    return large_repeated || medium_repeated_mixing;
+    return large_repeated
+        || medium_repeated_mixing_candidate(features);
 }
 
 bool sample_is_representative(const ArchiveFeatures& features) noexcept {
@@ -129,10 +134,17 @@ StrategyPlan GlobalRouter::plan(
             out.layout = Layout::Flat;
         } else {
             out.layout = fallback_layout(features);
+            const bool exact_medium_probe =
+                medium_repeated_mixing_candidate(features)
+                && features.logical_bytes <= kMediumMixingFullProbeLimit;
+
             const auto target = static_cast<std::size_t>(
-                features.logical_bytes <= kSmallFullProbeLimit
+                (features.logical_bytes <= kSmallFullProbeLimit
+                    || exact_medium_probe)
                     ? features.logical_bytes
-                    : std::min<std::uint64_t>(kStage1ProbeBudget, features.logical_bytes));
+                    : std::min<std::uint64_t>(
+                        kStage1ProbeBudget,
+                        features.logical_bytes));
             if (target != 0) {
                 out.requested_probe_bytes = target;
                 out.request_initial_probe = true;
