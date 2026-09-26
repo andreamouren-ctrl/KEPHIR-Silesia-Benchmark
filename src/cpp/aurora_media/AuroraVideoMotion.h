@@ -50,6 +50,14 @@ public:
                              ByteView previous_yuv420,
                              std::uint32_t width,
                              std::uint32_t height);
+
+private:
+    static MotionResidual encode_mc8r4_limited_impl(ByteView current_yuv420,
+                                                    ByteView previous_yuv420,
+                                                    std::uint32_t width,
+                                                    std::uint32_t height,
+                                                    std::size_t max_candidates,
+                                                    bool enable_grid25_simd);
 };
 
 } // namespace aurora::media
