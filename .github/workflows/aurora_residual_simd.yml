@@ -1,0 +1,115 @@
+name: AURORA Residual SIMD
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["research/khepri-stream-codec"]
+  push:
+    branches: ["feature/aurora-media-residual-simd"]
+    paths:
+      - ".github/workflows/aurora_residual_simd.yml"
+      - "src/cpp/aurora_media/AuroraVideoMotion.cpp"
+      - "benchmarks/major_codecs/aurora_residual_simd.cpp"
+      - "tests/cpp/test_aurora_video_motion.cpp"
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build regression test
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            src/cpp/aurora_media/AuroraVideoResidual.cpp \
+            tests/cpp/test_aurora_video_motion.cpp \
+            -Isrc/cpp/aurora_media \
+            -o test_motion
+
+      - name: Run regression test
+        run: ./test_motion | tee regression.txt
+
+      - name: Build scalar residual baseline
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -DAURORA_DISABLE_RESIDUAL_SIMD \
+            -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            benchmarks/major_codecs/aurora_residual_simd.cpp \
+            -Isrc/cpp/aurora_media \
+            -o bench_scalar
+
+      - name: Build SSE2 residual path
+        run: |
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG \
+            -Wall -Wextra -Werror \
+            src/cpp/aurora_media/AuroraVideoMotion.cpp \
+            benchmarks/major_codecs/aurora_residual_simd.cpp \
+            -Isrc/cpp/aurora_media \
+            -o bench_simd
+
+      - name: Run A/B benchmark
+        run: |
+          echo "=== SCALAR ===" | tee residual_simd_ab.txt
+          ./bench_scalar | tee -a residual_simd_ab.txt
+          echo "=== SIMD ===" | tee -a residual_simd_ab.txt
+          ./bench_simd | tee -a residual_simd_ab.txt
+
+      - name: Validate equivalence and summarize
+        run: |
+          python3 - <<'PY' | tee residual_simd_summary.txt
+          import re
+          from pathlib import Path
+
+          text=Path("residual_simd_ab.txt").read_text()
+          parts=text.split("=== SIMD ===")
+          if len(parts)!=2:
+              raise SystemExit("missing A/B sections")
+
+          def parse(section):
+              rows={}
+              for line in section.splitlines():
+                  if not line.startswith("RESIDUAL_BENCH "):
+                      continue
+                  vals=dict(re.findall(r"(\w+)=([^ ]+)",line))
+                  rows[vals["name"]]=vals
+              return rows
+
+          base=parse(parts[0])
+          fast=parse(parts[1])
+          if base.keys()!=fast.keys():
+              raise SystemExit("scenario mismatch")
+
+          print("AURORA_RESIDUAL_SIMD_AB")
+          for name in sorted(base):
+              b,f=base[name],fast[name]
+              for key in ("fingerprint","motion_bytes","residual_bytes"):
+                  if b[key]!=f[key]:
+                      raise SystemExit(f"{name}: output mismatch in {key}")
+
+              b_enc=float(b["encode_ms"]); f_enc=float(f["encode_ms"])
+              b_dec=float(b["decode_ms"]); f_dec=float(f["decode_ms"])
+              b_total=float(b["total_ms"]); f_total=float(f["total_ms"])
+
+              print(
+                  f"{name}: "
+                  f"encode_speedup_x={b_enc/f_enc:.3f} "
+                  f"decode_speedup_x={b_dec/f_dec:.3f} "
+                  f"total_speedup_x={b_total/f_total:.3f} "
+                  f"encode_reduction_pct={(1-f_enc/b_enc)*100:.2f} "
+                  f"decode_reduction_pct={(1-f_dec/b_dec)*100:.2f}"
+              )
+
+          print("BITSTREAM_EQUIVALENCE=PASS")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-residual-simd
+          path: |
+            regression.txt
+            residual_simd_ab.txt
+            residual_simd_summary.txt
