@@ -571,3 +571,27 @@ Decision:
 - no global MC8R6 promotion;
 - do not invest in an R4/R6 classifier because the perfect-selection opportunity is <1%;
 - next compression experiment: KSV-14 global translation + local motion.
+
+
+## 2026-09-26 KSV-14 global/local motion checkpoint
+
+Run 36230538594:
+- baseline: 24,782,482 bytes
+- global+local: 24,583,820 bytes
+- oracle: 24,580,712 bytes
+- global+local improvement: 0.8016%
+- maximum oracle improvement: 0.8142%
+- all streams bit-exact
+
+Per-source global+local delta:
+- container: +0.0383%
+- coastguard: +0.0235%
+- mobile: +0.0081%
+- football: -1.9076%
+- stefan: -2.0399%
+
+Decision:
+- research checkpoint accepted;
+- no production promotion;
+- combined KSV-13/KSV-14 evidence indicates that radius/global-translation limitations explain <1% aggregate;
+- next experiment: KSV-15 dual-reference temporal motion.
