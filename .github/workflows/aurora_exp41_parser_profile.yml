@@ -3,7 +3,7 @@ name: AURORA EXP41 Parser Profile
 on:
   workflow_dispatch:
   push:
-    branches: ["feature/aurora-media-exp41-parser-profile"]
+    branches: ["feature/aurora-media-exp41-parser-profile-rebase"]
     paths:
       - ".github/workflows/aurora_exp41_parser_profile.yml"
       - "make_exp41_profile_source.py"
