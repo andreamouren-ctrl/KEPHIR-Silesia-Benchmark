@@ -430,6 +430,55 @@ def build_hybrid_records(
     return chunks, frame_stats, time.perf_counter() - t0
 
 
+def build_hybrid_records_multi(
+    raw_chunk: bytes,
+    w: int,
+    h: int,
+    gop: int,
+    penalties,
+):
+    fs = k13.frame_size(w, h)
+    total = len(raw_chunk) // fs
+    chunks_by_penalty = {p: [] for p in penalties}
+    stats_by_penalty = {p: [] for p in penalties}
+
+    t0 = time.perf_counter()
+    off = 0
+
+    while off < total:
+        n = min(gop, total - off)
+        records = {p: [] for p in penalties}
+        prev = None
+
+        for j in range(n):
+            frame = raw_chunk[(off + j) * fs:(off + j + 1) * fs]
+
+            if prev is None:
+                spatial = spatial_frame(frame, w, h)
+                for p in penalties:
+                    records[p].append(("I", spatial))
+            else:
+                fields = precompute_frame_fields(frame, prev, w, h)
+                for p in penalties:
+                    mode_map, residual, stats = build_hybrid_frame(
+                        fields, w, h, p
+                    )
+                    records[p].append(("P", mode_map, residual))
+                    stats_by_penalty[p].append(stats)
+
+            prev = frame
+
+        for p in penalties:
+            chunks_by_penalty[p].append((n, records[p]))
+        off += n
+
+    return (
+        chunks_by_penalty,
+        stats_by_penalty,
+        time.perf_counter() - t0,
+    )
+
+
 def serialize_hybrid(
     chunks,
     w: int,
@@ -581,11 +630,15 @@ def hybrid_candidates(
     tag: str,
 ):
     rows = []
+    chunks_by_penalty, stats_by_penalty, shared_frontend_seconds = (
+        build_hybrid_records_multi(
+            raw_chunk, w, h, gop, PENALTIES
+        )
+    )
 
     for penalty in PENALTIES:
-        chunks, stats, frontend_seconds = build_hybrid_records(
-            raw_chunk, w, h, gop, penalty
-        )
+        chunks = chunks_by_penalty[penalty]
+        stats = stats_by_penalty[penalty]
 
         mean_intra_fraction = (
             sum(s["intra_fraction"] for s in stats) / len(stats)
@@ -612,7 +665,7 @@ def hybrid_candidates(
                 "payload": payload,
                 "penalty": penalty,
                 "frontend_seconds": (
-                    frontend_seconds + serialization_seconds
+                    shared_frontend_seconds + serialization_seconds
                 ),
                 "backend_seconds": backend_seconds,
                 "mean_intra_fraction": mean_intra_fraction,
