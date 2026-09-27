@@ -1,0 +1,86 @@
+name: KSV-27 Numeric Feature Survey
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["research/khepri-stream-codec"]
+  push:
+    branches: ["feature/aurora-media-ksv27-numeric-feature-survey"]
+
+jobs:
+  ksv27:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential ffmpeg curl python3-numpy
+
+      - name: Build KHEPRI EXP-40
+        run: |
+          cat source_parts/src_gz_*.b64 | base64 -d | gunzip > KEPHIR_2_EXP23_BASE.cpp
+          python3 make_exp26_source.py
+          python3 make_exp27_source.py
+          python3 make_exp31_source.py
+          python3 make_exp33_source.py
+          python3 make_exp37_source.py
+          python3 make_exp40_source.py
+          g++ -O3 -march=native -mtune=native -std=c++20 -DNDEBUG             -DNO_INTERNAL_VERIFY             -DK2_ADAPT_MODE=9 -DK2_LAZY_MODE=1 -DK2_PSG_MODE=3             -DK2_DIST_TOPO_MODE=8 -DK2_DUAL_MATCH_MODE=1             -DK2_SHARED_MATCH_CACHE_MODE=1 -pthread             KEPHIR_2_EXP40_SHARED_MATCH_CACHE.cpp -o kephir40
+
+      - name: Download 11-source Xiph corpus
+        run: |
+          mkdir -p natural_sources
+          for spec in             container:container_cif.y4m             coastguard:coastguard_cif.y4m             mobile:mobile_cif.y4m             football:football_cif.y4m             akiyo:akiyo_cif.y4m             foreman:foreman_cif.y4m             bus:bus_cif.y4m             hall_monitor:hall_monitor_cif.y4m             news:news_cif.y4m             mother_daughter:mother_daughter_cif.y4m
+          do
+            name="${spec%%:*}"
+            file="${spec#*:}"
+            curl -L --fail --retry 4 -o natural_sources/$name.y4m               https://media.xiph.org/video/derf/y4m/$file
+          done
+          curl -L --fail --retry 4 -o natural_sources/stefan.y4m             https://media.xiph.org/video/derf/y4m/stefan_sif.y4m
+
+      - name: Prepare deterministic 60-frame corpus
+        run: |
+          mkdir -p natural_raw
+          for name in container coastguard mobile football akiyo foreman bus hall_monitor news mother_daughter; do
+            ffmpeg -hide_banner -loglevel error -y -i natural_sources/$name.y4m               -frames:v 60 -pix_fmt yuv420p -f rawvideo natural_raw/$name.yuv
+          done
+          ffmpeg -hide_banner -loglevel error -y -i natural_sources/stefan.y4m             -frames:v 60 -pix_fmt yuv420p -f rawvideo natural_raw/stefan.yuv
+
+      - name: Run KSV-27 LOSO survey
+        env:
+          PYTHONPATH: research/video/lab:research/video/experiments:research/backend
+        run: |
+          python3 research/video/experiments/ksv27_numeric_feature_survey.py             --kephir ./kephir40             --clip container:natural_raw/container.yuv:352:288:30:1             --clip coastguard:natural_raw/coastguard.yuv:352:288:30:1             --clip mobile:natural_raw/mobile.yuv:352:288:30:1             --clip football:natural_raw/football.yuv:352:288:30:1             --clip stefan:natural_raw/stefan.yuv:352:240:30:1             --clip akiyo:natural_raw/akiyo.yuv:352:288:30:1             --clip foreman:natural_raw/foreman.yuv:352:288:30:1             --clip bus:natural_raw/bus.yuv:352:288:30:1             --clip hall_monitor:natural_raw/hall_monitor.yuv:352:288:30:1             --clip news:natural_raw/news.yuv:352:288:30:1             --clip mother_daughter:natural_raw/mother_daughter.yuv:352:288:30:1             | tee ksv27.log
+
+      - name: Validate survey
+        run: |
+          grep -q "KSV27_NUMERIC_FEATURE_SURVEY_PASS" ksv27.log
+          python3 - <<'PY' | tee ksv27_summary.txt
+          import json
+          from pathlib import Path
+          r=json.loads(Path("results/video/ksv27_numeric_feature_survey/KSV27_RESULTS.json").read_text())
+          assert r["source_count"] == 11
+          assert r["sample_count"] == 33
+          l=r["loso"]
+          print("KSV27_VALIDATION_PASS")
+          print("LOSO_GAIN_RECOVERED_PCT",f'{l["gain_recovered_percent"]:.3f}')
+          print("LOSO_DELTA_VS_ORACLE_PCT",f'{l["delta_vs_oracle_percent"]:.6f}')
+          print("LOSO_MATCH_WINDOWS",l["mode_matches"],"/",l["window_count"])
+          print("FIT_ALL_RULE",json.dumps(r["fit_all_rule"],sort_keys=True))
+          promising=(
+              l["gain_recovered_percent"] >= 90.0
+              and l["delta_vs_oracle_percent"] <= 0.15
+          )
+          print("KSV27_PROMISING_SIGNAL",str(promising).lower())
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ksv27-numeric-feature-survey
+          path: |
+            results/video/ksv27_numeric_feature_survey/KSV27_RESULTS.json
+            ksv27.log
+            ksv27_summary.txt
