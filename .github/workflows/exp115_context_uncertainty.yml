@@ -8,6 +8,12 @@ on:
     paths:
       - "src/kephir2/**"
       - ".github/workflows/exp115_context_uncertainty.yml"
+  pull_request:
+    branches:
+      - research/exp114-context-sampling-refinement
+    paths:
+      - "src/kephir2/**"
+      - ".github/workflows/exp115_context_uncertainty.yml"
 
 jobs:
   diagnostic:
