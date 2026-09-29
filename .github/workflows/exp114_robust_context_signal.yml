@@ -1,0 +1,67 @@
+name: KEPHIR 2 EXP-114 Robust Context Signal
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - development/kephir-2-core
+    paths:
+      - "research/benchmarks/exp114_robust_context_signal.py"
+      - ".github/workflows/exp114_robust_context_signal.yml"
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build native KEPHIR
+        run: |
+          cmake -S src/kephir2 -B build/kephir2 -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/kephir2 --config Release --parallel
+
+      - name: Native test suite
+        run: ctest --test-dir build/kephir2 --output-on-failure
+
+      - name: Download canonical Silesia
+        run: |
+          mkdir -p corpora/silesia
+          curl -L --fail --retry 4 -o /tmp/silesia.zip \
+            https://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip
+          echo "c240c17d6805fb8a0bde763f1b94cd99  /tmp/silesia.zip" | md5sum -c -
+          unzip -q /tmp/silesia.zip -d corpora/silesia
+          test "$(find corpora/silesia -type f -printf '%s\n' | awk '{s+=$1} END {print s}')" -eq 211938580
+
+      - name: Run EXP-114
+        run: |
+          python3 research/benchmarks/exp114_robust_context_signal.py \
+            build/kephir2/kephir2_native_k75_cli corpora/silesia
+
+      - name: Validate result
+        run: |
+          python3 - <<'PY'
+          import json
+          d=json.load(open("exp114_results.json"))
+          s=d["summary"]
+          assert s["cases"] == 52
+          assert all(
+              all(c["sha"] for c in row["candidates"])
+              for row in d["rows"]
+          )
+          print(
+              "EXP114_VALIDATION_PASS",
+              "NON_REGRESSION",s["non_regression_cases"],
+              "GAIN",s["gain_vs_baseline"],
+              "REGRET",s["total_regret_bytes"],
+              "POSITIVE_REGRESSION",s["positive_regression_bytes"],
+              "NEW_POSITIVE_REGRESSION",
+                  s["new_holdout_positive_regression_bytes"],
+          )
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exp114-robust-context-signal
+          path: exp114_results.json
