@@ -1,0 +1,62 @@
+name: KEPHIR 2 EXP-112 Long Context Holdout
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/exp111-adaptive-inner-context
+    paths:
+      - "research/benchmarks/exp112_long_context_holdout.py"
+      - ".github/workflows/exp112_long_context_holdout.yml"
+  pull_request:
+    branches:
+      - development/kephir-2-core
+    paths:
+      - "research/benchmarks/exp112_long_context_holdout.py"
+      - ".github/workflows/exp112_long_context_holdout.yml"
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build native KEPHIR
+        run: |
+          cmake -S src/kephir2 -B build/kephir2 -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/kephir2 --config Release --parallel
+
+      - name: Native test suite
+        run: ctest --test-dir build/kephir2 --output-on-failure
+
+      - name: Run EXP-112 holdout
+        run: |
+          python3 research/benchmarks/exp112_long_context_holdout.py \
+            build/kephir2/kephir2_native_k75_cli
+
+      - name: Validate result
+        run: |
+          python3 - <<'PY'
+          import json
+          d=json.load(open("exp112_results.json"))
+          s=d["summary"]
+          assert s["cases"] == 16
+          assert all(
+              all(c["sha"] for c in row["candidates"])
+              for row in d["rows"]
+          )
+          print(
+              "EXP112_VALIDATION_PASS",
+              "EXACT", s["exact_oracle_matches"],
+              "GAIN", s["gain_vs_baseline"],
+              "REGRET", s["total_regret_bytes"],
+              "POSITIVE_REGRESSION", s["positive_regression_bytes"],
+          )
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exp112-long-context-holdout
+          path: exp112_results.json
