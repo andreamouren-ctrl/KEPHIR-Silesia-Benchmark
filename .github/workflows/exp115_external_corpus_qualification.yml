@@ -33,37 +33,28 @@ jobs:
       - name: Native test suite
         run: ctest --test-dir build/kephir2 --output-on-failure
 
-      - name: Download external corpora
+      - name: Materialize pinned external corpora
         run: |
           set -euo pipefail
-          mkdir -p corpora/canterbury corpora/calgary corpora/large
+          MIRROR_SHA=c380ef9dc1dc62691757fdfeebdc2f85710e1e46
+          git clone --no-checkout --filter=blob:none \
+            https://github.com/pfalcon/canterbury-corpus.git /tmp/canterbury-corpus
+          git -C /tmp/canterbury-corpus fetch --depth 1 origin "$MIRROR_SHA"
+          git -C /tmp/canterbury-corpus checkout --detach "$MIRROR_SHA"
 
-          fetch_corpus() {
-            name="$1"
-            for url in \
-              "http://corpus.canterbury.ac.nz/resources/$name" \
-              "https://www.corpus.canterbury.ac.nz/resources/$name" \
-              "https://corpus.canterbury.ac.nz/resources/$name"
-            do
-              echo "Trying $url"
-              if curl -L --fail --retry 2 \
-                -A "Mozilla/5.0 (KEPHIR research benchmark)" \
-                -e "https://corpus.canterbury.ac.nz/descriptions/" \
-                -o "/tmp/$name" "$url"
-              then
-                return 0
-              fi
-            done
-            return 1
-          }
+          rm -rf corpora/canterbury corpora/calgary corpora/large
+          mkdir -p corpora
+          cp -a /tmp/canterbury-corpus/canterbury corpora/canterbury
+          cp -a /tmp/canterbury-corpus/calgary corpora/calgary
+          cp -a /tmp/canterbury-corpus/large corpora/large
 
-          fetch_corpus cantrbry.tar.gz
-          fetch_corpus calgary.tar.gz
-          fetch_corpus large.tar.gz
+          rm -f corpora/canterbury/SHA1SUM
+          rm -f corpora/calgary/SHA1SUM
+          rm -f corpora/large/SHA1SUM
 
-          tar -xzf /tmp/cantrbry.tar.gz -C corpora/canterbury
-          tar -xzf /tmp/calgary.tar.gz -C corpora/calgary
-          tar -xzf /tmp/large.tar.gz -C corpora/large
+          echo "Pinned corpus mirror: $MIRROR_SHA"
+          find corpora/canterbury corpora/calgary corpora/large \
+            -maxdepth 1 -type f -printf '%p %s bytes\n' | sort
 
       - name: Run EXP-115
         run: |
@@ -77,8 +68,8 @@ jobs:
           d=json.load(open("exp115_results.json"))
           assert d["experiment"]=="EXP-115"
           assert len(d["datasets"])==3
-          assert d["aggregate"]["raw_bytes"]==17111888
-          assert sum(x["file_count"] for x in d["datasets"])==28
+          assert d["aggregate"]["raw_bytes"]==17221759
+          assert sum(x["file_count"] for x in d["datasets"])==32
           assert all(
               m["sha_pass"]
               for ds in d["datasets"]
