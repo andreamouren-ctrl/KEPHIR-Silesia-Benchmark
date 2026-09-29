@@ -1,0 +1,95 @@
+name: KEPHIR 2 EXP-115 External Corpus Qualification
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/exp115-external-corpus-qualification
+    paths:
+      - "src/kephir2/**"
+      - "research/benchmarks/exp115_external_corpus_qualification.py"
+      - ".github/workflows/exp115_external_corpus_qualification.yml"
+  pull_request:
+    branches:
+      - research/exp114-sampler-geometry
+    paths:
+      - "src/kephir2/**"
+      - "research/benchmarks/exp115_external_corpus_qualification.py"
+      - ".github/workflows/exp115_external_corpus_qualification.yml"
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build native KEPHIR
+        run: |
+          cmake -S src/kephir2 -B build/kephir2 -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/kephir2 --config Release --parallel
+
+      - name: Native test suite
+        run: ctest --test-dir build/kephir2 --output-on-failure
+
+      - name: Materialize pinned external corpora
+        run: |
+          set -euo pipefail
+          MIRROR_SHA=c380ef9dc1dc62691757fdfeebdc2f85710e1e46
+          git clone --no-checkout --filter=blob:none \
+            https://github.com/pfalcon/canterbury-corpus.git /tmp/canterbury-corpus
+          git -C /tmp/canterbury-corpus fetch --depth 1 origin "$MIRROR_SHA"
+          git -C /tmp/canterbury-corpus checkout --detach "$MIRROR_SHA"
+
+          rm -rf corpora/canterbury corpora/calgary corpora/large
+          mkdir -p corpora
+          cp -a /tmp/canterbury-corpus/canterbury corpora/canterbury
+          cp -a /tmp/canterbury-corpus/calgary corpora/calgary
+          cp -a /tmp/canterbury-corpus/large corpora/large
+
+          rm -f corpora/canterbury/SHA1SUM
+          rm -f corpora/calgary/SHA1SUM
+          rm -f corpora/large/SHA1SUM
+
+          echo "Pinned corpus mirror: $MIRROR_SHA"
+          find corpora/canterbury corpora/calgary corpora/large \
+            -maxdepth 1 -type f -printf '%p %s bytes\n' | sort
+
+      - name: Run EXP-115
+        run: |
+          python3 research/benchmarks/exp115_external_corpus_qualification.py \
+            build/kephir2/kephir2_native_k75_cli
+
+      - name: Validate result
+        run: |
+          python3 - <<'PY'
+          import json
+          d=json.load(open("exp115_results.json"))
+          assert d["experiment"]=="EXP-115"
+          assert len(d["datasets"])==3
+          assert d["aggregate"]["raw_bytes"]==17221759
+          assert sum(x["file_count"] for x in d["datasets"])==32
+          assert all(
+              m["sha_pass"]
+              for ds in d["datasets"]
+              for row in ds["files"]
+              for m in row["measured"].values()
+          )
+          a=d["aggregate"]
+          print(
+              "EXP115_VALIDATION_PASS",
+              "BASE",a["baseline_bytes"],
+              "ADAPTIVE",a["adaptive_bytes"],
+              "RATIO",a["adaptive_ratio"],
+              "ORACLE",a["oracle_bytes"],
+              "GAIN",a["gain_vs_baseline"],
+              "REGRET",a["regret_vs_oracle"],
+              "HARM",len(a["harmful_selections"]),
+          )
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exp115-external-corpus-qualification
+          path: exp115_results.json
