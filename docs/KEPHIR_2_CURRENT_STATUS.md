@@ -2847,3 +2847,104 @@ Requirements:
 5. require exact SHA roundtrip;
 6. reject the gate if it creates material regressions;
 7. only after holdout success consider native promotion.
+
+
+---
+
+## 58. EXP-112 — Long-Context Gate Holdout
+
+Status:
+
+**HOLDOUT PASS AS CONSERVATIVE GATE / REFINEMENT REQUIRED**
+
+The EXP-111 training-only candidate was frozen before evaluation on 16 unseen deterministic workloads.
+
+Frozen gate:
+
+```text
+size >= 4 MiB
+AND quarter_entropy_spread < 0.20
+    printable >= 0.95 and zero <= 0.01 → 8 MiB / 8 MiB
+    otherwise                           → 4 MiB / 4 MiB
+else → production baseline
+```
+
+Holdout result:
+
+```text
+Cases:                    16
+Exact oracle labels:       7 / 16
+Baseline aggregate:  21,011,792 B
+Selected aggregate:  20,075,348 B
+Oracle aggregate:    20,008,730 B
+Gain vs baseline:       936,444 B
+Total oracle regret:      66,618 B
+Positive regression:           0 B
+SHA:                       PASS
+```
+
+Important interpretation:
+
+The gate did **not regress a single holdout workload** relative to the current production baseline.
+
+Most oracle misses were conservative. The largest regret was:
+
+```text
+repeated_random_block:
+  selected 4 MiB / 4 MiB
+  oracle   8 MiB / 8 MiB
+  regret   65,788 B
+  but selected still improved baseline by 920,554 B
+```
+
+Other non-exact choices were typically only tens or hundreds of bytes from the oracle.
+
+Adversarial holdouts also behaved safely:
+
+- stationary random data: long context improved slightly;
+- equal-entropy / changing-distribution data: long context improved slightly;
+- strongly heterogeneous quarter-mixed data: baseline retained;
+- entropy-shift data: baseline retained;
+- topic-shift text: baseline retained;
+- 128 KiB alternating regimes: all tested configurations tied the baseline;
+- sub-4 MiB files: baseline retained by the size gate.
+
+New signal:
+
+The printable/zero split is not necessary for the main long-context decision.
+
+A simpler candidate emerges from EXP-111 + EXP-112:
+
+```text
+size >= 4 MiB
+AND quarter_entropy_spread < 0.10
+    → 8 MiB parent / 8 MiB inner
+
+size >= 4 MiB
+AND 0.10 <= quarter_entropy_spread < 0.20
+    → 4 MiB parent / 4 MiB inner
+
+otherwise
+    → production baseline
+```
+
+On the original Silesia matrix this refined rule would recover all meaningful EXP-111 wins except the 6,169 B `x-ray` micro-win.
+
+This refined rule is **not yet promoted**, because it was formulated after inspecting EXP-112.
+
+Decision:
+
+**EXP-112 validates long-context adaptivity as a real direction, but not yet as production policy.**
+
+Next milestone:
+
+**EXP-113 — Second Unseen Long-Context Holdout**
+
+Promotion gate:
+
+1. freeze the simplified spread-only rule above;
+2. evaluate a new unseen deterministic corpus;
+3. require zero material regressions versus production baseline;
+4. require exact SHA roundtrip;
+5. measure selected-vs-oracle regret;
+6. only then implement the rule natively inside the production backend.
