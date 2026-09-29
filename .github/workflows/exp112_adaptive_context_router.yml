@@ -1,0 +1,83 @@
+name: KEPHIR 2 EXP-112 Adaptive Context Router
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/exp112-adaptive-context-router
+    paths:
+      - "src/kephir2/**"
+      - "research/benchmarks/exp112_adaptive_context_router.py"
+      - ".github/workflows/exp112_adaptive_context_router.yml"
+  pull_request:
+    branches:
+      - research/exp111-adaptive-inner-context
+    paths:
+      - "src/kephir2/**"
+      - "research/benchmarks/exp112_adaptive_context_router.py"
+      - ".github/workflows/exp112_adaptive_context_router.yml"
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build native KEPHIR
+        run: |
+          cmake -S src/kephir2 -B build/kephir2 -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/kephir2 --config Release --parallel
+
+      - name: Native test suite
+        run: ctest --test-dir build/kephir2 --output-on-failure
+
+      - name: Download canonical Silesia
+        run: |
+          mkdir -p corpora/silesia
+          curl -L --fail --retry 4 -o /tmp/silesia.zip \
+            https://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip
+          echo "c240c17d6805fb8a0bde763f1b94cd99  /tmp/silesia.zip" | md5sum -c -
+          unzip -q /tmp/silesia.zip -d corpora/silesia
+          test "$(find corpora/silesia -type f -printf '%s\n' | awk '{s+=$1} END {print s}')" -eq 211938580
+
+      - name: Run EXP-112
+        run: |
+          python3 research/benchmarks/exp112_adaptive_context_router.py \
+            build/kephir2/kephir2_native_k75_cli
+
+      - name: Validate result
+        run: |
+          python3 - <<'PY'
+          import json
+          d=json.load(open("exp112_results.json"))
+          assert d["experiment"] == "EXP-112"
+          assert len(d["datasets"]) == 2
+          s,h=d["datasets"]
+          assert s["dataset"] == "silesia-training"
+          assert h["dataset"] == "deterministic-holdout"
+          assert s["raw_bytes"] == 211938580
+          assert len(s["files"]) == 12
+          assert len(h["files"]) == 10
+          assert all(
+              m["sha_pass"]
+              for ds in d["datasets"]
+              for row in ds["files"]
+              for m in row["measured"].values()
+          )
+          print(
+              "EXP112_VALIDATION_PASS",
+              "SILESIA_CONS_GAIN",s["conservative_v1"]["gain_vs_baseline"],
+              "SILESIA_CONS_REGRET",s["conservative_v1"]["regret_vs_oracle"],
+              "HOLDOUT_CONS_GAIN",h["conservative_v1"]["gain_vs_baseline"],
+              "HOLDOUT_CONS_REGRET",h["conservative_v1"]["regret_vs_oracle"],
+              "HOLDOUT_CONS_HARM",
+              len(h["conservative_v1"]["harmful_selections"]),
+          )
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exp112-adaptive-context-router
+          path: exp112_results.json
