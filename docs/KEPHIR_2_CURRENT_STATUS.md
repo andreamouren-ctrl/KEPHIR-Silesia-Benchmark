@@ -3041,3 +3041,128 @@ Required corrections:
 3. retest Silesia + both synthetic holdouts;
 4. require zero material regression against production baseline;
 5. only then consider native backend integration.
+
+
+---
+
+## 60. EXP-114 — Robust Long-Context Stability Signal
+
+Status:
+
+**ROBUST SIGNAL VALIDATED / DIRECT THRESHOLD STILL NOT FINAL**
+
+EXP-114 corrected both EXP-113 failure mechanisms:
+
+1. stride-based quarter sampling was replaced by four contiguous windows per quarter;
+2. 8 MiB context was disallowed below 8 MiB input size.
+
+Validation matrix:
+
+- canonical Silesia: 12 files;
+- EXP-112 deterministic holdout: 16 files;
+- EXP-113 deterministic holdout: 16 files;
+- new EXP-114 adversarial holdout: 8 files.
+
+Total:
+
+```text
+Cases:                    52
+Non-regression cases:     49 / 52
+Baseline aggregate:  158,978,132 B
+Selected aggregate:  135,159,427 B
+Oracle aggregate:    134,994,106 B
+Gain vs baseline:      23,818,705 B
+Total oracle regret:       165,321 B
+Positive regression:        27,797 B
+New holdout regression:           0 B
+SHA:                         PASS
+```
+
+The EXP-113 failure modes were fixed:
+
+```text
+gradual_alphabet:
+  robust spread = 3.0
+  selected baseline
+  regression 0 B
+
+just_above_4m:
+  selected 4 MiB / 4 MiB
+  oracle   4 MiB / 4 MiB
+  regression -1,182 B
+```
+
+All eight new EXP-114 adversarial cases had zero positive regression.
+
+Three historical borderline cases remain:
+
+```text
+reymont:
+  robust spread 0.08378
+  selected 4 MiB
+  regression +771 B
+
+x-ray:
+  robust spread 0.10468
+  selected 4 MiB
+  regression +22,992 B
+
+EXP-112 text_topic_shift:
+  robust spread 0.12759
+  selected 4 MiB
+  regression +4,034 B
+```
+
+Important positive cases in the same borderline region:
+
+```text
+dickens:
+  spread 0.11027
+  4 MiB gain 158,396 B
+
+sao:
+  spread 0.07996
+  4 MiB gain 35,264 B
+
+webster:
+  spread 0.10666
+  4 MiB gain 595,977 B
+```
+
+Conclusion:
+
+A pure threshold cannot safely separate the 0.05–0.20 stability band.
+
+New policy direction:
+
+```text
+spread < 0.05
+    → long-context fast path
+
+0.05 <= spread < 0.20
+    → bounded baseline-vs-4MiB KEPHIR probe
+    → preserve measured direction
+
+spread >= 0.20
+    → baseline
+```
+
+For the direct fast path:
+
+- input < 4 MiB → baseline;
+- 4–8 MiB stable input → at most 4 MiB context;
+- >=8 MiB strongly stable input → 8 MiB context.
+
+Decision:
+
+**Do not promote the EXP-114 threshold-only gate.**
+
+The robust multi-window stability feature itself is validated and retained.
+
+Next milestone:
+
+**EXP-115 — Bounded Long-Context Evidence Probe**
+
+Goal:
+
+Resolve only the 0.05–0.20 uncertainty band with measured KEPHIR evidence while preserving the zero-cost decisions outside that band.
