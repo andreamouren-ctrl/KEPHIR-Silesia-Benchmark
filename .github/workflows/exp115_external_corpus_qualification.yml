@@ -1,0 +1,85 @@
+name: KEPHIR 2 EXP-115 External Corpus Qualification
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/exp115-external-corpus-qualification
+    paths:
+      - "src/kephir2/**"
+      - "research/benchmarks/exp115_external_corpus_qualification.py"
+      - ".github/workflows/exp115_external_corpus_qualification.yml"
+  pull_request:
+    branches:
+      - research/exp114-sampler-geometry
+    paths:
+      - "src/kephir2/**"
+      - "research/benchmarks/exp115_external_corpus_qualification.py"
+      - ".github/workflows/exp115_external_corpus_qualification.yml"
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build native KEPHIR
+        run: |
+          cmake -S src/kephir2 -B build/kephir2 -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/kephir2 --config Release --parallel
+
+      - name: Native test suite
+        run: ctest --test-dir build/kephir2 --output-on-failure
+
+      - name: Download external corpora
+        run: |
+          mkdir -p corpora/canterbury corpora/calgary corpora/large
+          curl -L --fail --retry 4 -o /tmp/cantrbry.tar.gz \
+            https://corpus.canterbury.ac.nz/resources/cantrbry.tar.gz
+          curl -L --fail --retry 4 -o /tmp/calgary.tar.gz \
+            https://corpus.canterbury.ac.nz/resources/calgary.tar.gz
+          curl -L --fail --retry 4 -o /tmp/large.tar.gz \
+            https://corpus.canterbury.ac.nz/resources/large.tar.gz
+          tar -xzf /tmp/cantrbry.tar.gz -C corpora/canterbury
+          tar -xzf /tmp/calgary.tar.gz -C corpora/calgary
+          tar -xzf /tmp/large.tar.gz -C corpora/large
+
+      - name: Run EXP-115
+        run: |
+          python3 research/benchmarks/exp115_external_corpus_qualification.py \
+            build/kephir2/kephir2_native_k75_cli
+
+      - name: Validate result
+        run: |
+          python3 - <<'PY'
+          import json
+          d=json.load(open("exp115_results.json"))
+          assert d["experiment"]=="EXP-115"
+          assert len(d["datasets"])==3
+          assert d["aggregate"]["raw_bytes"]==17111888
+          assert sum(x["file_count"] for x in d["datasets"])==28
+          assert all(
+              m["sha_pass"]
+              for ds in d["datasets"]
+              for row in ds["files"]
+              for m in row["measured"].values()
+          )
+          a=d["aggregate"]
+          print(
+              "EXP115_VALIDATION_PASS",
+              "BASE",a["baseline_bytes"],
+              "ADAPTIVE",a["adaptive_bytes"],
+              "RATIO",a["adaptive_ratio"],
+              "ORACLE",a["oracle_bytes"],
+              "GAIN",a["gain_vs_baseline"],
+              "REGRET",a["regret_vs_oracle"],
+              "HARM",len(a["harmful_selections"]),
+          )
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exp115-external-corpus-qualification
+          path: exp115_results.json
