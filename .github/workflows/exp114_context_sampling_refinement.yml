@@ -1,0 +1,94 @@
+name: KEPHIR 2 EXP-114 Context Sampling Refinement
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/exp114-context-sampling-refinement
+    paths:
+      - "src/kephir2/**"
+      - "research/benchmarks/exp112_adaptive_context_router.py"
+      - "research/benchmarks/exp113_native_context_router.py"
+      - "research/benchmarks/exp114_context_sampling_refinement.py"
+      - ".github/workflows/exp114_context_sampling_refinement.yml"
+  pull_request:
+    branches:
+      - research/exp113-native-context-router
+    paths:
+      - "src/kephir2/**"
+      - "research/benchmarks/exp112_adaptive_context_router.py"
+      - "research/benchmarks/exp113_native_context_router.py"
+      - "research/benchmarks/exp114_context_sampling_refinement.py"
+      - ".github/workflows/exp114_context_sampling_refinement.yml"
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build native KEPHIR
+        run: |
+          cmake -S src/kephir2 -B build/kephir2 -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/kephir2 --config Release --parallel
+
+      - name: Native test suite
+        run: ctest --test-dir build/kephir2 --output-on-failure
+
+      - name: Download canonical Silesia
+        run: |
+          mkdir -p corpora/silesia
+          curl -L --fail --retry 4 -o /tmp/silesia.zip \
+            https://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip
+          echo "c240c17d6805fb8a0bde763f1b94cd99  /tmp/silesia.zip" | md5sum -c -
+          unzip -q /tmp/silesia.zip -d corpora/silesia
+          test "$(find corpora/silesia -type f -printf '%s\n' | awk '{s+=$1} END {print s}')" -eq 211938580
+
+      - name: Run EXP-114
+        run: |
+          python3 research/benchmarks/exp114_context_sampling_refinement.py \
+            build/kephir2/kephir2_native_k75_cli
+
+      - name: Validate result
+        run: |
+          python3 - <<'PY'
+          import json
+          d=json.load(open("exp114_results.json"))
+          assert d["experiment"] == "EXP-114"
+          assert d["sampling_geometry"]["total_reads_max"] == 64
+          assert d["sample_budget_max_bytes_per_stream"] == 262144
+          assert len(d["datasets"]) == 2
+          s,h=d["datasets"]
+          assert s["raw_bytes"] == 211938580
+          assert len(s["files"]) == 12
+          assert len(h["files"]) == 10
+          assert all(
+              m["sha_pass"]
+              for ds in d["datasets"]
+              for row in ds["files"]
+              for m in row["measured"].values()
+          )
+          assert all(
+              row["adaptive_matches"]
+              for ds in d["datasets"]
+              for row in ds["files"]
+          )
+          print(
+              "EXP114_VALIDATION_PASS",
+              "SILESIA_GAIN",s["gain_vs_baseline"],
+              "SILESIA_REGRET",s["regret_vs_oracle"],
+              "SILESIA_MATCH",s["policy_match_count"],
+              "SILESIA_HARM",len(s["harmful_selections"]),
+              "HOLDOUT_GAIN",h["gain_vs_baseline"],
+              "HOLDOUT_REGRET",h["regret_vs_oracle"],
+              "HOLDOUT_MATCH",h["policy_match_count"],
+              "HOLDOUT_HARM",len(h["harmful_selections"]),
+          )
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exp114-context-sampling-refinement
+          path: exp114_results.json
