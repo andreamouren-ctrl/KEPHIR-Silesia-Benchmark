@@ -55,6 +55,10 @@ DATASETS={
         "obj2":246814,
         "paper1":53161,
         "paper2":82199,
+        "paper3":46526,
+        "paper4":13286,
+        "paper5":11954,
+        "paper6":38105,
         "pic":513216,
         "progc":39611,
         "progl":71646,
@@ -306,8 +310,8 @@ def main():
         json.dumps(result,indent=2,sort_keys=True)
     )
 
-    assert raw_total==17111888
-    assert sum(d["file_count"] for d in datasets)==28
+    assert raw_total==17221759
+    assert sum(d["file_count"] for d in datasets)==32
     assert all(
         m["sha_pass"]
         for d in datasets
