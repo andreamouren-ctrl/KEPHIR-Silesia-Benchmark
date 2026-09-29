@@ -2948,3 +2948,96 @@ Promotion gate:
 4. require exact SHA roundtrip;
 5. measure selected-vs-oracle regret;
 6. only then implement the rule natively inside the production backend.
+
+
+---
+
+## 59. EXP-113 — Second Unseen Long-Context Holdout
+
+Status:
+
+**REJECTED AS FINAL GATE / TWO FAILURE MODES IDENTIFIED**
+
+Frozen policy tested:
+
+```text
+size >= 4 MiB and quarter_entropy_spread < 0.10
+    → 8 MiB / 8 MiB
+size >= 4 MiB and quarter_entropy_spread < 0.20
+    → 4 MiB / 4 MiB
+otherwise
+    → production baseline
+```
+
+Second unseen holdout result:
+
+```text
+Cases:                    16
+Non-regression cases:     14 / 16
+Baseline aggregate:   48,800,291 B
+Selected aggregate:   32,928,377 B
+Oracle aggregate:     32,849,995 B
+Gain vs baseline:      15,871,914 B
+Total oracle regret:       78,382 B
+Positive regression:       10,240 B
+SHA:                        PASS
+```
+
+The direction remains extremely strong, but the strict production gate failed because two regressions were observed.
+
+Failure 1 — context larger than useful input scale:
+
+```text
+just_above_4m:
+  size:       4 MiB + 1 byte
+  selected:   8 MiB / 8 MiB
+  oracle:     4 MiB / 4 MiB
+  regression: +3,814 B vs baseline
+```
+
+Conclusion:
+
+8 MiB context must not be selected for inputs that are only slightly larger than 4 MiB.
+
+Failure 2 — stride-sampling alias:
+
+```text
+gradual_alphabet:
+  selected spread: 0.0
+  selected:        8 MiB / 8 MiB
+  oracle:          baseline
+  regression:      +6,426 B
+```
+
+The file intentionally changes alphabet width between quarters. The stride sampler aliased the periodic patterns and incorrectly reported equal quarter entropy.
+
+Conclusion:
+
+The current Python-compatible stride sampler is not robust enough to be the sole long-context stability signal.
+
+Other observations:
+
+- repeated 1 MiB random block: 8 MiB context saved 10,485,916 B;
+- repeated 4 MiB random block: 8 MiB context saved 4,194,006 B;
+- stationary random data: no material regression;
+- equal-entropy regime shifts: long context remained beneficial;
+- local model shift: 4 MiB selection improved baseline by 1,183,993 B, with 65,778 B regret versus 8 MiB oracle;
+- strongly heterogeneous inputs correctly retained baseline.
+
+Decision:
+
+**Do not promote the EXP-113 gate.**
+
+Next milestone:
+
+**EXP-114 — Robust Long-Context Stability Signal**
+
+Required corrections:
+
+1. use contiguous or multi-window quarter sampling to eliminate stride aliasing;
+2. make maximum context size input-size-aware:
+   - 4–8 MiB inputs may use at most 4 MiB context;
+   - 8 MiB+ inputs may qualify for 8 MiB context;
+3. retest Silesia + both synthetic holdouts;
+4. require zero material regression against production baseline;
+5. only then consider native backend integration.
