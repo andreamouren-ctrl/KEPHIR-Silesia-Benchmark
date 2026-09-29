@@ -24,7 +24,7 @@ struct ContextPolicyDecision {
 //   spread < 0.20 -> 4 MiB
 //   otherwise     -> 512 KiB
 //
-// At most 256 KiB are sampled through 16 bounded sequential reads.
+// At most 256 KiB are sampled through 32 bounded sequential reads.
 [[nodiscard]] ContextPolicyDecision choose_adaptive_context(
     const ByteSource& input);
 
