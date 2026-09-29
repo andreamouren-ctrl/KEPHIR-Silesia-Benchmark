@@ -35,13 +35,32 @@ jobs:
 
       - name: Download external corpora
         run: |
+          set -euo pipefail
           mkdir -p corpora/canterbury corpora/calgary corpora/large
-          curl -L --fail --retry 4 -o /tmp/cantrbry.tar.gz \
-            https://corpus.canterbury.ac.nz/resources/cantrbry.tar.gz
-          curl -L --fail --retry 4 -o /tmp/calgary.tar.gz \
-            https://corpus.canterbury.ac.nz/resources/calgary.tar.gz
-          curl -L --fail --retry 4 -o /tmp/large.tar.gz \
-            https://corpus.canterbury.ac.nz/resources/large.tar.gz
+
+          fetch_corpus() {
+            name="$1"
+            for url in \
+              "http://corpus.canterbury.ac.nz/resources/$name" \
+              "https://www.corpus.canterbury.ac.nz/resources/$name" \
+              "https://corpus.canterbury.ac.nz/resources/$name"
+            do
+              echo "Trying $url"
+              if curl -L --fail --retry 2 \
+                -A "Mozilla/5.0 (KEPHIR research benchmark)" \
+                -e "https://corpus.canterbury.ac.nz/descriptions/" \
+                -o "/tmp/$name" "$url"
+              then
+                return 0
+              fi
+            done
+            return 1
+          }
+
+          fetch_corpus cantrbry.tar.gz
+          fetch_corpus calgary.tar.gz
+          fetch_corpus large.tar.gz
+
           tar -xzf /tmp/cantrbry.tar.gz -C corpora/canterbury
           tar -xzf /tmp/calgary.tar.gz -C corpora/calgary
           tar -xzf /tmp/large.tar.gz -C corpora/large
