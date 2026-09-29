@@ -15,8 +15,8 @@ constexpr std::size_t kMediumContext = 4u * 1024u * 1024u;
 constexpr std::size_t kLongContext = 8u * 1024u * 1024u;
 
 constexpr std::size_t kQuarters = 4;
-constexpr std::size_t kWindowsPerQuarter = 16;
-constexpr std::size_t kWindowBytes = 4u * 1024u;
+constexpr std::size_t kWindowsPerQuarter = 64;
+constexpr std::size_t kWindowBytes = 1u * 1024u;
 
 double entropy_from_counts(
     const std::array<std::uint64_t, 256>& counts,
