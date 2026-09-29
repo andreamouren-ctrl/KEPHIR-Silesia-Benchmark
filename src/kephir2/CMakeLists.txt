@@ -128,6 +128,11 @@ add_executable(kephir2_context_policy_smoke
 )
 target_link_libraries(kephir2_context_policy_smoke PRIVATE kephir2_core)
 
+add_executable(kephir2_context_policy_cli
+    tests/context_policy_cli.cpp
+)
+target_link_libraries(kephir2_context_policy_cli PRIVATE kephir2_core)
+
 add_executable(kephir2_native37_smoke
     tests/native37_smoke.cpp
 )
