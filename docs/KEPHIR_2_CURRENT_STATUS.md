@@ -2730,3 +2730,120 @@ Requirements:
 4. derive a cheap content/profile gate rather than forcing 8 MiB globally;
 5. preserve default decoder compatibility;
 6. re-run full Silesia, Router Matrix, Core Smoke, Legacy Interop and competitive benchmark once promoted.
+
+
+---
+
+## 57. EXP-111 — Adaptive Inner Context Candidate
+
+Status:
+
+**DIAGNOSTIC COMPLETE / HOLDOUT REQUIRED**
+
+Goal:
+
+Determine whether the long-context ratio gains isolated by EXP-110 can survive while K75 keeps adaptive grain selection, instead of forcing one giant grain per parent.
+
+Method:
+
+- canonical Silesia, 12 files / 211,938,580 B;
+- normal production baseline retained;
+- larger 4 MiB / 8 MiB K75 parent windows;
+- adaptive grain selection remains enabled;
+- inner AUR2 context swept from 512 KiB to 8 MiB;
+- every archive decoded through the normal decoder;
+- SHA-256 verified for every file/configuration.
+
+Aggregate rows:
+
+```text
+baseline adaptive       62,925,489 B   29.6904%   4.337 MB/s comp
+p4096 / i512 adaptive   64,297,792 B   30.3379%
+p4096 / i1024 adaptive  63,732,663 B   30.0713%
+p4096 / i2048 adaptive  63,367,982 B   29.8992%
+p4096 / i4096 adaptive  62,681,252 B   29.5752%   3.806 MB/s comp
+p8192 / i512 adaptive   64,482,744 B   30.4252%
+p8192 / i4096 adaptive  62,937,581 B   29.6961%
+p8192 / i8192 adaptive  62,829,027 B   29.6449%   3.483 MB/s comp
+```
+
+All SHA checks:
+
+**PASS**
+
+Key finding:
+
+> Larger context is useful only on selected content. Increasing parent/context globally is not a production solution.
+
+The per-file oracle selected the best measured row independently for each Silesia file:
+
+```text
+Oracle archive:      61,671,064 B
+Oracle ratio:        29.0986%
+Baseline:            62,925,489 B
+Oracle gain:          1,254,425 B
+```
+
+Largest measured gains:
+
+```text
+webster   680,469 B
+nci       186,305 B
+dickens   172,705 B
+osdb      136,393 B
+sao        43,005 B
+ooffice    29,379 B
+x-ray       6,169 B
+```
+
+Files that correctly retained the current baseline:
+
+```text
+mozilla
+mr
+reymont
+samba
+xml
+```
+
+Cheap-feature observation:
+
+The high-value long-context winners are strongly associated with low quarter-to-quarter entropy variation. A provisional training-only gate around:
+
+```text
+quarter_entropy_spread < 0.20
+```
+
+separates the major winners from the major regressions on canonical Silesia.
+
+A more selective candidate recovers approximately 98% of the observed oracle gain on the training corpus:
+
+```text
+if quarter_entropy_spread < 0.20:
+    if printable_fraction >= 0.95 and zero_fraction <= 0.01:
+        candidate = 8 MiB parent / 8 MiB inner
+    else:
+        candidate = 4 MiB parent / 4 MiB inner
+else:
+    candidate = production baseline
+```
+
+This rule is **not promoted** because it was derived from Silesia itself.
+
+Decision:
+
+**Do not change production defaults.**
+
+Next milestone:
+
+**EXP-112 — Long-Context Gate Holdout**
+
+Requirements:
+
+1. freeze the EXP-111 candidate thresholds before holdout;
+2. evaluate unseen deterministic workloads;
+3. compare selected configuration against the exact per-workload oracle;
+4. record regret bytes and throughput;
+5. require exact SHA roundtrip;
+6. reject the gate if it creates material regressions;
+7. only after holdout success consider native promotion.
