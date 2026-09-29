@@ -1,5 +1,6 @@
 #include "kephir2/native_k75.hpp"
 
+#include "kephir2/context_policy.hpp"
 #include "kephir2/native37_blob.hpp"
 #include "kephir2/factory_grain_v1.hpp"
 
@@ -747,14 +748,24 @@ BackendEncodeResult NativeK75Backend::encode(
         });
     }
 
-    const std::size_t parent_bytes =
+    std::size_t parent_bytes =
         options.research_parent_bytes
             ? options.research_parent_bytes
             : kParentBytes;
-    const std::size_t inner_chunk_bytes =
+    std::size_t inner_chunk_bytes =
         options.research_inner_chunk_bytes
             ? options.research_inner_chunk_bytes
             : kParentBytes;
+
+    // EXP-113 is research-gated. Explicit context overrides retain priority
+    // so EXP-109/110 remain reproducible.
+    if (options.research_enable_adaptive_context
+        && options.research_parent_bytes == 0
+        && options.research_inner_chunk_bytes == 0) {
+        const auto context = choose_adaptive_context(input);
+        parent_bytes = context.parent_bytes;
+        inner_chunk_bytes = context.inner_chunk_bytes;
+    }
 
     constexpr std::size_t kMaxResearchContext = 8u * 1024u * 1024u;
     if (parent_bytes == 0 || parent_bytes > kMaxResearchContext) {

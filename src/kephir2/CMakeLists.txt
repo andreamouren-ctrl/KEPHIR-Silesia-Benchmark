@@ -49,6 +49,7 @@ add_library(kephir2_core STATIC
     src/analyzer.cpp
     src/auto_routing.cpp
     src/archive.cpp
+    src/context_policy.cpp
     src/execution.cpp
     src/native37_blob.cpp
     src/native_k75.cpp
@@ -122,6 +123,11 @@ add_executable(kephir2_execution_smoke
 )
 target_link_libraries(kephir2_execution_smoke PRIVATE kephir2_core)
 
+add_executable(kephir2_context_policy_smoke
+    tests/context_policy_smoke.cpp
+)
+target_link_libraries(kephir2_context_policy_smoke PRIVATE kephir2_core)
+
 add_executable(kephir2_native37_smoke
     tests/native37_smoke.cpp
 )
@@ -169,6 +175,7 @@ add_test(NAME kephir2_planner_smoke COMMAND kephir2_planner_smoke)
 add_test(NAME kephir2_archive_smoke COMMAND kephir2_archive_smoke)
 add_test(NAME kephir2_packing_smoke COMMAND kephir2_packing_smoke)
 add_test(NAME kephir2_execution_smoke COMMAND kephir2_execution_smoke)
+add_test(NAME kephir2_context_policy_smoke COMMAND kephir2_context_policy_smoke)
 add_test(NAME kephir2_native37_smoke COMMAND kephir2_native37_smoke)
 add_test(NAME kephir2_native37_blob_smoke COMMAND kephir2_native37_blob_smoke)
 add_test(NAME kephir2_native_k75_smoke COMMAND kephir2_native_k75_smoke)

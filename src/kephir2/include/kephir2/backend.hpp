@@ -46,6 +46,11 @@ struct BackendOptions {
     std::size_t research_parent_bytes{0};
     std::size_t research_inner_chunk_bytes{0};
     bool research_force_parent_grain{false};
+
+    // EXP-113 research gate. When enabled with no explicit context override,
+    // NativeK75 selects 512 KiB / 4 MiB / 8 MiB from bounded content
+    // stability sampling. Not exposed through the stable C ABI.
+    bool research_enable_adaptive_context{false};
 };
 
 struct BackendStats {

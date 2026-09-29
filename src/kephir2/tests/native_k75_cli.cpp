@@ -44,6 +44,7 @@ int main(int argc, char** argv) {
             << "usage:\n"
             << "  kephir2_native_k75_cli c <input-file> <archive.kpf> [workers] [context-kib]\n"
             << "  kephir2_native_k75_cli c <input-file> <archive.kpf> [workers] <parent-kib> <inner-kib> [force-parent-grain]\n"
+            << "  kephir2_native_k75_cli c <input-file> <archive.kpf> [workers] adaptive\n"
             << "  kephir2_native_k75_cli d <archive.kpf> <output-dir> [workers]\n";
         return 2;
     }
@@ -70,37 +71,43 @@ int main(int argc, char** argv) {
         std::size_t research_parent_kib = 0;
         std::size_t research_inner_kib = 0;
         bool research_force_parent_grain = false;
+        bool research_adaptive_context = false;
 
         if (mode == "c" && argc >= 6) {
-            const auto parsed = std::strtoul(argv[5], nullptr, 10);
-            if (parsed < 128 || parsed > 8192) {
-                throw std::runtime_error("invalid research parent/context KiB");
-            }
-
-            if (argc >= 7) {
-                const auto inner = std::strtoul(argv[6], nullptr, 10);
-                if (inner < 128 || inner > 8192) {
-                    throw std::runtime_error("invalid research inner KiB");
+            if (std::string(argv[5]) == "adaptive") {
+                research_adaptive_context = true;
+                backend_options.research_enable_adaptive_context = true;
+            } else {
+                const auto parsed = std::strtoul(argv[5], nullptr, 10);
+                if (parsed < 128 || parsed > 8192) {
+                    throw std::runtime_error("invalid research parent/context KiB");
                 }
 
-                research_parent_kib = static_cast<std::size_t>(parsed);
-                research_inner_kib = static_cast<std::size_t>(inner);
-                research_force_parent_grain =
-                    argc >= 8 ? std::strtoul(argv[7], nullptr, 10) != 0 : true;
+                if (argc >= 7) {
+                    const auto inner = std::strtoul(argv[6], nullptr, 10);
+                    if (inner < 128 || inner > 8192) {
+                        throw std::runtime_error("invalid research inner KiB");
+                    }
 
-                backend_options.research_parent_bytes =
-                    research_parent_kib * 1024u;
-                backend_options.research_inner_chunk_bytes =
-                    research_inner_kib * 1024u;
-                backend_options.research_force_parent_grain =
-                    research_force_parent_grain;
-            } else {
-                // Backward-compatible EXP-109 behavior.
-                research_context_kib = static_cast<std::size_t>(parsed);
-                const auto bytes = research_context_kib * 1024u;
-                backend_options.research_parent_bytes = bytes;
-                backend_options.research_inner_chunk_bytes = bytes;
-                backend_options.research_force_parent_grain = true;
+                    research_parent_kib = static_cast<std::size_t>(parsed);
+                    research_inner_kib = static_cast<std::size_t>(inner);
+                    research_force_parent_grain =
+                        argc >= 8 ? std::strtoul(argv[7], nullptr, 10) != 0 : true;
+
+                    backend_options.research_parent_bytes =
+                        research_parent_kib * 1024u;
+                    backend_options.research_inner_chunk_bytes =
+                        research_inner_kib * 1024u;
+                    backend_options.research_force_parent_grain =
+                        research_force_parent_grain;
+                } else {
+                    // Backward-compatible EXP-109 behavior.
+                    research_context_kib = static_cast<std::size_t>(parsed);
+                    const auto bytes = research_context_kib * 1024u;
+                    backend_options.research_parent_bytes = bytes;
+                    backend_options.research_inner_chunk_bytes = bytes;
+                    backend_options.research_force_parent_grain = true;
+                }
             }
         }
 
@@ -121,6 +128,7 @@ int main(int argc, char** argv) {
                 << "PARENT_KIB=" << research_parent_kib << "\n"
                 << "INNER_KIB=" << research_inner_kib << "\n"
                 << "FORCE_PARENT_GRAIN=" << (research_force_parent_grain ? 1 : 0) << "\n"
+                << "ADAPTIVE_CONTEXT=" << (research_adaptive_context ? 1 : 0) << "\n"
                 << "SECONDS="
                 << std::chrono::duration<double>(t1 - t0).count()
                 << "\n";
