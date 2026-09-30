@@ -1,0 +1,94 @@
+name: KEPHIR 2 EXP-117A Parent Grain Oracle
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/exp117-parent-grain-oracle
+    paths:
+      - "src/kephir2/**"
+      - "research/benchmarks/exp116a_structural_drift.py"
+      - "research/benchmarks/exp117_parent_grain_oracle.py"
+      - ".github/workflows/exp117_parent_grain_oracle.yml"
+  pull_request:
+    branches:
+      - research/exp116-structural-drift-gate
+    paths:
+      - "src/kephir2/**"
+      - "research/benchmarks/exp116a_structural_drift.py"
+      - "research/benchmarks/exp117_parent_grain_oracle.py"
+      - ".github/workflows/exp117_parent_grain_oracle.yml"
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build native KEPHIR
+        run: |
+          cmake -S src/kephir2 -B build/kephir2 -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/kephir2 --config Release --parallel
+
+      - name: Native test suite
+        run: ctest --test-dir build/kephir2 --output-on-failure
+
+      - name: Materialize Silesia
+        run: |
+          mkdir -p corpora/silesia
+          curl -L --fail --retry 4 -o /tmp/silesia.zip \
+            https://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip
+          echo "c240c17d6805fb8a0bde763f1b94cd99  /tmp/silesia.zip" | md5sum -c -
+          unzip -q /tmp/silesia.zip -d corpora/silesia
+          test "$(find corpora/silesia -type f -printf '%s\n' | awk '{s+=$1} END {print s}')" -eq 211938580
+
+      - name: Materialize pinned external corpora
+        run: |
+          set -euo pipefail
+          MIRROR_SHA=c380ef9dc1dc62691757fdfeebdc2f85710e1e46
+          git clone --no-checkout --filter=blob:none \
+            https://github.com/pfalcon/canterbury-corpus.git /tmp/canterbury-corpus
+          git -C /tmp/canterbury-corpus fetch --depth 1 origin "$MIRROR_SHA"
+          git -C /tmp/canterbury-corpus checkout --detach "$MIRROR_SHA"
+          cp -a /tmp/canterbury-corpus/canterbury corpora/canterbury
+          cp -a /tmp/canterbury-corpus/calgary corpora/calgary
+          cp -a /tmp/canterbury-corpus/large corpora/large
+          rm -f corpora/canterbury/SHA1SUM corpora/calgary/SHA1SUM corpora/large/SHA1SUM
+
+      - name: Run EXP-117A
+        run: |
+          python3 research/benchmarks/exp117_parent_grain_oracle.py \
+            build/kephir2/kephir2_native_k75_cli
+
+      - name: Validate
+        run: |
+          python3 - <<'PY'
+          import json
+          d=json.load(open("exp117_results.json"))
+          s=d["datasets"]["silesia"]
+          assert d["experiment"]=="EXP-117A"
+          assert len(d["rows"])==18
+          assert s["raw_bytes"]==211938580
+          assert s["adaptive_bytes"]==61677233
+          assert s["oracle_bytes"] <= min(s["fixed_totals"].values())
+          assert all(
+              m["sha_pass"]
+              for r in d["rows"]
+              for m in r["measured"].values()
+          )
+          print(
+              "EXP117_VALIDATION_PASS",
+              "ADAPTIVE",s["adaptive_bytes"],
+              "ADAPTIVE_RATIO",s["adaptive_ratio"],
+              "ORACLE",s["oracle_bytes"],
+              "ORACLE_RATIO",s["oracle_ratio"],
+              "GAIN",s["oracle_gain_vs_adaptive"],
+          )
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exp117-parent-grain-oracle
+          path: exp117_results.json
