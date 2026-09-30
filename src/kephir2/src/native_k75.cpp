@@ -770,7 +770,7 @@ BackendEncodeResult NativeK75Backend::encode(
         force_parent_grain = context.force_parent_grain;
     }
 
-    constexpr std::size_t kMaxResearchContext = 8u * 1024u * 1024u;
+    constexpr std::size_t kMaxResearchContext = 32u * 1024u * 1024u;
     if (parent_bytes == 0 || parent_bytes > kMaxResearchContext) {
         throw std::runtime_error("invalid K75 research parent size");
     }
