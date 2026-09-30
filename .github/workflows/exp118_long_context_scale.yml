@@ -1,0 +1,73 @@
+name: KEPHIR 2 EXP-118A Long Context Scale
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/exp118-long-context-scale
+    paths:
+      - "src/kephir2/**"
+      - "research/benchmarks/exp118_long_context_scale.py"
+      - ".github/workflows/exp118_long_context_scale.yml"
+  pull_request:
+    branches:
+      - research/exp117c-native-structural-router
+    paths:
+      - "src/kephir2/**"
+      - "research/benchmarks/exp118_long_context_scale.py"
+      - ".github/workflows/exp118_long_context_scale.yml"
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and native tests
+        run: |
+          cmake -S src/kephir2 -B build/kephir2 -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/kephir2 --config Release --parallel
+          ctest --test-dir build/kephir2 --output-on-failure
+
+      - name: Materialize Silesia
+        run: |
+          mkdir -p corpora/silesia
+          curl -L --fail --retry 4 -o /tmp/silesia.zip \
+            https://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip
+          echo "c240c17d6805fb8a0bde763f1b94cd99  /tmp/silesia.zip" | md5sum -c -
+          unzip -q /tmp/silesia.zip -d corpora/silesia
+          test "$(find corpora/silesia -type f -printf '%s\n' | awk '{s+=$1} END {print s}')" -eq 211938580
+
+      - name: Run EXP-118A
+        run: |
+          python3 research/benchmarks/exp118_long_context_scale.py \
+            build/kephir2/kephir2_native_k75_cli
+
+      - name: Validate
+        run: |
+          python3 - <<'PY'
+          import json
+          d=json.load(open("exp118_results.json"))
+          a=d["aggregate"]
+          assert d["experiment"]=="EXP-118A"
+          assert len(d["rows"])==4
+          assert a["adaptive_bytes"]==36100213
+          assert all(
+              m["sha_pass"]
+              for r in d["rows"]
+              for m in r["measured"].values()
+          )
+          print(
+              "EXP118_VALIDATION_PASS",
+              "ADAPTIVE",a["adaptive_bytes"],
+              "ORACLE",a["oracle_bytes"],
+              "GAIN",a["gain_vs_adaptive"],
+          )
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exp118-long-context-scale
+          path: exp118_results.json
