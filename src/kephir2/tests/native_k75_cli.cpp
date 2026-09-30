@@ -85,7 +85,7 @@ int main(int argc, char** argv) {
 
                 if (argc >= 7) {
                     const auto inner = std::strtoul(argv[6], nullptr, 10);
-                    if (inner < 128 || inner > 8192) {
+                    if (inner < 128 || inner > 32768) {
                         throw std::runtime_error("invalid research inner KiB");
                     }
 
