@@ -40,6 +40,7 @@ double sample_quarter_entropy(
     std::uint64_t begin,
     std::uint64_t end,
     std::size_t& sampled_bytes,
+    std::uint64_t& printable_bytes,
     std::vector<double>& window_entropies) {
 
     if (end <= begin) return 0.0;
@@ -73,6 +74,9 @@ double sample_quarter_entropy(
         for (const auto b : buffer) {
             ++counts[b];
             ++local_counts[b];
+            printable_bytes +=
+                (b == 9 || b == 10 || b == 13 || (b >= 32 && b < 127))
+                ? 1u : 0u;
         }
         total += buffer.size();
         sampled_bytes += buffer.size();
@@ -95,6 +99,7 @@ ContextPolicyDecision choose_adaptive_context(
     }
 
     std::array<double, kQuarters> entropy{};
+    std::uint64_t printable_bytes = 0;
     std::vector<double> window_entropies;
     window_entropies.reserve(kQuarters * kWindowsPerQuarter);
 
@@ -109,6 +114,7 @@ ContextPolicyDecision choose_adaptive_context(
             begin,
             end,
             out.sampled_bytes,
+            printable_bytes,
             window_entropies);
     }
 
@@ -132,8 +138,29 @@ ContextPolicyDecision choose_adaptive_context(
         out.window_entropy_std = std::sqrt(variance);
     }
 
+    if (out.sampled_bytes != 0) {
+        out.sample_printable_fraction =
+            static_cast<double>(printable_bytes)
+            / static_cast<double>(out.sampled_bytes);
+    }
+
+    const bool large_heterogeneous =
+        input.size() >= 16u * 1024u * 1024u
+        && out.quarter_entropy_spread >= 0.50
+        && out.window_entropy_std >= 0.50;
+
+    const bool medium_printable_drift =
+        input.size() >= 4u * 1024u * 1024u
+        && input.size() < 8u * 1024u * 1024u
+        && out.sample_printable_fraction >= 0.95
+        && out.quarter_entropy_spread >= 0.50
+        && out.window_entropy_std >= 0.20;
+
     std::size_t context = kDefaultContext;
-    if (out.quarter_entropy_spread < 0.10
+    if (large_heterogeneous || medium_printable_drift) {
+        context = kLongContext;
+        out.force_parent_grain = true;
+    } else if (out.quarter_entropy_spread < 0.10
         && out.window_entropy_std < 0.12) {
         context = kLongContext;
     } else if (out.quarter_entropy_spread >= 0.10
