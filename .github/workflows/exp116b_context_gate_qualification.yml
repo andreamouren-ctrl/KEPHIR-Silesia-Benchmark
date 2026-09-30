@@ -1,0 +1,129 @@
+name: KEPHIR 2 EXP-116B Context Gate Qualification
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/exp116-structural-drift-gate
+    paths:
+      - "src/kephir2/**"
+      - "research/benchmarks/exp113_native_context_router.py"
+      - "research/benchmarks/exp115_external_corpus_qualification.py"
+      - ".github/workflows/exp116b_context_gate_qualification.yml"
+  pull_request:
+    branches:
+      - research/exp115-external-corpus-qualification
+    paths:
+      - "src/kephir2/**"
+      - "research/benchmarks/exp113_native_context_router.py"
+      - "research/benchmarks/exp115_external_corpus_qualification.py"
+      - ".github/workflows/exp116b_context_gate_qualification.yml"
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build native KEPHIR
+        run: |
+          cmake -S src/kephir2 -B build/kephir2 -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/kephir2 --config Release --parallel
+
+      - name: Native test suite
+        run: ctest --test-dir build/kephir2 --output-on-failure
+
+      - name: Materialize Silesia
+        run: |
+          mkdir -p corpora/silesia
+          curl -L --fail --retry 4 -o /tmp/silesia.zip \
+            https://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip
+          echo "c240c17d6805fb8a0bde763f1b94cd99  /tmp/silesia.zip" | md5sum -c -
+          unzip -q /tmp/silesia.zip -d corpora/silesia
+          test "$(find corpora/silesia -type f -printf '%s\n' | awk '{s+=$1} END {print s}')" -eq 211938580
+
+      - name: Qualify Silesia and deterministic holdout
+        run: |
+          python3 research/benchmarks/exp113_native_context_router.py \
+            build/kephir2/kephir2_native_k75_cli
+          mv exp113_results.json exp116b_silesia_holdout.json
+
+      - name: Validate Silesia and holdout
+        run: |
+          python3 - <<'PY'
+          import json
+          d=json.load(open("exp116b_silesia_holdout.json"))
+          s,h=d["datasets"]
+          assert s["policy_match_count"] == 12
+          assert h["policy_match_count"] == 10
+          assert len(s["harmful_selections"]) == 0
+          assert len(h["harmful_selections"]) == 0
+          assert s["regret_vs_oracle"] == 0
+          assert h["regret_vs_oracle"] <= 1056
+          assert s["adaptive_bytes"] == 61677233
+          assert s["gain_vs_baseline"] == 1248256
+          print(
+              "EXP116B_CORE_PASS",
+              "SILESIA_BYTES",s["adaptive_bytes"],
+              "SILESIA_RATIO",s["adaptive_ratio"],
+              "SILESIA_GAIN",s["gain_vs_baseline"],
+              "HOLDOUT_GAIN",h["gain_vs_baseline"],
+              "HOLDOUT_REGRET",h["regret_vs_oracle"],
+          )
+          PY
+
+      - name: Materialize pinned external corpora
+        run: |
+          set -euo pipefail
+          MIRROR_SHA=c380ef9dc1dc62691757fdfeebdc2f85710e1e46
+          git clone --no-checkout --filter=blob:none \
+            https://github.com/pfalcon/canterbury-corpus.git /tmp/canterbury-corpus
+          git -C /tmp/canterbury-corpus fetch --depth 1 origin "$MIRROR_SHA"
+          git -C /tmp/canterbury-corpus checkout --detach "$MIRROR_SHA"
+
+          cp -a /tmp/canterbury-corpus/canterbury corpora/canterbury
+          cp -a /tmp/canterbury-corpus/calgary corpora/calgary
+          cp -a /tmp/canterbury-corpus/large corpora/large
+          rm -f corpora/canterbury/SHA1SUM corpora/calgary/SHA1SUM corpora/large/SHA1SUM
+
+      - name: Qualify external corpora
+        run: |
+          python3 research/benchmarks/exp115_external_corpus_qualification.py \
+            build/kephir2/kephir2_native_k75_cli
+          mv exp115_results.json exp116b_external.json
+
+      - name: Validate external corpora
+        run: |
+          python3 - <<'PY'
+          import json
+          d=json.load(open("exp116b_external.json"))
+          a=d["aggregate"]
+          assert a["raw_bytes"] == 17221759
+          assert len(a["harmful_selections"]) == 0
+          assert a["adaptive_bytes"] == 4855203
+          assert a["gain_vs_baseline"] == 60345
+          assert a["regret_vs_oracle"] == 4403
+
+          large=next(x for x in d["datasets"] if x["dataset"]=="large")
+          world=next(x for x in large["files"] if x["file"]=="world192.txt")
+          assert world["adaptive_delta_vs_baseline"] == 0
+          assert "baseline" in world["adaptive_matches"]
+
+          print(
+              "EXP116B_EXTERNAL_PASS",
+              "ADAPTIVE",a["adaptive_bytes"],
+              "RATIO",a["adaptive_ratio"],
+              "GAIN",a["gain_vs_baseline"],
+              "REGRET",a["regret_vs_oracle"],
+              "HARM",len(a["harmful_selections"]),
+          )
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exp116b-context-gate-qualification
+          path: |
+            exp116b_silesia_holdout.json
+            exp116b_external.json
