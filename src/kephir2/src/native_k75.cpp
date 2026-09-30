@@ -756,15 +756,18 @@ BackendEncodeResult NativeK75Backend::encode(
         options.research_inner_chunk_bytes
             ? options.research_inner_chunk_bytes
             : kParentBytes;
+    bool force_parent_grain =
+        options.research_force_parent_grain;
 
-    // EXP-113 is research-gated. Explicit context overrides retain priority
-    // so EXP-109/110 remain reproducible.
+    // EXP-117C remains research-gated. Explicit context/grain overrides retain
+    // priority so EXP-109/110/117A remain exactly reproducible.
     if (options.research_enable_adaptive_context
         && options.research_parent_bytes == 0
         && options.research_inner_chunk_bytes == 0) {
         const auto context = choose_adaptive_context(input);
         parent_bytes = context.parent_bytes;
         inner_chunk_bytes = context.inner_chunk_bytes;
+        force_parent_grain = context.force_parent_grain;
     }
 
     constexpr std::size_t kMaxResearchContext = 8u * 1024u * 1024u;
@@ -840,7 +843,7 @@ BackendEncodeResult NativeK75Backend::encode(
         const auto grain = select_grain(
             parent_span,
             inner_chunk_bytes,
-            options.research_force_parent_grain);
+            force_parent_grain);
         if (!grain)
             throw std::runtime_error("invalid zero K75 grain");
 
