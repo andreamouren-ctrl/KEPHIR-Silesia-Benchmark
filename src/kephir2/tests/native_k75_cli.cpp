@@ -79,7 +79,7 @@ int main(int argc, char** argv) {
                 backend_options.research_enable_adaptive_context = true;
             } else {
                 const auto parsed = std::strtoul(argv[5], nullptr, 10);
-                if (parsed < 128 || parsed > 8192) {
+                if (parsed < 128 || parsed > 32768) {
                     throw std::runtime_error("invalid research parent/context KiB");
                 }
 
