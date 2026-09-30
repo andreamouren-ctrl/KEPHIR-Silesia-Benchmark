@@ -56,6 +56,8 @@ int main() {
     assert(stable_plan.sampled_bytes <= 256u * 1024u);
     assert(stable_plan.quarter_entropy_spread < 0.10);
     assert(stable_plan.window_entropy_std < 0.12);
+    assert(stable_plan.sample_printable_fraction > 0.95);
+    assert(!stable_plan.force_parent_grain);
 
     // Equal quarter-level entropy can hide strong local volatility. Alternate
     // low/high-entropy regions identically in every quarter: global spread
@@ -78,6 +80,49 @@ int main() {
     assert(volatile_plan.quarter_entropy_spread < 0.10);
     assert(volatile_plan.window_entropy_std >= 0.12);
     assert(volatile_plan.inner_chunk_bytes == 512u * 1024u);
+    assert(!volatile_plan.force_parent_grain);
+
+    // EXP-117C large heterogeneous stream: strong global/local drift on a
+    // sufficiently large input must choose 8 MiB and force one grain per
+    // parent.
+    std::vector<std::uint8_t> large_heterogeneous(16u * MiB, 0);
+    for (std::size_t i = 4u * MiB; i < 8u * MiB; ++i) {
+        large_heterogeneous[i] =
+            static_cast<std::uint8_t>(i & 0xffu);
+    }
+    for (std::size_t i = 12u * MiB; i < 16u * MiB; ++i) {
+        large_heterogeneous[i] =
+            static_cast<std::uint8_t>((i * 29u) & 0xffu);
+    }
+
+    MemorySource large_source(std::move(large_heterogeneous));
+    const auto large_plan =
+        kephir2::choose_adaptive_context(large_source);
+
+    assert(large_plan.quarter_entropy_spread >= 0.50);
+    assert(large_plan.window_entropy_std >= 0.50);
+    assert(large_plan.inner_chunk_bytes == 8u * MiB);
+    assert(large_plan.parent_bytes == 8u * MiB);
+    assert(large_plan.force_parent_grain);
+
+    // EXP-117C medium printable structural drift: all bytes remain printable,
+    // but the first and second halves have very different entropy.
+    std::vector<std::uint8_t> medium_printable(6u * MiB, 'a');
+    for (std::size_t i = 3u * MiB; i < medium_printable.size(); ++i) {
+        medium_printable[i] =
+            static_cast<std::uint8_t>(32u + (i % 95u));
+    }
+
+    MemorySource medium_source(std::move(medium_printable));
+    const auto medium_plan =
+        kephir2::choose_adaptive_context(medium_source);
+
+    assert(medium_plan.sample_printable_fraction >= 0.95);
+    assert(medium_plan.quarter_entropy_spread >= 0.50);
+    assert(medium_plan.window_entropy_std >= 0.20);
+    assert(medium_plan.inner_chunk_bytes == 8u * MiB);
+    assert(medium_plan.parent_bytes == 6u * MiB);
+    assert(medium_plan.force_parent_grain);
 
     std::vector<std::uint8_t> shifted(8u * MiB, 0);
     for (std::size_t i = 2u * MiB; i < 4u * MiB; ++i) {
