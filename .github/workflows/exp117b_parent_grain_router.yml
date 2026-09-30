@@ -1,0 +1,86 @@
+name: KEPHIR 2 EXP-117B Parent Grain Router
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/exp117b-parent-grain-router
+    paths:
+      - "research/benchmarks/exp117b_parent_grain_router.py"
+      - ".github/workflows/exp117b_parent_grain_router.yml"
+  pull_request:
+    branches:
+      - research/exp117-parent-grain-oracle
+    paths:
+      - "research/benchmarks/exp117b_parent_grain_router.py"
+      - ".github/workflows/exp117b_parent_grain_router.yml"
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build native KEPHIR
+        run: |
+          cmake -S src/kephir2 -B build/kephir2 -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/kephir2 --config Release --parallel
+          ctest --test-dir build/kephir2 --output-on-failure
+
+      - name: Materialize Silesia
+        run: |
+          mkdir -p corpora/silesia
+          curl -L --fail --retry 4 -o /tmp/silesia.zip \
+            https://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip
+          echo "c240c17d6805fb8a0bde763f1b94cd99  /tmp/silesia.zip" | md5sum -c -
+          unzip -q /tmp/silesia.zip -d corpora/silesia
+          test "$(find corpora/silesia -type f -printf '%s\n' | awk '{s+=$1} END {print s}')" -eq 211938580
+
+      - name: Materialize pinned external corpora
+        run: |
+          set -euo pipefail
+          MIRROR_SHA=c380ef9dc1dc62691757fdfeebdc2f85710e1e46
+          git clone --no-checkout --filter=blob:none \
+            https://github.com/pfalcon/canterbury-corpus.git /tmp/canterbury-corpus
+          git -C /tmp/canterbury-corpus fetch --depth 1 origin "$MIRROR_SHA"
+          git -C /tmp/canterbury-corpus checkout --detach "$MIRROR_SHA"
+          cp -a /tmp/canterbury-corpus/canterbury corpora/canterbury
+          cp -a /tmp/canterbury-corpus/calgary corpora/calgary
+          cp -a /tmp/canterbury-corpus/large corpora/large
+          rm -f corpora/canterbury/SHA1SUM corpora/calgary/SHA1SUM corpora/large/SHA1SUM
+
+      - name: Run EXP-117B
+        run: |
+          python3 research/benchmarks/exp117b_parent_grain_router.py \
+            build/kephir2/kephir2_native_k75_cli
+
+      - name: Validate integrity and Silesia target
+        run: |
+          python3 - <<'PY'
+          import json
+          d=json.load(open("exp117b_results.json"))
+          s=d["datasets"][0]
+          assert d["experiment"]=="EXP-117B"
+          assert s["chosen_bytes"]==60809713
+          assert s["gain_vs_adaptive"]==867520
+          assert all(
+              r["chosen"]["sha_pass"]
+              for ds in d["datasets"]
+              for r in ds["files"]
+          )
+          print(
+              "EXP117B_VALIDATION_PASS",
+              "SILESIA",s["chosen_bytes"],
+              "RATIO",s["chosen_ratio"],
+              "GAIN",s["gain_vs_adaptive"],
+              "EXTERNAL_HARM",len(d["datasets"][2]["harmful_selections"]),
+              "STRESS_HARM",len(d["datasets"][3]["harmful_selections"]),
+          )
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exp117b-parent-grain-router
+          path: exp117b_results.json
