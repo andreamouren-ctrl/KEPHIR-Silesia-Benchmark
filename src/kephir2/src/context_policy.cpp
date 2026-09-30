@@ -39,7 +39,8 @@ double sample_quarter_entropy(
     const ByteSource& input,
     std::uint64_t begin,
     std::uint64_t end,
-    std::size_t& sampled_bytes) {
+    std::size_t& sampled_bytes,
+    std::vector<double>& window_entropies) {
 
     if (end <= begin) return 0.0;
 
@@ -68,11 +69,15 @@ double sample_quarter_entropy(
                 "short read while sampling adaptive context");
         }
 
+        std::array<std::uint64_t, 256> local_counts{};
         for (const auto b : buffer) {
             ++counts[b];
+            ++local_counts[b];
         }
         total += buffer.size();
         sampled_bytes += buffer.size();
+        window_entropies.push_back(
+            entropy_from_counts(local_counts, buffer.size()));
     }
 
     return entropy_from_counts(counts, total);
@@ -90,6 +95,8 @@ ContextPolicyDecision choose_adaptive_context(
     }
 
     std::array<double, kQuarters> entropy{};
+    std::vector<double> window_entropies;
+    window_entropies.reserve(kQuarters * kWindowsPerQuarter);
 
     for (std::size_t q = 0; q < kQuarters; ++q) {
         const auto begin =
@@ -101,17 +108,36 @@ ContextPolicyDecision choose_adaptive_context(
             input,
             begin,
             end,
-            out.sampled_bytes);
+            out.sampled_bytes,
+            window_entropies);
     }
 
     const auto [min_it, max_it] =
         std::minmax_element(entropy.begin(), entropy.end());
     out.quarter_entropy_spread = *max_it - *min_it;
 
+    if (!window_entropies.empty()) {
+        double mean = 0.0;
+        for (const auto value : window_entropies) {
+            mean += value;
+        }
+        mean /= static_cast<double>(window_entropies.size());
+
+        double variance = 0.0;
+        for (const auto value : window_entropies) {
+            const auto delta = value - mean;
+            variance += delta * delta;
+        }
+        variance /= static_cast<double>(window_entropies.size());
+        out.window_entropy_std = std::sqrt(variance);
+    }
+
     std::size_t context = kDefaultContext;
-    if (out.quarter_entropy_spread < 0.10) {
+    if (out.quarter_entropy_spread < 0.10
+        && out.window_entropy_std < 0.12) {
         context = kLongContext;
-    } else if (out.quarter_entropy_spread < 0.20) {
+    } else if (out.quarter_entropy_spread >= 0.10
+        && out.quarter_entropy_spread < 0.20) {
         context = kMediumContext;
     }
 

@@ -55,6 +55,29 @@ int main() {
     assert(stable_plan.parent_bytes == 8u * MiB);
     assert(stable_plan.sampled_bytes <= 256u * 1024u);
     assert(stable_plan.quarter_entropy_spread < 0.10);
+    assert(stable_plan.window_entropy_std < 0.12);
+
+    // Equal quarter-level entropy can hide strong local volatility. Alternate
+    // low/high-entropy regions identically in every quarter: global spread
+    // remains near zero, but the local volatility gate must reject 8 MiB.
+    std::vector<std::uint8_t> volatile_local(8u * MiB, 0);
+    constexpr std::size_t region = 256u * 1024u;
+    for (std::size_t r = 0; r < volatile_local.size() / region; ++r) {
+        if ((r & 1u) == 0) continue;
+        const auto begin = r * region;
+        const auto end = begin + region;
+        for (std::size_t i = begin; i < end; ++i) {
+            volatile_local[i] = static_cast<std::uint8_t>(i & 0xffu);
+        }
+    }
+
+    MemorySource volatile_source(std::move(volatile_local));
+    const auto volatile_plan =
+        kephir2::choose_adaptive_context(volatile_source);
+
+    assert(volatile_plan.quarter_entropy_spread < 0.10);
+    assert(volatile_plan.window_entropy_std >= 0.12);
+    assert(volatile_plan.inner_chunk_bytes == 512u * 1024u);
 
     std::vector<std::uint8_t> shifted(8u * MiB, 0);
     for (std::size_t i = 2u * MiB; i < 4u * MiB; ++i) {

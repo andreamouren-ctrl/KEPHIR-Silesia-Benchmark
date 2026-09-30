@@ -1,0 +1,63 @@
+name: KEPHIR 2 EXP-116A Structural Drift Study
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/exp116-structural-drift-gate
+    paths:
+      - "research/benchmarks/exp116a_structural_drift.py"
+      - ".github/workflows/exp116a_structural_drift.yml"
+  pull_request:
+    branches:
+      - research/exp115-external-corpus-qualification
+    paths:
+      - "research/benchmarks/exp116a_structural_drift.py"
+      - ".github/workflows/exp116a_structural_drift.yml"
+
+jobs:
+  study:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Materialize Silesia
+        run: |
+          mkdir -p corpora/silesia
+          curl -L --fail --retry 4 -o /tmp/silesia.zip \
+            https://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip
+          echo "c240c17d6805fb8a0bde763f1b94cd99  /tmp/silesia.zip" | md5sum -c -
+          unzip -q /tmp/silesia.zip -d corpora/silesia
+
+      - name: Materialize pinned external corpora
+        run: |
+          set -euo pipefail
+          MIRROR_SHA=c380ef9dc1dc62691757fdfeebdc2f85710e1e46
+          git clone --no-checkout --filter=blob:none \
+            https://github.com/pfalcon/canterbury-corpus.git /tmp/canterbury-corpus
+          git -C /tmp/canterbury-corpus fetch --depth 1 origin "$MIRROR_SHA"
+          git -C /tmp/canterbury-corpus checkout --detach "$MIRROR_SHA"
+          cp -a /tmp/canterbury-corpus/canterbury corpora/canterbury
+          cp -a /tmp/canterbury-corpus/calgary corpora/calgary
+          cp -a /tmp/canterbury-corpus/large corpora/large
+          rm -f corpora/canterbury/SHA1SUM corpora/calgary/SHA1SUM corpora/large/SHA1SUM
+
+      - name: Run EXP-116A
+        run: python3 research/benchmarks/exp116a_structural_drift.py
+
+      - name: Validate
+        run: |
+          python3 - <<'PY'
+          import json
+          d=json.load(open("exp116a_results.json"))
+          assert d["experiment"]=="EXP-116A"
+          assert len(d["rows"])==44
+          assert all(r["features"]["sampled_bytes"]<=256*1024 for r in d["rows"])
+          print("EXP116A_VALIDATION_PASS",len(d["rows"]))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exp116a-structural-drift
+          path: exp116a_results.json
