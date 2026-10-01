@@ -92,8 +92,6 @@ int main() {
 
     BackendOptions adaptive = baseline;
     adaptive.enable_adaptive_context = true;
-    // Compatibility alias until EXP-117B removes the research-only plumbing.
-    adaptive.research_enable_adaptive_context = true;
 
     const auto direct_baseline =
         executor.compress_file(input, backend, baseline);
@@ -134,7 +132,7 @@ int main() {
     assert(compress_result.input_bytes == std::filesystem::file_size(input));
     assert(compress_result.output_bytes == std::filesystem::file_size(api_baseline_archive));
 
-    // FAST still maps to the qualified baseline during EXP-117A.
+    // FAST remains the qualified baseline during EXP-117A.
     assert(read_all(api_baseline_archive) == direct_baseline);
 
     kephir2_result_v1 adaptive_extract_result{};
