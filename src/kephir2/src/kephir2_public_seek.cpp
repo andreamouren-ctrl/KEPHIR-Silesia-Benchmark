@@ -1,8 +1,13 @@
 #include "kephir2/kephir2_c.h"
 
+#include "kephir2/aur2_file_extract.hpp"
+#include "kephir2/aur2_indexed_file.hpp"
+#include "kephir2/aur2_metadata.hpp"
 #include "kephir2/aur2_seek.hpp"
+#include "kephir2/native_k75.hpp"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstring>
 #include <filesystem>
@@ -107,6 +112,13 @@ bool options_shape_valid(const kephir2_options_v1* options) noexcept {
     return !options || options->struct_size >= sizeof(kephir2_options_v1);
 }
 
+bool options_value_valid(const kephir2_options_v1* options) noexcept {
+    if (!options_shape_valid(options)) return false;
+    if (!options) return true;
+    return options->profile >= KEPHIR2_PROFILE_AUTO
+        && options->profile <= KEPHIR2_PROFILE_MAX;
+}
+
 kephir2_options_v1 forwarded_options(
     const kephir2_options_v1* source,
     CallbackForwarder& forwarder) {
@@ -206,6 +218,131 @@ void remove_noexcept(const std::filesystem::path& path) noexcept {
     if (path.empty()) return;
     std::error_code ec;
     std::filesystem::remove(path, ec);
+}
+
+bool has_aur2_magic_file(const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return false;
+    std::array<char, 4> magic{};
+    in.read(magic.data(), static_cast<std::streamsize>(magic.size()));
+    return in.gcount() == static_cast<std::streamsize>(magic.size())
+        && magic[0] == 'A'
+        && magic[1] == 'U'
+        && magic[2] == 'R'
+        && magic[3] == '2';
+}
+
+kephir2_phase to_c_phase(kephir2::OperationPhase phase) noexcept {
+    using P = kephir2::OperationPhase;
+    switch (phase) {
+    case P::Idle: return KEPHIR2_PHASE_IDLE;
+    case P::Scanning: return KEPHIR2_PHASE_SCANNING;
+    case P::Analyzing: return KEPHIR2_PHASE_ANALYZING;
+    case P::Planning: return KEPHIR2_PHASE_PLANNING;
+    case P::Packing: return KEPHIR2_PHASE_PACKING;
+    case P::Compressing: return KEPHIR2_PHASE_COMPRESSING;
+    case P::Writing: return KEPHIR2_PHASE_WRITING;
+    case P::Verifying: return KEPHIR2_PHASE_VERIFYING;
+    case P::Extracting: return KEPHIR2_PHASE_EXTRACTING;
+    case P::Done: return KEPHIR2_PHASE_DONE;
+    }
+    return KEPHIR2_PHASE_IDLE;
+}
+
+kephir2::OperationContext make_file_backed_operation(
+    const kephir2_options_v1* options) {
+
+    kephir2::OperationContext::ProgressCallback progress;
+    if (options && options->progress_callback) {
+        progress = [options](const kephir2::OperationProgress& source) {
+            kephir2_progress_v1 out{};
+            out.struct_size = sizeof(out);
+            out.phase = to_c_phase(source.phase);
+            out.fraction = std::clamp(source.fraction, 0.0, 1.0);
+            out.processed_bytes = source.processed_bytes;
+            out.total_bytes = source.total_bytes;
+            out.current_path_utf8 = source.current_path.empty()
+                ? nullptr
+                : source.current_path.c_str();
+            options->progress_callback(&out, options->user_data);
+        };
+    }
+
+    kephir2::OperationContext::CancelCallback cancel;
+    if (options && options->cancel_callback) {
+        cancel = [options]() {
+            return options->cancel_callback(options->user_data) != 0;
+        };
+    }
+    return kephir2::OperationContext(std::move(progress), std::move(cancel));
+}
+
+kephir2_status map_file_backed_error(
+    const std::exception& error,
+    kephir2_result_v1* result,
+    std::uint64_t input_bytes,
+    std::uint64_t output_bytes,
+    double elapsed_seconds) noexcept {
+
+    const std::string_view message(error.what());
+    if (dynamic_cast<const kephir2::OperationCancelled*>(&error) != nullptr) {
+        fill_result(
+            result,
+            KEPHIR2_CANCELLED,
+            "operation cancelled",
+            input_bytes,
+            output_bytes,
+            elapsed_seconds);
+        return KEPHIR2_CANCELLED;
+    }
+    if (message.find("CRC32") != std::string_view::npos
+        || message.find("checksum") != std::string_view::npos) {
+        fill_result(
+            result,
+            KEPHIR2_INTEGRITY_ERROR,
+            message,
+            input_bytes,
+            output_bytes,
+            elapsed_seconds);
+        return KEPHIR2_INTEGRITY_ERROR;
+    }
+    if (message.find("unsupported") != std::string_view::npos
+        || message.find("backend format version") != std::string_view::npos) {
+        fill_result(
+            result,
+            KEPHIR2_UNSUPPORTED_ARCHIVE,
+            message,
+            input_bytes,
+            output_bytes,
+            elapsed_seconds);
+        return KEPHIR2_UNSUPPORTED_ARCHIVE;
+    }
+    if (message.find("truncated") != std::string_view::npos
+        || message.find("mismatch") != std::string_view::npos
+        || message.find("seek-index") != std::string_view::npos
+        || message.find("SEEK_INDEX") != std::string_view::npos
+        || message.find("duplicate") != std::string_view::npos
+        || message.find("missing required") != std::string_view::npos
+        || message.find("unsafe AUR2") != std::string_view::npos
+        || message.find("exceeds archive") != std::string_view::npos) {
+        fill_result(
+            result,
+            KEPHIR2_CORRUPT_ARCHIVE,
+            message,
+            input_bytes,
+            output_bytes,
+            elapsed_seconds);
+        return KEPHIR2_CORRUPT_ARCHIVE;
+    }
+
+    fill_result(
+        result,
+        KEPHIR2_IO_ERROR,
+        message,
+        input_bytes,
+        output_bytes,
+        elapsed_seconds);
+    return KEPHIR2_IO_ERROR;
 }
 
 } // namespace
@@ -341,12 +478,139 @@ kephir2_status kephir2_extract(
     const kephir2_options_v1* options,
     kephir2_result_v1* result) {
 
-    return kephir2_extract_metadata_payload(
-        engine,
-        archive_utf8,
-        output_directory_utf8,
-        options,
-        result);
+    if (!engine || !archive_utf8 || !output_directory_utf8
+        || !options_value_valid(options)) {
+        return kephir2_extract_metadata_payload(
+            engine,
+            archive_utf8,
+            output_directory_utf8,
+            options,
+            result);
+    }
+
+    const auto archive_path = from_utf8(archive_utf8);
+    if (!std::filesystem::is_regular_file(archive_path)
+        || !has_aur2_magic_file(archive_path)) {
+        return kephir2_extract_metadata_payload(
+            engine,
+            archive_utf8,
+            output_directory_utf8,
+            options,
+            result);
+    }
+
+    try {
+        if (!kephir2::aur2::has_seek_index_file(archive_path)) {
+            return kephir2_extract_metadata_payload(
+                engine,
+                archive_utf8,
+                output_directory_utf8,
+                options,
+                result);
+        }
+    } catch (const std::exception& error) {
+        std::error_code ec;
+        auto bytes = std::filesystem::file_size(archive_path, ec);
+        if (ec) bytes = 0;
+        return map_file_backed_error(
+            error,
+            result,
+            bytes,
+            0,
+            0.0);
+    }
+
+    const auto start = Clock::now();
+    const auto output = from_utf8(output_directory_utf8);
+    std::uint64_t input_bytes = 0;
+    std::uint64_t output_bytes = 0;
+
+    try {
+        input_bytes = std::filesystem::file_size(archive_path);
+        const bool overwrite = options ? options->overwrite_output != 0 : false;
+        if (std::filesystem::exists(output)
+            && !overwrite
+            && !std::filesystem::is_empty(output)) {
+            fill_result(
+                result,
+                KEPHIR2_OUTPUT_EXISTS,
+                "output directory is not empty",
+                input_bytes,
+                0,
+                std::chrono::duration<double>(Clock::now() - start).count());
+            return KEPHIR2_OUTPUT_EXISTS;
+        }
+
+        const auto info = kephir2::aur2::inspect_indexed_file(archive_path);
+        output_bytes = info.logical_bytes;
+
+        auto operation = make_file_backed_operation(options);
+        kephir2::BackendOptions backend_options;
+        backend_options.workers = options ? options->workers : 0;
+        backend_options.allow_local_experience =
+            !options || options->allow_local_experience != 0;
+        backend_options.operation = &operation;
+
+        operation.report({
+            kephir2::OperationPhase::Extracting,
+            0.0,
+            0,
+            output_bytes,
+            archive_path.generic_string()
+        });
+
+        kephir2::NativeK75Backend backend;
+        kephir2::aur2::extract_indexed_file_backed(
+            archive_path,
+            output,
+            backend,
+            backend_options);
+
+        operation.throw_if_cancelled();
+        kephir2::aur2::restore_filesystem_metadata_file(
+            archive_path,
+            output);
+        operation.throw_if_cancelled();
+
+        const auto elapsed = std::chrono::duration<double>(
+            Clock::now() - start).count();
+
+        if (options && options->progress_callback) {
+            kephir2_progress_v1 done{};
+            done.struct_size = sizeof(done);
+            done.phase = KEPHIR2_PHASE_DONE;
+            done.fraction = 1.0;
+            done.processed_bytes = output_bytes;
+            done.total_bytes = output_bytes;
+            done.current_path_utf8 = output_directory_utf8;
+            options->progress_callback(&done, options->user_data);
+        }
+
+        fill_result(
+            result,
+            KEPHIR2_OK,
+            "AUR2 indexed file-backed extraction completed with filesystem metadata",
+            input_bytes,
+            output_bytes,
+            elapsed);
+        return KEPHIR2_OK;
+    } catch (const std::exception& error) {
+        return map_file_backed_error(
+            error,
+            result,
+            input_bytes,
+            output_bytes,
+            std::chrono::duration<double>(Clock::now() - start).count());
+    } catch (...) {
+        fill_result(
+            result,
+            KEPHIR2_INTERNAL_ERROR,
+            "unknown AUR2 file-backed extraction error",
+            input_bytes,
+            output_bytes,
+            std::chrono::duration<double>(Clock::now() - start).count());
+        return KEPHIR2_INTERNAL_ERROR;
+    }
 }
 
 kephir2_status kephir2_extract_selected(
