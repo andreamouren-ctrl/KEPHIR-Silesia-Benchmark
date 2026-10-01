@@ -205,3 +205,7 @@ add_test(NAME kephir2_aur2_legacy_compat_smoke COMMAND kephir2_aur2_legacy_compa
 add_executable(kephir2_aur2_public_writer_smoke tests/aur2_public_writer_smoke.cpp)
 target_link_libraries(kephir2_aur2_public_writer_smoke PRIVATE kephir2_api)
 add_test(NAME kephir2_aur2_public_writer_smoke COMMAND kephir2_aur2_public_writer_smoke)
+
+add_executable(kephir2_aur2_metadata_smoke tests/aur2_metadata_smoke.cpp)
+target_link_libraries(kephir2_aur2_metadata_smoke PRIVATE kephir2_api kephir2_core)
+add_test(NAME kephir2_aur2_metadata_smoke COMMAND kephir2_aur2_metadata_smoke)
