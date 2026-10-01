@@ -186,6 +186,9 @@ void validate_container_structure(const Container& container) {
         throw std::runtime_error("AUR2 DATA payload size does not match stream table");
     }
 
+    std::unordered_map<std::uint64_t, std::vector<const FileEntry*>> files_by_stream;
+    files_by_stream.reserve(streams.size());
+
     for (const auto& entry : entries) {
         if (entry.type == EntryType::Directory) {
             if (entry.stream_id != 0 || entry.stream_offset != 0) {
@@ -214,6 +217,38 @@ void validate_container_structure(const Container& container) {
         if (entry.stream_offset > stream.raw_size ||
             entry.logical_size > stream.raw_size - entry.stream_offset) {
             throw std::runtime_error("AUR2 file range exceeds decoded stream");
+        }
+
+        files_by_stream[entry.stream_id].push_back(&entry);
+    }
+
+    for (const auto& stream : streams) {
+        auto it = files_by_stream.find(stream.stream_id);
+        if (it == files_by_stream.end()) {
+            throw std::runtime_error("AUR2 stream is not referenced by any file");
+        }
+
+        auto files = it->second;
+        std::sort(files.begin(), files.end(), [](const FileEntry* a, const FileEntry* b) {
+            if (a->stream_offset != b->stream_offset) {
+                return a->stream_offset < b->stream_offset;
+            }
+            return a->entry_id < b->entry_id;
+        });
+
+        std::uint64_t raw_cursor = 0;
+        for (const auto* file : files) {
+            if (file->stream_offset != raw_cursor) {
+                throw std::runtime_error("AUR2 file ranges leave a gap or overlap inside decoded stream");
+            }
+            if (file->logical_size > std::numeric_limits<std::uint64_t>::max() - raw_cursor) {
+                throw std::runtime_error("AUR2 decoded stream file range overflow");
+            }
+            raw_cursor += file->logical_size;
+        }
+
+        if (raw_cursor != stream.raw_size) {
+            throw std::runtime_error("AUR2 file ranges do not exactly cover decoded stream");
         }
     }
 }
