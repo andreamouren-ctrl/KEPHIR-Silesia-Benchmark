@@ -3,9 +3,11 @@
 #include "kephir2/aur2_selection.hpp"
 #include "kephir2/native_k75.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -75,7 +77,7 @@ int main() {
     std::ofstream(input / "empty.dat", std::ios::binary);
 
     NativeK75Backend backend;
-    ArchiveExecutor executor;
+    kephir2::aur2::ArchiveExecutor executor;
     const auto archive = executor.compress_directory(
         input,
         backend,
