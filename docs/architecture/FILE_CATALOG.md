@@ -4,7 +4,7 @@
 
 - `release/kephir_final.py` — frontend/integratore KEPHIR 1.0.
 - `release/final_qualification.py` — benchmark e qualification finale.
-- `release/factory/khepri_factory_v1.json` — Factory Knowledge v1, 79 stati positivi.
+- `release/factory/khepri_factory_v1.json` — Factory Knowledge v1.
 - `docs/releases/KEPHIR_1.0.md` — record della baseline qualificata.
 
 ## Motore
@@ -15,26 +15,22 @@
 
 I source parts ricostruiscono la linea C++ da cui deriva il backend validato.
 
-## Ricerca general-purpose
+## Ricerca mantenuta
 
-- `research/experiments/` — linea EXP.
-- `research/validation/` — checkpoint retained/promoted.
-- `research/oracles/` — oracle e upper-bound.
-- `research/routers/` — router strutturali e adaptive grain.
-- `research/diagnostics/` — diagnostica e profiling.
-- `research/generators/general/` — generatori C++ EXP.
+- `research/routers/exp66_ultra_cost_aware.py` — cost-aware routing promosso.
+- `research/routers/exp72_adaptive_grain.py` — adaptive grain.
+- `research/routers/exp73_grain_wordxor.py` — grain + Word-XOR.
+- `research/routers/exp74_predictive_wordxor.py` — Word-XOR predittivo.
+- `research/routers/exp75_lazy_wx_fingerprint.py` — lazy Word-XOR / fingerprint.
 - `research/packaging/exp76_smart_directory_pack.py` — Smart Directory Packing.
 - `research/benchmarks/realworld_repo_benchmark.py` — benchmark repository reale.
 
-## Ricerca velocità
-
-- `research/generators/speed/` — generatori FAST/SPEED.
-- `research/speed/` — benchmark throughput e same-run A/B.
+Gli script EXP/FAST/SPEED superseded sono rimossi dal working tree; restano nella cronologia Git e i risultati consolidati sono nei documenti tecnici.
 
 ## Benchmark canonici
 
-- `benchmarks/silesia/`
-- `benchmarks/competitors/`
+- `benchmarks/silesia/bench_silesia.py`
+- `benchmarks/competitors/full_compressor_benchmark.py`
 - `release/final_qualification.py`
 
 ## Documentazione
@@ -48,9 +44,9 @@ I source parts ricostruiscono la linea C++ da cui deriva il backend validato.
 - `docs/releases/KEPHIR_1.0.md`
 - `docs/INDEX.md`
 
-## CI
+## CI mantenuta
 
-I workflow sotto `.github/workflows/` mantengono gli ID storici quando necessari alla riproducibilità. La qualification di prodotto è `KEPHIR 1.0 Final Candidate Qualification`.
+Il working tree conserva soltanto workflow ancora utili per qualification, benchmark canonici e la linea di ricerca promossa. La qualification di prodotto è `KEPHIR 1.0 Final Candidate Qualification`.
 
 ## File non canonici / generati
 
@@ -61,4 +57,5 @@ Non devono diventare sorgenti di verità:
 - output benchmark locali;
 - archivi `*.kpf` prodotti dai test;
 - Local Experience dell'utente;
-- file temporanei/sessione.
+- file temporanei/sessione;
+- frammenti di sorgente temporanei nella root.

@@ -46,7 +46,7 @@ La baseline integra:
 - verifica roundtrip esatta;
 - protezione base da path traversal in estrazione.
 
-## Struttura canonica
+## Struttura canonica snella
 
 ~~~text
 engine/
@@ -59,15 +59,16 @@ release/
     └── khepri_factory_v1.json
 
 research/
-├── experiments/
-├── validation/
-├── oracles/
 ├── routers/
-├── diagnostics/
-├── generators/
-├── speed/
+│   ├── exp66_ultra_cost_aware.py
+│   ├── exp72_adaptive_grain.py
+│   ├── exp73_grain_wordxor.py
+│   ├── exp74_predictive_wordxor.py
+│   └── exp75_lazy_wx_fingerprint.py
 ├── packaging/
+│   └── exp76_smart_directory_pack.py
 └── benchmarks/
+    └── realworld_repo_benchmark.py
 
 benchmarks/
 ├── silesia/
@@ -80,6 +81,8 @@ docs/
 
 .github/workflows/
 ~~~
+
+Gli esperimenti storici superseded non restano nel working tree: sono preservati dalla cronologia Git e riassunti nel master tecnico e nel checkpoint registry.
 
 ## Documentazione
 

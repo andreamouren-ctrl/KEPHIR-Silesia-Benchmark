@@ -17,16 +17,13 @@
 - Roundtrip: **FINAL_SHA_ALL_PASS**
 - Factory Knowledge v1: **79 positive states**
 
-## Research areas
+## Research mantenuta
 
-- `research/experiments/` — chronological EXP line.
-- `research/validation/` — promoted checkpoint validation.
-- `research/oracles/` — oracle / upper-bound research.
-- `research/routers/` — structural and adaptive routers.
-- `research/diagnostics/` — profiling and diagnostics.
-- `research/speed/` — FAST/SPEED research.
-- `research/packaging/` — archive/directory packing research.
-- `research/benchmarks/` — real-world qualification harnesses.
+- `research/routers/` — linea promossa EXP-66 / EXP-72…75.
+- `research/packaging/` — Smart Directory Packing EXP-76.
+- `research/benchmarks/` — benchmark real-world ancora utile.
+
+Gli esperimenti superseded non sono più mantenuti nel working tree: restano recuperabili dalla cronologia Git e i risultati consolidati sono nel Technical Master e nel Checkpoint Registry.
 
 ## Benchmarks
 

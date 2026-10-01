@@ -4,38 +4,28 @@
 
 ## Purpose
 
-GitHub Actions è parte del sistema di riproducibilità. Un workflow deve riprodurre un esperimento, una validazione o una qualification nominata; non deve essere usato come storage né partire senza necessità.
+GitHub Actions è parte del sistema di riproducibilità. Un workflow deve riprodurre una qualification, un benchmark canonico o una ricerca ancora mantenuta; non deve essere usato come archivio storico.
 
-## Path policy
+## Retention policy
 
-Percorsi canonici:
+- Un workflow sperimentale concluso viene rimosso dal working tree quando il risultato è consolidato nella documentazione o assorbito da una linea successiva.
+- La cronologia Git conserva comunque il workflow originale e permette di recuperarlo.
+- Non si mantengono decine di workflow EXP/FAST/SPEED inattivi soltanto per memoria storica.
+- I workflow promossi o ancora necessari alla riproducibilità corrente restano versionati.
 
-- EXP generators → `research/generators/general/`
-- FAST/SPEED generators → `research/generators/speed/`
-- EXP research → `research/experiments/`
-- validation → `research/validation/`
-- oracles → `research/oracles/`
-- routers → `research/routers/`
-- diagnostics → `research/diagnostics/`
-- speed harnesses → `research/speed/`
-- packaging → `research/packaging/`
+## Percorsi canonici
+
+- router/promoted research → `research/routers/`
+- packaging attivo → `research/packaging/`
 - real-world research benchmarks → `research/benchmarks/`
 - Silesia harness → `benchmarks/silesia/`
 - competitor benchmarks → `benchmarks/competitors/`
 - release qualification → `release/`
-- source fragments → `engine/source_parts/`
+- source fragments canonici → `engine/source_parts/`
 
 Nessun workflow deve reintrodurre script di ricerca nella root.
 
 ## Trigger policy
-
-### Historical workflows
-
-Gli esperimenti storici conclusi devono preferire:
-
-`workflow_dispatch`
-
-e non devono reagire a normali modifiche di documentazione/release.
 
 ### Active R&D
 
@@ -43,13 +33,7 @@ Può usare trigger automatici, ma con path filter stretti sull'esperimento inter
 
 ### Release qualification
 
-La qualification deve attivarsi solo quando cambiano componenti che possono alterare:
-- encoder;
-- decoder;
-- packing;
-- Factory Knowledge;
-- qualification harness;
-- backend/build chain.
+La qualification deve attivarsi solo quando cambiano componenti che possono alterare encoder, decoder, packing, Factory Knowledge, qualification harness o backend/build chain.
 
 Modifiche solo a `docs/**`, README o file editoriali non devono richiedere una qualification completa.
 
@@ -77,6 +61,4 @@ Una modifica successiva al codice crea un nuovo candidato e richiede una nuova q
 
 ## Experiment discipline
 
-Una modifica concettuale → una CI → un risultato misurato → PROMOTE/REJECT.
-
-Le eccezioni sono le integration qualification esplicitamente costruite per validare una release completa.
+Una modifica concettuale → una CI → un risultato misurato → PROMOTE/REJECT → consolidamento documentale → rimozione dal working tree se superseded.
