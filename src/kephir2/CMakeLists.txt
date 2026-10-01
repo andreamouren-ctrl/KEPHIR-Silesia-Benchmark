@@ -49,6 +49,7 @@ add_library(kephir2_core STATIC
     src/analyzer.cpp
     src/aur2.cpp
     src/aur2_execution.cpp
+    src/aur2_indexed_file.cpp
     src/aur2_inspection.cpp
     src/aur2_metadata.cpp
     src/aur2_seek.cpp
@@ -185,12 +186,16 @@ set_source_files_properties(src/kephir2_aur2_select_c.cpp PROPERTIES
 set_source_files_properties(src/kephir2_public_metadata.cpp PROPERTIES
     COMPILE_DEFINITIONS "kephir2_compress=kephir2_compress_metadata_payload;kephir2_extract=kephir2_extract_metadata_payload;kephir2_extract_selected=kephir2_extract_selected_metadata_payload"
 )
+set_source_files_properties(src/kephir2_aur2_c.cpp PROPERTIES
+    COMPILE_DEFINITIONS "kephir2_inspect=kephir2_inspect_scan;kephir2_list_entries=kephir2_list_entries_scan;kephir2_test_archive=kephir2_test_archive_scan"
+)
 
 add_library(kephir2_api SHARED
     src/kephir2_c.cpp
     src/kephir2_public_aur2.cpp
     src/kephir2_public_metadata.cpp
     src/kephir2_public_seek.cpp
+    src/kephir2_public_inspection.cpp
     src/kephir2_aur2_c.cpp
     src/kephir2_aur2_select_c.cpp
 )
@@ -218,3 +223,7 @@ add_test(NAME kephir2_aur2_public_writer_smoke COMMAND kephir2_aur2_public_write
 add_executable(kephir2_aur2_metadata_smoke tests/aur2_metadata_smoke.cpp)
 target_link_libraries(kephir2_aur2_metadata_smoke PRIVATE kephir2_api kephir2_core)
 add_test(NAME kephir2_aur2_metadata_smoke COMMAND kephir2_aur2_metadata_smoke)
+
+add_executable(kephir2_aur2_indexed_public_smoke tests/aur2_indexed_public_smoke.cpp)
+target_link_libraries(kephir2_aur2_indexed_public_smoke PRIVATE kephir2_api kephir2_core)
+add_test(NAME kephir2_aur2_indexed_public_smoke COMMAND kephir2_aur2_indexed_public_smoke)
