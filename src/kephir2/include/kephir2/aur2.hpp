@@ -25,15 +25,15 @@ inline constexpr std::uint32_t make_fourcc(char a, char b, char c, char d) noexc
 inline constexpr std::uint32_t kCodecKephir = make_fourcc('K', 'P', 'H', 'R');
 
 enum class Feature : std::uint64_t {
-    Directory        = 1ull << 0u,
-    MultiStream      = 1ull << 1u,
-    Integrity        = 1ull << 2u,
-    SeekIndex        = 1ull << 3u,
-    Encryption       = 1ull << 4u,
-    Recovery         = 1ull << 5u,
-    ExtendedMetadata= 1ull << 6u,
-    Kephir2          = 1ull << 7u,
-    LegacyPayload    = 1ull << 8u,
+    Directory         = 1ull << 0u,
+    MultiStream       = 1ull << 1u,
+    Integrity         = 1ull << 2u,
+    SeekIndex         = 1ull << 3u,
+    Encryption        = 1ull << 4u,
+    Recovery          = 1ull << 5u,
+    ExtendedMetadata = 1ull << 6u,
+    Kephir2           = 1ull << 7u,
+    LegacyPayload     = 1ull << 8u,
 };
 
 [[nodiscard]] constexpr std::uint64_t feature_bit(Feature feature) noexcept {
@@ -41,16 +41,16 @@ enum class Feature : std::uint64_t {
 }
 
 enum class SectionType : std::uint32_t {
-    FileTable        = 0x0001u,
-    CodecDescriptor  = 0x0002u,
-    BlockTable       = 0x0003u,
-    Data             = 0x0004u,
-    Integrity        = 0x0005u,
-    Encryption       = 0x0006u,
-    Recovery         = 0x0007u,
-    SeekIndex        = 0x0008u,
-    ExtendedMetadata= 0x0009u,
-    UserMetadata     = 0x000au,
+    FileTable         = 0x0001u,
+    CodecDescriptor   = 0x0002u,
+    BlockTable        = 0x0003u,
+    Data              = 0x0004u,
+    Integrity         = 0x0005u,
+    Encryption        = 0x0006u,
+    Recovery          = 0x0007u,
+    SeekIndex         = 0x0008u,
+    ExtendedMetadata = 0x0009u,
+    UserMetadata      = 0x000au,
 };
 
 enum SectionFlags : std::uint32_t {
@@ -99,6 +99,17 @@ struct CodecDescriptor {
     bool operator==(const CodecDescriptor&) const = default;
 };
 
+struct StreamRecord {
+    std::uint64_t stream_id{0};
+    std::uint64_t payload_offset{0};
+    std::uint64_t compressed_size{0};
+    std::uint64_t raw_size{0};
+    std::uint32_t codec_id{kCodecKephir};
+    std::uint64_t codec_flags{0};
+
+    bool operator==(const StreamRecord&) const = default;
+};
+
 struct FileEntry {
     std::uint64_t entry_id{0};
     EntryType type{EntryType::File};
@@ -127,6 +138,9 @@ struct Container {
 [[nodiscard]] ByteBuffer encode_codec_descriptor(const CodecDescriptor& descriptor);
 [[nodiscard]] CodecDescriptor decode_codec_descriptor(std::span<const std::uint8_t> data);
 
+[[nodiscard]] ByteBuffer encode_stream_table(std::span<const StreamRecord> streams);
+[[nodiscard]] std::vector<StreamRecord> decode_stream_table(std::span<const std::uint8_t> data);
+
 [[nodiscard]] ByteBuffer encode_file_table(std::span<const FileEntry> entries);
 [[nodiscard]] std::vector<FileEntry> decode_file_table(std::span<const std::uint8_t> data);
 
@@ -135,6 +149,8 @@ struct Container {
     std::span<const Section> sections);
 
 [[nodiscard]] Container decode_container(std::span<const std::uint8_t> data);
+
+void validate_container_structure(const Container& container);
 
 [[nodiscard]] bool is_known_section_type(std::uint32_t type) noexcept;
 [[nodiscard]] bool is_safe_relative_path(std::string_view path) noexcept;
