@@ -227,3 +227,41 @@ add_test(NAME kephir2_aur2_metadata_smoke COMMAND kephir2_aur2_metadata_smoke)
 add_executable(kephir2_aur2_indexed_public_smoke tests/aur2_indexed_public_smoke.cpp)
 target_link_libraries(kephir2_aur2_indexed_public_smoke PRIVATE kephir2_api kephir2_core)
 add_test(NAME kephir2_aur2_indexed_public_smoke COMMAND kephir2_aur2_indexed_public_smoke)
+
+# Smoke tests are intentionally built in Release by CI so they exercise the
+# production code path. Release normally defines NDEBUG, which would silently
+# compile out assert() checks in these executables. Undefine it only for test
+# translation units; the production libraries remain normal optimized Release.
+set(KEPHIR2_SMOKE_TARGETS
+    kephir2_strategy_smoke
+    kephir2_analyzer_smoke
+    kephir2_planner_smoke
+    kephir2_archive_smoke
+    kephir2_aur2_smoke
+    kephir2_aur2_structure_smoke
+    kephir2_aur2_native_k75_smoke
+    kephir2_aur2_directory_k75_smoke
+    kephir2_aur2_inspection_smoke
+    kephir2_aur2_selective_smoke
+    kephir2_aur2_seek_smoke
+    kephir2_packing_smoke
+    kephir2_execution_smoke
+    kephir2_native37_smoke
+    kephir2_native37_blob_smoke
+    kephir2_native_k75_smoke
+    kephir2_auto_routing_smoke
+    kephir2_api_smoke
+    kephir2_aur2_c_api_smoke
+    kephir2_aur2_legacy_compat_smoke
+    kephir2_aur2_public_writer_smoke
+    kephir2_aur2_metadata_smoke
+    kephir2_aur2_indexed_public_smoke
+)
+
+foreach(_target IN LISTS KEPHIR2_SMOKE_TARGETS)
+    if(MSVC)
+        target_compile_options(${_target} PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(${_target} PRIVATE -UNDEBUG)
+    endif()
+endforeach()
