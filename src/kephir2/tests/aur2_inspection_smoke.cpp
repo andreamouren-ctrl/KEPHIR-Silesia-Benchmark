@@ -27,6 +27,15 @@ bool contains_path(
     });
 }
 
+bool inspection_rejects(std::span<const std::uint8_t> archive) {
+    try {
+        (void)kephir2::aur2::inspect_archive(archive);
+        return false;
+    } catch (...) {
+        return true;
+    }
+}
+
 } // namespace
 
 int main() {
@@ -66,6 +75,8 @@ int main() {
     assert(info.entry_count == 5);
     assert(info.stream_count >= 1);
     assert(!info.is_encrypted);
+    assert(info.integrity_available);
+    assert((info.feature_flags & feature_bit(Feature::Integrity)) != 0);
 
     const auto entries = list_entries(archive);
     assert(entries.size() == 5);
@@ -81,13 +92,27 @@ int main() {
     // Truncation must be rejected by inspection before any extraction attempt.
     auto truncated = archive;
     truncated.pop_back();
-    bool rejected = false;
-    try {
-        (void)inspect_archive(truncated);
-    } catch (...) {
-        rejected = true;
+    assert(inspection_rejects(truncated));
+
+    // Corrupt only the DATA payload while preserving the original INTEGRITY
+    // section. Re-encoding refreshes framing/header bytes, so rejection here
+    // specifically proves per-stream payload CRC32 validation works.
+    auto corrupted_model = decode_container(archive);
+    bool corrupted_data = false;
+    for (auto& section : corrupted_model.sections) {
+        if (section.type == static_cast<std::uint32_t>(SectionType::Data)
+            && !section.payload.empty()) {
+            section.payload.front() ^= 0x01u;
+            corrupted_data = true;
+            break;
+        }
     }
-    assert(rejected);
+    assert(corrupted_data);
+
+    const auto corrupted = encode_container(
+        corrupted_model.header,
+        corrupted_model.sections);
+    assert(inspection_rejects(corrupted));
 
     std::filesystem::remove_all(root);
     return 0;
