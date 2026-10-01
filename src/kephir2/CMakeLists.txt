@@ -181,7 +181,6 @@ add_test(NAME kephir2_native37_blob_smoke COMMAND kephir2_native37_blob_smoke)
 add_test(NAME kephir2_native_k75_smoke COMMAND kephir2_native_k75_smoke)
 add_test(NAME kephir2_auto_routing_smoke COMMAND kephir2_auto_routing_smoke)
 
-
 add_library(kephir2_api SHARED
     src/kephir2_c.cpp
 )
@@ -198,3 +197,15 @@ add_executable(kephir2_api_smoke
 )
 target_link_libraries(kephir2_api_smoke PRIVATE kephir2_api)
 add_test(NAME kephir2_api_smoke COMMAND kephir2_api_smoke)
+
+add_executable(kephir2_production_candidate_api_smoke
+    tests/production_candidate_api_smoke.cpp
+)
+target_link_libraries(
+    kephir2_production_candidate_api_smoke
+    PRIVATE kephir2_api kephir2_core
+)
+add_test(
+    NAME kephir2_production_candidate_api_smoke
+    COMMAND kephir2_production_candidate_api_smoke
+)
