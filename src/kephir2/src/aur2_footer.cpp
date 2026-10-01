@@ -160,7 +160,10 @@ ByteBuffer attach_footer_integrity(std::span<const std::uint8_t> archive) {
     }
     const auto body_size = static_cast<std::uint64_t>(
         indexed.size() - kSectionHeaderSize - kFooterPayloadSize);
-    const auto body_crc = crc32(indexed.first(static_cast<std::size_t>(body_size)));
+    const auto body_span = std::span<const std::uint8_t>(
+        indexed.data(),
+        static_cast<std::size_t>(body_size));
+    const auto body_crc = crc32(body_span);
 
     indexed_container.sections.back().payload = encode_footer_payload({
         body_size,
