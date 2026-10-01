@@ -110,6 +110,13 @@ struct StreamRecord {
     bool operator==(const StreamRecord&) const = default;
 };
 
+struct IntegrityRecord {
+    std::uint64_t stream_id{0};
+    std::uint32_t payload_crc32{0};
+
+    bool operator==(const IntegrityRecord&) const = default;
+};
+
 struct FileEntry {
     std::uint64_t entry_id{0};
     EntryType type{EntryType::File};
@@ -140,6 +147,9 @@ struct Container {
 
 [[nodiscard]] ByteBuffer encode_stream_table(std::span<const StreamRecord> streams);
 [[nodiscard]] std::vector<StreamRecord> decode_stream_table(std::span<const std::uint8_t> data);
+
+[[nodiscard]] ByteBuffer encode_integrity_table(std::span<const IntegrityRecord> records);
+[[nodiscard]] std::vector<IntegrityRecord> decode_integrity_table(std::span<const std::uint8_t> data);
 
 [[nodiscard]] ByteBuffer encode_file_table(std::span<const FileEntry> entries);
 [[nodiscard]] std::vector<FileEntry> decode_file_table(std::span<const std::uint8_t> data);
