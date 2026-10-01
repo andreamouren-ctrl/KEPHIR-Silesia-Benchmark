@@ -47,6 +47,7 @@ add_library(kephir2_core STATIC
     src/aur2.cpp
     src/aur2_execution.cpp
     src/aur2_file_extract.cpp
+    src/aur2_finalize_file.cpp
     src/aur2_footer.cpp
     src/aur2_indexed_file.cpp
     src/aur2_inspection.cpp
@@ -104,6 +105,8 @@ add_executable(kephir2_aur2_selective_smoke tests/aur2_selective_smoke.cpp)
 target_link_libraries(kephir2_aur2_selective_smoke PRIVATE kephir2_core)
 add_executable(kephir2_aur2_seek_smoke tests/aur2_seek_smoke.cpp)
 target_link_libraries(kephir2_aur2_seek_smoke PRIVATE kephir2_core)
+add_executable(kephir2_aur2_finalize_file_smoke tests/aur2_finalize_file_smoke.cpp)
+target_link_libraries(kephir2_aur2_finalize_file_smoke PRIVATE kephir2_core)
 add_executable(kephir2_aur2_ranged_file_smoke tests/aur2_ranged_file_smoke.cpp)
 target_link_libraries(kephir2_aur2_ranged_file_smoke PRIVATE kephir2_api kephir2_core)
 add_executable(kephir2_packing_smoke tests/packing_smoke.cpp)
@@ -141,6 +144,7 @@ add_test(NAME kephir2_aur2_directory_k75_smoke COMMAND kephir2_aur2_directory_k7
 add_test(NAME kephir2_aur2_inspection_smoke COMMAND kephir2_aur2_inspection_smoke)
 add_test(NAME kephir2_aur2_selective_smoke COMMAND kephir2_aur2_selective_smoke)
 add_test(NAME kephir2_aur2_seek_smoke COMMAND kephir2_aur2_seek_smoke)
+add_test(NAME kephir2_aur2_finalize_file_smoke COMMAND kephir2_aur2_finalize_file_smoke)
 add_test(NAME kephir2_aur2_ranged_file_smoke COMMAND kephir2_aur2_ranged_file_smoke)
 add_test(NAME kephir2_packing_smoke COMMAND kephir2_packing_smoke)
 add_test(NAME kephir2_execution_smoke COMMAND kephir2_execution_smoke)
@@ -226,6 +230,7 @@ set(KEPHIR2_SMOKE_TARGETS
     kephir2_aur2_inspection_smoke
     kephir2_aur2_selective_smoke
     kephir2_aur2_seek_smoke
+    kephir2_aur2_finalize_file_smoke
     kephir2_aur2_ranged_file_smoke
     kephir2_aur2_file_extract_smoke
     kephir2_packing_smoke
