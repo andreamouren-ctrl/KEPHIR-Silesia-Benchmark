@@ -5,6 +5,7 @@
 #include "kephir2/strategy.hpp"
 
 #include <filesystem>
+#include <limits>
 #include <span>
 
 namespace kephir2::aur2 {
