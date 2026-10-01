@@ -106,9 +106,6 @@ int main(int argc, char** argv) {
         options.allow_local_experience = false;
         options.workers = workers;
         options.enable_adaptive_context = adaptive;
-        // NativeK75 still accepts the legacy research alias while EXP-117
-        // qualifies the production-candidate switch end-to-end.
-        options.research_enable_adaptive_context = adaptive;
 
         ProductionAutoResolver resolver;
         ArchiveExecutor executor;
