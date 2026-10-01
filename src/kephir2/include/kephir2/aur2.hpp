@@ -34,6 +34,7 @@ enum class Feature : std::uint64_t {
     ExtendedMetadata = 1ull << 6u,
     Kephir2           = 1ull << 7u,
     LegacyPayload     = 1ull << 8u,
+    FooterIntegrity   = 1ull << 9u,
 };
 
 [[nodiscard]] constexpr std::uint64_t feature_bit(Feature feature) noexcept {
@@ -51,6 +52,7 @@ enum class SectionType : std::uint32_t {
     SeekIndex         = 0x0008u,
     ExtendedMetadata = 0x0009u,
     UserMetadata      = 0x000au,
+    FooterIntegrity   = make_fourcc('F', 'T', 'R', '1'),
 };
 
 enum SectionFlags : std::uint32_t {
