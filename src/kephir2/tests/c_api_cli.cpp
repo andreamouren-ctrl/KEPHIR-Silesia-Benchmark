@@ -1,7 +1,9 @@
 #include "kephir2/kephir2_c.h"
 
+#include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 
 namespace {
