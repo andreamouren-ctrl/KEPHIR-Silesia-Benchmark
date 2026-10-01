@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -204,11 +205,40 @@ void verify_kephir_descriptor(
     }
 }
 
+std::vector<IntegrityRecord> make_integrity_records(
+    std::span<const StreamRecord> streams,
+    std::span<const std::uint8_t> data) {
+
+    std::vector<IntegrityRecord> records;
+    records.reserve(streams.size());
+
+    for (const auto& stream : streams) {
+        if (stream.payload_offset > data.size() ||
+            stream.compressed_size > data.size() - stream.payload_offset) {
+            throw std::runtime_error("AUR2 integrity source range exceeds DATA section");
+        }
+        if (stream.payload_offset > std::numeric_limits<std::size_t>::max() ||
+            stream.compressed_size > std::numeric_limits<std::size_t>::max()) {
+            throw std::runtime_error("AUR2 integrity source range exceeds process address space");
+        }
+
+        const auto begin = static_cast<std::size_t>(stream.payload_offset);
+        const auto size = static_cast<std::size_t>(stream.compressed_size);
+        records.push_back({
+            stream.stream_id,
+            crc32(std::span<const std::uint8_t>(data.data() + begin, size))
+        });
+    }
+    return records;
+}
+
 std::vector<Section> build_required_sections(
     const CodecDescriptor& descriptor,
     std::span<const FileEntry> entries,
     std::span<const StreamRecord> streams,
     ByteBuffer data) {
+
+    const auto integrity = make_integrity_records(streams, data);
 
     std::vector<Section> sections;
     sections.push_back({
@@ -225,6 +255,11 @@ std::vector<Section> build_required_sections(
         static_cast<std::uint32_t>(SectionType::BlockTable),
         SectionFlagRequired,
         encode_stream_table(streams)
+    });
+    sections.push_back({
+        static_cast<std::uint32_t>(SectionType::Integrity),
+        SectionFlagRequired,
+        encode_integrity_table(integrity)
     });
     sections.push_back({
         static_cast<std::uint32_t>(SectionType::Data),
@@ -293,7 +328,9 @@ ByteBuffer ArchiveExecutor::compress_file(
 
     Header header;
     header.logical_size = source.size();
-    header.feature_flags = feature_bit(Feature::Kephir2);
+    header.feature_flags =
+        feature_bit(Feature::Kephir2) |
+        feature_bit(Feature::Integrity);
 
     const std::vector<FileEntry> entries{entry};
     auto sections = build_required_sections(descriptor, entries, streams, std::move(data));
@@ -401,7 +438,8 @@ ByteBuffer ArchiveExecutor::compress_directory(
     header.logical_size = logical_size;
     header.feature_flags =
         feature_bit(Feature::Directory) |
-        feature_bit(Feature::Kephir2);
+        feature_bit(Feature::Kephir2) |
+        feature_bit(Feature::Integrity);
     if (streams.size() > 1) {
         header.feature_flags |= feature_bit(Feature::MultiStream);
     }
