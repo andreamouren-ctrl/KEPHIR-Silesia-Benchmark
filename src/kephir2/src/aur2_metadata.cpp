@@ -152,6 +152,31 @@ void capture_entry_metadata(FileEntry& entry, const std::filesystem::path& path)
     }
 }
 
+void validate_metadata_source(
+    std::span<FileEntry> entries,
+    const std::filesystem::path& source) {
+
+    const bool source_is_directory = std::filesystem::is_directory(source);
+    const bool source_is_file = std::filesystem::is_regular_file(source);
+    if (!source_is_directory && !source_is_file) {
+        throw std::runtime_error("AUR2 metadata source is not a file or directory");
+    }
+    if (source_is_file && (entries.size() != 1 || entries[0].type != EntryType::File)) {
+        throw std::runtime_error("AUR2 metadata source/archive kind mismatch");
+    }
+
+    for (auto& entry : entries) {
+        const auto path = source_path_for_entry(source, entry, source_is_directory);
+        std::error_code ec;
+        const auto status = std::filesystem::status(path, ec);
+        if (ec || (entry.type == EntryType::Directory && !std::filesystem::is_directory(status))
+            || (entry.type == EntryType::File && !std::filesystem::is_regular_file(status))) {
+            throw std::runtime_error("AUR2 metadata source entry is missing or changed");
+        }
+        capture_entry_metadata(entry, path);
+    }
+}
+
 void apply_entry_metadata(
     const FileEntry& entry,
     const std::filesystem::path& output_directory) {
@@ -230,6 +255,13 @@ void restore_archive_impl(
 
 } // namespace
 
+void capture_filesystem_metadata_entries(
+    std::span<FileEntry> entries,
+    const std::filesystem::path& source) {
+
+    validate_metadata_source(entries, source);
+}
+
 ByteBuffer attach_filesystem_metadata(
     std::span<const std::uint8_t> archive,
     const std::filesystem::path& source) {
@@ -238,26 +270,7 @@ ByteBuffer attach_filesystem_metadata(
     validate_container_structure(container);
     auto& table = find_file_table(container);
     auto entries = decode_file_table(table.payload);
-
-    const bool source_is_directory = std::filesystem::is_directory(source);
-    const bool source_is_file = std::filesystem::is_regular_file(source);
-    if (!source_is_directory && !source_is_file) {
-        throw std::runtime_error("AUR2 metadata source is not a file or directory");
-    }
-    if (source_is_file && (entries.size() != 1 || entries[0].type != EntryType::File)) {
-        throw std::runtime_error("AUR2 metadata source/archive kind mismatch");
-    }
-
-    for (auto& entry : entries) {
-        const auto path = source_path_for_entry(source, entry, source_is_directory);
-        std::error_code ec;
-        const auto status = std::filesystem::status(path, ec);
-        if (ec || (entry.type == EntryType::Directory && !std::filesystem::is_directory(status))
-            || (entry.type == EntryType::File && !std::filesystem::is_regular_file(status))) {
-            throw std::runtime_error("AUR2 metadata source entry is missing or changed");
-        }
-        capture_entry_metadata(entry, path);
-    }
+    capture_filesystem_metadata_entries(entries, source);
 
     table.payload = encode_file_table(entries);
     validate_container_structure(container);
