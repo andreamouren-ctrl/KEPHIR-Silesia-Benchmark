@@ -192,6 +192,11 @@ target_compile_features(kephir2_api PUBLIC cxx_std_20)
 target_compile_definitions(kephir2_api PRIVATE KEPHIR2_BUILD_DLL=1)
 target_link_libraries(kephir2_api PRIVATE kephir2_core)
 
+add_executable(kephir2_c_api_cli
+    tests/c_api_cli.cpp
+)
+target_link_libraries(kephir2_c_api_cli PRIVATE kephir2_api)
+
 add_executable(kephir2_api_smoke
     tests/api_smoke.cpp
 )
