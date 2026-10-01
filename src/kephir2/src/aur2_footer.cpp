@@ -178,8 +178,11 @@ ByteBuffer attach_footer_integrity(std::span<const std::uint8_t> archive) {
 }
 
 void validate_footer_integrity(std::span<const std::uint8_t> archive) {
+    // Decode framing first so the footer can be located, but intentionally do
+    // not perform deep FILE_TABLE/stream validation until the global body CRC
+    // has been checked. This guarantees body corruption is reported as an
+    // integrity failure rather than being misclassified by a downstream parser.
     const auto container = decode_container(archive);
-    validate_container_structure(container);
 
     const bool feature =
         (container.header.feature_flags & kFeatureFooterIntegrity) != 0;
@@ -188,6 +191,9 @@ void validate_footer_integrity(std::span<const std::uint8_t> archive) {
     const auto* footer = find_footer(container, count);
 
     if (!feature && count == 0) {
+        // Legacy AUR2 archives have no footer; retain their historical deep
+        // validation path rather than silently accepting malformed structure.
+        validate_container_structure(container);
         return;
     }
     if (!feature || count != 1 || footer == nullptr) {
@@ -221,8 +227,9 @@ void validate_footer_integrity(std::span<const std::uint8_t> archive) {
         throw std::runtime_error("AUR2 footer body CRC32 mismatch");
     }
 
-    // New footer-bearing archives are always indexed; this also verifies that
-    // FTR1 is represented by the TOC and its fixed size/offset did not drift.
+    // The body is globally intact. It is now safe to parse and validate the
+    // semantic structure and then prove that FTR1 is represented by the TOC.
+    validate_container_structure(container);
     validate_seek_index(archive);
 }
 
