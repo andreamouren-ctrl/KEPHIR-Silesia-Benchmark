@@ -1,5 +1,6 @@
 #include "kephir2/kephir2_c.h"
 
+#include "kephir2/aur2_finalize_file.hpp"
 #include "kephir2/aur2_footer.hpp"
 
 #include <algorithm>
@@ -19,7 +20,7 @@
 #endif
 
 extern "C" {
-kephir2_status kephir2_compress_seek_payload(
+kephir2_status kephir2_compress_aur2_payload(
     kephir2_engine*, const char*, const char*,
     const kephir2_options_v1*, kephir2_result_v1*);
 kephir2_status kephir2_test_archive_indexed(
@@ -145,29 +146,19 @@ std::vector<std::uint8_t> read_all(const std::filesystem::path& path) {
     };
 }
 
-void write_all(
-    const std::filesystem::path& path,
-    std::span<const std::uint8_t> bytes) {
+std::filesystem::path staging_path(
+    const std::filesystem::path& destination,
+    std::string_view role) {
 
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    if (!out) throw std::runtime_error("unable to rewrite AUR2 footer archive");
-    if (!bytes.empty()) {
-        out.write(
-            reinterpret_cast<const char*>(bytes.data()),
-            static_cast<std::streamsize>(bytes.size()));
-    }
-    out.flush();
-    if (!out) throw std::runtime_error("unable to flush AUR2 footer archive");
-}
-
-std::filesystem::path staging_path(const std::filesystem::path& destination) {
     const auto ticks = static_cast<unsigned long long>(
         Clock::now().time_since_epoch().count());
     auto parent = destination.parent_path();
     if (parent.empty()) parent = ".";
     return parent / (
         destination.filename().string()
-        + ".aur2-footer-stage."
+        + ".aur2-"
+        + std::string(role)
+        + "."
         + std::to_string(ticks));
 }
 
@@ -184,7 +175,7 @@ void publish_stage(
         ? (MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)
         : MOVEFILE_WRITE_THROUGH;
     if (!MoveFileExW(stage.c_str(), destination.c_str(), flags)) {
-        throw std::runtime_error("unable to atomically publish footer AUR2 archive");
+        throw std::runtime_error("unable to atomically publish finalized AUR2 archive");
     }
 #else
     std::filesystem::rename(stage, destination);
@@ -233,21 +224,23 @@ kephir2_status kephir2_compress(
     kephir2_result_v1* result) {
 
     if (!engine || !input_utf8 || !output_utf8 || !options_shape_valid(options)) {
-        return kephir2_compress_seek_payload(
+        return kephir2_compress_aur2_payload(
             engine, input_utf8, output_utf8, options, result);
     }
 
     const auto start = Clock::now();
+    const auto source = from_utf8(input_utf8);
     const auto destination = from_utf8(output_utf8);
     const bool overwrite = options ? options->overwrite_output != 0 : false;
 
     if (!overwrite && std::filesystem::exists(destination)) {
-        return kephir2_compress_seek_payload(
+        return kephir2_compress_aur2_payload(
             engine, input_utf8, output_utf8, options, result);
     }
 
-    const auto stage = staging_path(destination);
-    const auto stage_utf8 = to_utf8(stage);
+    const auto base_stage = staging_path(destination, "base-stage");
+    const auto final_stage = staging_path(destination, "final-stage");
+    const auto base_stage_utf8 = to_utf8(base_stage);
 
     CallbackForwarder forwarder;
     forwarder.final_path = to_utf8(destination);
@@ -256,20 +249,22 @@ kephir2_status kephir2_compress(
 
     kephir2_result_v1 inner_result{};
     inner_result.struct_size = sizeof(inner_result);
-    const auto status = kephir2_compress_seek_payload(
+    const auto status = kephir2_compress_aur2_payload(
         engine,
         input_utf8,
-        stage_utf8.c_str(),
+        base_stage_utf8.c_str(),
         &inner_options,
         &inner_result);
 
     if (status != KEPHIR2_OK) {
-        remove_noexcept(stage);
+        remove_noexcept(base_stage);
+        remove_noexcept(final_stage);
         if (result) *result = inner_result;
         return status;
     }
     if (cancelled(forwarder)) {
-        remove_noexcept(stage);
+        remove_noexcept(base_stage);
+        remove_noexcept(final_stage);
         fill_result(
             result,
             KEPHIR2_CANCELLED,
@@ -281,12 +276,14 @@ kephir2_status kephir2_compress(
     }
 
     try {
-        const auto archive = read_all(stage);
-        const auto finished = kephir2::aur2::attach_footer_integrity(archive);
-        write_all(stage, finished);
+        kephir2::aur2::finalize_archive_file_backed(
+            base_stage,
+            source,
+            final_stage);
+        remove_noexcept(base_stage);
 
         if (cancelled(forwarder)) {
-            remove_noexcept(stage);
+            remove_noexcept(final_stage);
             fill_result(
                 result,
                 KEPHIR2_CANCELLED,
@@ -297,21 +294,22 @@ kephir2_status kephir2_compress(
             return KEPHIR2_CANCELLED;
         }
 
-        publish_stage(stage, destination, overwrite);
+        publish_stage(final_stage, destination, overwrite);
         const auto elapsed = std::chrono::duration<double>(
             Clock::now() - start).count();
         const auto output_bytes = std::filesystem::file_size(destination);
         fill_result(
             result,
             KEPHIR2_OK,
-            "AUR2 compression completed with metadata, seek index and footer integrity",
+            "AUR2 compression completed with file-backed metadata, seek index and footer integrity",
             inner_result.input_bytes,
             output_bytes,
             elapsed);
         emit_done(forwarder, inner_result.input_bytes, inner_result.input_bytes);
         return KEPHIR2_OK;
     } catch (const std::exception& error) {
-        remove_noexcept(stage);
+        remove_noexcept(base_stage);
+        remove_noexcept(final_stage);
         fill_result(
             result,
             KEPHIR2_IO_ERROR,
@@ -321,11 +319,12 @@ kephir2_status kephir2_compress(
             std::chrono::duration<double>(Clock::now() - start).count());
         return KEPHIR2_IO_ERROR;
     } catch (...) {
-        remove_noexcept(stage);
+        remove_noexcept(base_stage);
+        remove_noexcept(final_stage);
         fill_result(
             result,
             KEPHIR2_INTERNAL_ERROR,
-            "unknown AUR2 footer compression error",
+            "unknown AUR2 file-backed finalization error",
             inner_result.input_bytes,
             0,
             std::chrono::duration<double>(Clock::now() - start).count());
