@@ -122,6 +122,12 @@ typedef int (*kephir2_entry_callback)(
     const kephir2_entry_info_v1* entry,
     void* user_data);
 
+typedef struct kephir2_selection_v1 {
+    uint32_t struct_size;
+    const uint64_t* entry_ids;
+    size_t entry_count;
+} kephir2_selection_v1;
+
 KEPHIR2_API uint32_t kephir2_api_version(void);
 KEPHIR2_API const char* kephir2_engine_version(void);
 KEPHIR2_API kephir2_engine* kephir2_create(void);
@@ -159,6 +165,14 @@ KEPHIR2_API kephir2_status kephir2_list_entries(
 KEPHIR2_API kephir2_status kephir2_test_archive(
     kephir2_engine* engine,
     const char* archive_utf8,
+    const kephir2_options_v1* options,
+    kephir2_result_v1* result);
+
+KEPHIR2_API kephir2_status kephir2_extract_selected(
+    kephir2_engine* engine,
+    const char* archive_utf8,
+    const char* output_directory_utf8,
+    const kephir2_selection_v1* selection,
     const kephir2_options_v1* options,
     kephir2_result_v1* result);
 
