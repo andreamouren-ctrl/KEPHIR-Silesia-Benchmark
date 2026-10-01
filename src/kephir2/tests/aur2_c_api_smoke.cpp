@@ -1,6 +1,6 @@
+#include "kephir2/aur2.hpp"
 #include "kephir2/aur2_indexed_file.hpp"
 #include "kephir2/aur2_ranged_file.hpp"
-#include "kephir2/aur2_streams.hpp"
 #include "kephir2/kephir2_c.h"
 
 #include <cassert>
