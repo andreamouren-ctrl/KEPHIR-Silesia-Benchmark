@@ -115,7 +115,6 @@ def four_quarters(pool_sizes, size, seed):
 def build_cases(root):
     root.mkdir(parents=True, exist_ok=True)
     cases = {}
-    rng = random.Random(118D if False else 11840)
 
     cases["extreme_zero_to_random_8m"] = (
         bytes(2 * MiB)
