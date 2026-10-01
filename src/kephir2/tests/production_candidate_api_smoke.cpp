@@ -1,0 +1,169 @@
+#include "kephir2/execution.hpp"
+#include "kephir2/kephir2_c.h"
+#include "kephir2/native_k75.hpp"
+
+#include <algorithm>
+#include <cassert>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <string>
+#include <vector>
+
+namespace {
+
+void write_repeat(
+    const std::filesystem::path& path,
+    const std::string& pattern,
+    std::size_t size) {
+
+    std::filesystem::create_directories(path.parent_path());
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    assert(out);
+
+    std::size_t written = 0;
+    while (written < size) {
+        const auto n = std::min(pattern.size(), size - written);
+        out.write(pattern.data(), static_cast<std::streamsize>(n));
+        written += n;
+    }
+    assert(out);
+}
+
+void write_all(
+    const std::filesystem::path& path,
+    const std::vector<std::uint8_t>& bytes) {
+
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    assert(out);
+    out.write(
+        reinterpret_cast<const char*>(bytes.data()),
+        static_cast<std::streamsize>(bytes.size()));
+    assert(out);
+}
+
+std::vector<std::uint8_t> read_all(const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    assert(in);
+    return {
+        std::istreambuf_iterator<char>(in),
+        std::istreambuf_iterator<char>()
+    };
+}
+
+std::string utf8(const std::filesystem::path& path) {
+    const auto s = path.generic_u8string();
+    return std::string(
+        reinterpret_cast<const char*>(s.data()),
+        s.size());
+}
+
+} // namespace
+
+int main() {
+    using namespace kephir2;
+    constexpr std::size_t MiB = 1024u * 1024u;
+
+    const auto base =
+        std::filesystem::temp_directory_path()
+        / "kephir2_exp117_api_candidate";
+    const auto input = base / "candidate.txt";
+    const auto adaptive_archive = base / "adaptive.kpf";
+    const auto api_baseline_archive = base / "api_baseline.kpf";
+    const auto direct_baseline_archive = base / "direct_baseline.kpf";
+    const auto adaptive_extract = base / "adaptive_extract";
+    const auto baseline_extract = base / "baseline_extract";
+
+    std::filesystem::remove_all(base);
+    std::filesystem::create_directories(base);
+
+    write_repeat(
+        input,
+        "ordinary prose words and spaces form a natural sentence. "
+        "long range context should remain stable across this stream.\n",
+        10u * MiB);
+
+    NativeK75Backend backend;
+    ArchiveExecutor executor;
+
+    BackendOptions baseline{};
+    baseline.workers = 4;
+    baseline.allow_local_experience = false;
+
+    BackendOptions adaptive = baseline;
+    adaptive.enable_adaptive_context = true;
+    // Compatibility alias until EXP-117B removes the research-only plumbing.
+    adaptive.research_enable_adaptive_context = true;
+
+    const auto direct_baseline =
+        executor.compress_file(input, backend, baseline);
+    const auto direct_adaptive =
+        executor.compress_file(input, backend, adaptive);
+
+    assert(!direct_baseline.empty());
+    assert(!direct_adaptive.empty());
+    assert(direct_adaptive != direct_baseline);
+
+    write_all(direct_baseline_archive, direct_baseline);
+    write_all(adaptive_archive, direct_adaptive);
+
+    auto* engine = kephir2_create();
+    assert(engine != nullptr);
+
+    kephir2_options_v1 options{};
+    options.struct_size = sizeof(options);
+    options.profile = KEPHIR2_PROFILE_FAST;
+    options.workers = 4;
+    options.verify_integrity = 1;
+    options.overwrite_output = 1;
+    options.allow_local_experience = 0;
+
+    kephir2_result_v1 compress_result{};
+    compress_result.struct_size = sizeof(compress_result);
+
+    const auto input_s = utf8(input);
+    const auto api_baseline_s = utf8(api_baseline_archive);
+
+    assert(kephir2_compress(
+        engine,
+        input_s.c_str(),
+        api_baseline_s.c_str(),
+        &options,
+        &compress_result) == KEPHIR2_OK);
+    assert(compress_result.status == KEPHIR2_OK);
+    assert(compress_result.input_bytes == std::filesystem::file_size(input));
+    assert(compress_result.output_bytes == std::filesystem::file_size(api_baseline_archive));
+
+    // FAST still maps to the qualified baseline during EXP-117A.
+    assert(read_all(api_baseline_archive) == direct_baseline);
+
+    kephir2_result_v1 adaptive_extract_result{};
+    adaptive_extract_result.struct_size = sizeof(adaptive_extract_result);
+    const auto adaptive_archive_s = utf8(adaptive_archive);
+    const auto adaptive_extract_s = utf8(adaptive_extract);
+
+    assert(kephir2_extract(
+        engine,
+        adaptive_archive_s.c_str(),
+        adaptive_extract_s.c_str(),
+        &options,
+        &adaptive_extract_result) == KEPHIR2_OK);
+    assert(adaptive_extract_result.status == KEPHIR2_OK);
+    assert(read_all(input) == read_all(adaptive_extract / input.filename()));
+
+    kephir2_result_v1 baseline_extract_result{};
+    baseline_extract_result.struct_size = sizeof(baseline_extract_result);
+    const auto baseline_extract_s = utf8(baseline_extract);
+
+    assert(kephir2_extract(
+        engine,
+        api_baseline_s.c_str(),
+        baseline_extract_s.c_str(),
+        &options,
+        &baseline_extract_result) == KEPHIR2_OK);
+    assert(read_all(input) == read_all(baseline_extract / input.filename()));
+
+    kephir2_destroy(engine);
+    std::filesystem::remove_all(base);
+    return 0;
+}
