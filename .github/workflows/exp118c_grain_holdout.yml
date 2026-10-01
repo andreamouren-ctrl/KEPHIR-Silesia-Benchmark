@@ -1,0 +1,71 @@
+name: KEPHIR 2 EXP-118C Grain Router Holdout
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/exp118c-grain-holdout
+    paths:
+      - "src/kephir2/**"
+      - "research/benchmarks/exp118c_grain_holdout.py"
+      - ".github/workflows/exp118c_grain_holdout.yml"
+  pull_request:
+    branches:
+      - research/exp118b-grain-probe-router
+    paths:
+      - "src/kephir2/**"
+      - "research/benchmarks/exp118c_grain_holdout.py"
+      - ".github/workflows/exp118c_grain_holdout.yml"
+
+jobs:
+  holdout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build frozen candidate
+        run: |
+          cmake -S src/kephir2 -B build/kephir2 -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/kephir2 --config Release --parallel
+
+      - name: Regression suite
+        run: ctest --test-dir build/kephir2 --output-on-failure
+
+      - name: Run independent deterministic holdout
+        run: |
+          python3 research/benchmarks/exp118c_grain_holdout.py \
+            build/kephir2/kephir2_native_k75_cli | tee exp118c.log
+
+      - name: Validate experiment integrity only
+        run: |
+          python3 - <<'PY'
+          import json
+          d=json.load(open('exp118c_results.json'))
+          assert d['experiment']=='EXP-118C'
+          assert d['holdout_frozen_before_measurement'] is True
+          assert len(d['files'])==16
+          for row in d['files']:
+              assert all(v['sha_ok'] for v in row['full'].values())
+              assert row['probe_choice'] in ('adaptive','grain4','grain8')
+              assert row['feature_choice'] in ('adaptive','grain8')
+          for key in ('probe','feature'):
+              p=d[key]
+              assert p['selected_bytes'] >= p['oracle_bytes']
+              print(
+                  'EXP118C_RESULT',key,
+                  'GAIN',p['gain_vs_adaptive'],
+                  'REGRET',p['regret_bytes'],
+                  'HARM',p['harmful_count'],
+                  'CAPTURE',p['oracle_capture'],
+              )
+          print('EXP118C_VALIDATION_PASS')
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exp118c-grain-holdout
+          path: |
+            exp118c_results.json
+            exp118c.log
