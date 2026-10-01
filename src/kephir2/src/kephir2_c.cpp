@@ -109,6 +109,8 @@ kephir2::BackendOptions to_backend_options(
     out.workers = options.workers;
     out.allow_local_experience = options.allow_local_experience;
     out.operation = operation;
+    out.enable_adaptive_context =
+        options.profile == KEPHIR2_PROFILE_AUTO;
     return out;
 }
 
