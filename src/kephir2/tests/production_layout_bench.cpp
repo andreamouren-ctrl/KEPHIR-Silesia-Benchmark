@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -79,15 +80,23 @@ const char* layout_name(kephir2::Layout layout) {
 int main(int argc, char** argv) {
     using namespace kephir2;
 
-    if (argc != 3) {
+    if (argc < 3 || argc > 5) {
         std::cerr
-            << "usage: kephir2_production_layout_bench DIRECTORY OUTDIR\n";
+            << "usage: kephir2_production_layout_bench DIRECTORY OUTDIR [workers] [adaptive]\n";
         return 2;
     }
 
     try {
         const std::filesystem::path root = argv[1];
         const std::filesystem::path out = argv[2];
+        const std::size_t workers = argc >= 4
+            ? static_cast<std::size_t>(std::strtoul(argv[3], nullptr, 10))
+            : 1u;
+        const bool adaptive = argc >= 5 && std::string(argv[4]) == "adaptive";
+
+        if (workers == 0 || workers > 64) {
+            throw std::runtime_error("invalid worker count");
+        }
 
         std::filesystem::remove_all(out);
         std::filesystem::create_directories(out);
@@ -95,6 +104,11 @@ int main(int argc, char** argv) {
         NativeK75Backend backend;
         BackendOptions options{};
         options.allow_local_experience = false;
+        options.workers = workers;
+        options.enable_adaptive_context = adaptive;
+        // NativeK75 still accepts the legacy research alias while EXP-117
+        // qualifies the production-candidate switch end-to-end.
+        options.research_enable_adaptive_context = adaptive;
 
         ProductionAutoResolver resolver;
         ArchiveExecutor executor;
@@ -167,6 +181,8 @@ int main(int argc, char** argv) {
             << "SMART_BYTES=" << smart.size() << "\n"
             << "FLAT_BYTES=" << flat.size() << "\n"
             << "REGRET_BYTES=" << (selected_bytes - oracle_bytes) << "\n"
+            << "WORKERS=" << workers << "\n"
+            << "ADAPTIVE_CONTEXT=" << (adaptive ? 1 : 0) << "\n"
             << "PROBE_COUNT=" << resolved.probes.size() << "\n"
             << "PROBE_SECONDS=" << probe_seconds << "\n"
             << "RESOLVE_SECONDS="
