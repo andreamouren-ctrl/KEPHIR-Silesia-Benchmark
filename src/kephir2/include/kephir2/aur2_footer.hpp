@@ -7,8 +7,10 @@
 
 namespace kephir2::aur2 {
 
-inline constexpr std::uint64_t kFeatureFooterIntegrity = 1ull << 9u;
-inline constexpr std::uint32_t kFooterSectionType = make_fourcc('F', 'T', 'R', '1');
+inline constexpr std::uint64_t kFeatureFooterIntegrity =
+    feature_bit(Feature::FooterIntegrity);
+inline constexpr std::uint32_t kFooterSectionType =
+    static_cast<std::uint32_t>(SectionType::FooterIntegrity);
 inline constexpr std::uint16_t kFooterVersion = 1;
 inline constexpr std::uint16_t kFooterPayloadSize = 32;
 
