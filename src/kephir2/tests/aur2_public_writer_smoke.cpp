@@ -1,6 +1,7 @@
 #include "kephir2/kephir2_c.h"
 
 #include <cassert>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -33,6 +34,11 @@ void assert_aur2_magic(const std::filesystem::path& path) {
     assert(prefix[5] == 0x0a);
     assert(prefix[6] == 0x1a);
     assert(prefix[7] == 0x0a);
+}
+
+void assert_file_backed_writer(const kephir2_result_v1& result) {
+    assert(result.status == KEPHIR2_OK);
+    assert(std::strstr(result.message, "file-backed") != nullptr);
 }
 
 } // namespace
@@ -76,6 +82,7 @@ int main() {
         file_archive_s.c_str(),
         &options,
         &result) == KEPHIR2_OK);
+    assert_file_backed_writer(result);
     assert_aur2_magic(file_archive);
 
     kephir2_archive_info_v1 info{};
@@ -94,6 +101,7 @@ int main() {
         directory_archive_s.c_str(),
         &options,
         &result) == KEPHIR2_OK);
+    assert_file_backed_writer(result);
     assert_aur2_magic(directory_archive);
 
     info = {};
