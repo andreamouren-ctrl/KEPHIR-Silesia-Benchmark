@@ -1,6 +1,6 @@
 #pragma once
 
-#include "kephir2/archive.hpp"
+#include "kephir2/aur2.hpp"
 
 #include <cstdint>
 #include <filesystem>
@@ -20,16 +20,36 @@ inline constexpr std::uint32_t kMetadataMtimePresent = 1u << 30u;
     std::span<const std::uint8_t> archive,
     const std::filesystem::path& source);
 
-// Restores portable permissions and modification timestamps for extracted
-// entries. Metadata restoration is best-effort for permission bits that the
-// host filesystem cannot represent, but timestamp failures are reported.
+// Restores portable permissions and modification timestamps from an in-memory
+// AUR2 archive. Retained for compatibility with the original container path.
 void restore_filesystem_metadata(
     std::span<const std::uint8_t> archive,
     const std::filesystem::path& output_directory);
 
-// Same as above but only for the selected archive entry ids.
 void restore_selected_filesystem_metadata(
     std::span<const std::uint8_t> archive,
+    const std::filesystem::path& output_directory,
+    std::span<const std::uint64_t> entry_ids);
+
+// Metadata-only restore from already-decoded FILE_TABLE entries. These helpers
+// never access compressed DATA and are the primitive used by file-backed paths.
+void restore_filesystem_metadata_entries(
+    std::span<const FileEntry> entries,
+    const std::filesystem::path& output_directory);
+
+void restore_selected_filesystem_metadata_entries(
+    std::span<const FileEntry> entries,
+    const std::filesystem::path& output_directory,
+    std::span<const std::uint64_t> entry_ids);
+
+// Indexed file-backed variants. They read only SEEK_INDEX + FILE_TABLE and do
+// not materialize the archive or DATA section.
+void restore_filesystem_metadata_file(
+    const std::filesystem::path& archive,
+    const std::filesystem::path& output_directory);
+
+void restore_selected_filesystem_metadata_file(
+    const std::filesystem::path& archive,
     const std::filesystem::path& output_directory,
     std::span<const std::uint64_t> entry_ids);
 
