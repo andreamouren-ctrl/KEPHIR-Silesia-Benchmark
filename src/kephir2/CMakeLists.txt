@@ -48,6 +48,7 @@ set_target_properties(kephir37_native PROPERTIES POSITION_INDEPENDENT_CODE ON)
 add_library(kephir2_core STATIC
     src/analyzer.cpp
     src/aur2.cpp
+    src/aur2_execution.cpp
     src/aur2_streams.cpp
     src/auto_routing.cpp
     src/archive.cpp
@@ -74,104 +75,67 @@ else()
     target_compile_options(kephir2_core PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
-add_executable(kephir2_strategy_smoke
-    tests/strategy_smoke.cpp
-)
+add_executable(kephir2_strategy_smoke tests/strategy_smoke.cpp)
 target_link_libraries(kephir2_strategy_smoke PRIVATE kephir2_core)
 
-add_executable(kephir2_analyzer_smoke
-    tests/analyzer_smoke.cpp
-)
+add_executable(kephir2_analyzer_smoke tests/analyzer_smoke.cpp)
 target_link_libraries(kephir2_analyzer_smoke PRIVATE kephir2_core)
 
-add_executable(kephir2_analyzer_dump
-    tests/analyzer_dump.cpp
-)
+add_executable(kephir2_analyzer_dump tests/analyzer_dump.cpp)
 target_link_libraries(kephir2_analyzer_dump PRIVATE kephir2_core)
 
-add_executable(kephir2_planner_smoke
-    tests/planner_smoke.cpp
-)
+add_executable(kephir2_planner_smoke tests/planner_smoke.cpp)
 target_link_libraries(kephir2_planner_smoke PRIVATE kephir2_core)
 
-add_executable(kephir2_planner_dump
-    tests/planner_dump.cpp
-)
+add_executable(kephir2_planner_dump tests/planner_dump.cpp)
 target_link_libraries(kephir2_planner_dump PRIVATE kephir2_core)
 
-add_executable(kephir2_archive_smoke
-    tests/archive_smoke.cpp
-)
+add_executable(kephir2_archive_smoke tests/archive_smoke.cpp)
 target_link_libraries(kephir2_archive_smoke PRIVATE kephir2_core)
 
-add_executable(kephir2_archive_dump
-    tests/archive_dump.cpp
-)
+add_executable(kephir2_archive_dump tests/archive_dump.cpp)
 target_link_libraries(kephir2_archive_dump PRIVATE kephir2_core)
 
-add_executable(kephir2_aur2_smoke
-    tests/aur2_smoke.cpp
-)
+add_executable(kephir2_aur2_smoke tests/aur2_smoke.cpp)
 target_link_libraries(kephir2_aur2_smoke PRIVATE kephir2_core)
 
-add_executable(kephir2_aur2_structure_smoke
-    tests/aur2_structure_smoke.cpp
-)
+add_executable(kephir2_aur2_structure_smoke tests/aur2_structure_smoke.cpp)
 target_link_libraries(kephir2_aur2_structure_smoke PRIVATE kephir2_core)
 
-add_executable(kephir2_packing_smoke
-    tests/packing_smoke.cpp
-)
+add_executable(kephir2_aur2_native_k75_smoke tests/aur2_native_k75_smoke.cpp)
+target_link_libraries(kephir2_aur2_native_k75_smoke PRIVATE kephir2_core)
+
+add_executable(kephir2_packing_smoke tests/packing_smoke.cpp)
 target_link_libraries(kephir2_packing_smoke PRIVATE kephir2_core)
 
-add_executable(kephir2_packing_dump
-    tests/packing_dump.cpp
-)
+add_executable(kephir2_packing_dump tests/packing_dump.cpp)
 target_link_libraries(kephir2_packing_dump PRIVATE kephir2_core)
 
-add_executable(kephir2_execution_smoke
-    tests/execution_smoke.cpp
-)
+add_executable(kephir2_execution_smoke tests/execution_smoke.cpp)
 target_link_libraries(kephir2_execution_smoke PRIVATE kephir2_core)
 
-add_executable(kephir2_native37_smoke
-    tests/native37_smoke.cpp
-)
+add_executable(kephir2_native37_smoke tests/native37_smoke.cpp)
 target_link_libraries(kephir2_native37_smoke PRIVATE kephir37_native)
 
-add_executable(kephir2_native37_blob_smoke
-    tests/native37_blob_smoke.cpp
-)
+add_executable(kephir2_native37_blob_smoke tests/native37_blob_smoke.cpp)
 target_link_libraries(kephir2_native37_blob_smoke PRIVATE kephir2_core)
 
-add_executable(kephir2_native37_blob_cli
-    tests/native37_blob_cli.cpp
-)
+add_executable(kephir2_native37_blob_cli tests/native37_blob_cli.cpp)
 target_link_libraries(kephir2_native37_blob_cli PRIVATE kephir2_core)
 
-add_executable(kephir2_native_k75_smoke
-    tests/native_k75_smoke.cpp
-)
+add_executable(kephir2_native_k75_smoke tests/native_k75_smoke.cpp)
 target_link_libraries(kephir2_native_k75_smoke PRIVATE kephir2_core)
 
-add_executable(kephir2_interop_tool
-    tests/interop_tool.cpp
-)
+add_executable(kephir2_interop_tool tests/interop_tool.cpp)
 target_link_libraries(kephir2_interop_tool PRIVATE kephir2_core)
 
-add_executable(kephir2_native_k75_cli
-    tests/native_k75_cli.cpp
-)
+add_executable(kephir2_native_k75_cli tests/native_k75_cli.cpp)
 target_link_libraries(kephir2_native_k75_cli PRIVATE kephir2_core)
 
-add_executable(kephir2_auto_routing_smoke
-    tests/auto_routing_smoke.cpp
-)
+add_executable(kephir2_auto_routing_smoke tests/auto_routing_smoke.cpp)
 target_link_libraries(kephir2_auto_routing_smoke PRIVATE kephir2_core)
 
-add_executable(kephir2_production_layout_bench
-    tests/production_layout_bench.cpp
-)
+add_executable(kephir2_production_layout_bench tests/production_layout_bench.cpp)
 target_link_libraries(kephir2_production_layout_bench PRIVATE kephir2_core)
 
 enable_testing()
@@ -181,6 +145,7 @@ add_test(NAME kephir2_planner_smoke COMMAND kephir2_planner_smoke)
 add_test(NAME kephir2_archive_smoke COMMAND kephir2_archive_smoke)
 add_test(NAME kephir2_aur2_smoke COMMAND kephir2_aur2_smoke)
 add_test(NAME kephir2_aur2_structure_smoke COMMAND kephir2_aur2_structure_smoke)
+add_test(NAME kephir2_aur2_native_k75_smoke COMMAND kephir2_aur2_native_k75_smoke)
 add_test(NAME kephir2_packing_smoke COMMAND kephir2_packing_smoke)
 add_test(NAME kephir2_execution_smoke COMMAND kephir2_execution_smoke)
 add_test(NAME kephir2_native37_smoke COMMAND kephir2_native37_smoke)
@@ -188,19 +153,12 @@ add_test(NAME kephir2_native37_blob_smoke COMMAND kephir2_native37_blob_smoke)
 add_test(NAME kephir2_native_k75_smoke COMMAND kephir2_native_k75_smoke)
 add_test(NAME kephir2_auto_routing_smoke COMMAND kephir2_auto_routing_smoke)
 
-add_library(kephir2_api SHARED
-    src/kephir2_c.cpp
-)
-target_include_directories(kephir2_api
-    PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
+add_library(kephir2_api SHARED src/kephir2_c.cpp)
+target_include_directories(kephir2_api PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_features(kephir2_api PUBLIC cxx_std_20)
 target_compile_definitions(kephir2_api PRIVATE KEPHIR2_BUILD_DLL=1)
 target_link_libraries(kephir2_api PRIVATE kephir2_core)
 
-add_executable(kephir2_api_smoke
-    tests/api_smoke.cpp
-)
+add_executable(kephir2_api_smoke tests/api_smoke.cpp)
 target_link_libraries(kephir2_api_smoke PRIVATE kephir2_api)
 add_test(NAME kephir2_api_smoke COMMAND kephir2_api_smoke)
