@@ -167,12 +167,12 @@ int main() {
 
         std::ifstream a(original, std::ios::binary);
         std::ifstream b(restored, std::ios::binary);
-        const std::vector<std::uint8_t> av(
+        const std::vector<std::uint8_t> av{
             std::istreambuf_iterator<char>(a),
-            std::istreambuf_iterator<char>());
-        const std::vector<std::uint8_t> bv(
+            std::istreambuf_iterator<char>()};
+        const std::vector<std::uint8_t> bv{
             std::istreambuf_iterator<char>(b),
-            std::istreambuf_iterator<char>());
+            std::istreambuf_iterator<char>()};
         assert(av == bv);
     }
 
