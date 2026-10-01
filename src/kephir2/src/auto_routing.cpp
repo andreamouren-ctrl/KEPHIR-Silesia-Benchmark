@@ -20,7 +20,8 @@ namespace {
 
 constexpr std::uint64_t kMinFileSample = 4096;
 constexpr std::uint64_t kStrata = 4;
-constexpr std::uint64_t kLongContextBootstrapProbe = 512u * 1024u;
+constexpr std::uint64_t kBaseParentBytes = 512u * 1024u;
+constexpr std::uint64_t kLongContextBootstrapProbe = 4u * 1024u * 1024u;
 
 class TempProbeTree {
 public:
@@ -355,9 +356,11 @@ ResolvedDirectoryStrategy ProductionAutoResolver::resolve(
     // EXP-117: the EXP-88/94 no-probe shortcuts were qualified against a
     // fixed 512 KiB backend parent. With adaptive 4/8 MiB context, multiple
     // content families that look pure in 512 KiB analysis windows can share
-    // one actual parent and make SMART beneficial. Keep the old router fully
-    // unchanged for the baseline backend, but require one bounded measurement
-    // before finalizing a multi-family AUTO decision when long context is on.
+    // one actual parent and make SMART beneficial. EXP-117A2 showed that
+    // 512 KiB, 1 MiB and 2 MiB samples can still vote like the old backend;
+    // 4 MiB is the first tested budget that exposes the long-context layout
+    // crossover. Keep the old router unchanged for the baseline backend and
+    // use this bounded bootstrap only for AUTO + adaptive + multi-family.
     const bool adaptive_context =
         backend_options.enable_adaptive_context
         || backend_options.research_enable_adaptive_context;
@@ -366,7 +369,7 @@ ResolvedDirectoryStrategy ProductionAutoResolver::resolve(
 
     if (profile == Profile::Auto
         && adaptive_context
-        && out.features.logical_bytes > kLongContextBootstrapProbe
+        && out.features.logical_bytes > kBaseParentBytes
         && out.features.sampled_content_groups > 1
         && out.strategy.requested_probe_bytes == 0) {
 
