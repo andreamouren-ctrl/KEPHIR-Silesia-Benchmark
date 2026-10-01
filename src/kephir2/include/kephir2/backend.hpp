@@ -41,20 +41,20 @@ struct BackendOptions {
     bool allow_local_experience{true};
     const OperationContext* operation{nullptr};
 
-    // EXP-117 production-candidate switch. The policy itself is content-only,
-    // bounded to 256 KiB of sampling and remains format-compatible with the
-    // ordinary K75U decoder. Public profile mapping decides when to enable it.
-    bool enable_adaptive_context{false};
+    // EXP-117 production-candidate switch. The legacy research spelling is a
+    // true storage alias so EXP-113..116 remain reproducible while all new
+    // code uses enable_adaptive_context. This is an internal C++ option and
+    // does not change the stable C ABI.
+    union {
+        bool enable_adaptive_context{false};
+        bool research_enable_adaptive_context;
+    };
 
     // Research-only context controls. Zero keeps the qualified production
     // defaults. They are intentionally not exposed through the stable C ABI.
     std::size_t research_parent_bytes{0};
     std::size_t research_inner_chunk_bytes{0};
     bool research_force_parent_grain{false};
-
-    // Legacy research alias retained so EXP-113..116 remain reproducible.
-    // New production-candidate code should use enable_adaptive_context.
-    bool research_enable_adaptive_context{false};
 };
 
 struct BackendStats {
