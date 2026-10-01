@@ -1,0 +1,97 @@
+name: KEPHIR 2 EXP-119 Current Compressor Shootout
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/exp119-current-compressor-shootout
+    paths:
+      - "src/kephir2/**"
+      - "research/benchmarks/exp119_current_compressor_shootout.py"
+      - ".github/workflows/exp119_current_compressor_shootout.yml"
+  pull_request:
+    branches:
+      - research/exp118b-grain-probe-router
+    paths:
+      - "src/kephir2/**"
+      - "research/benchmarks/exp119_current_compressor_shootout.py"
+      - ".github/workflows/exp119_current_compressor_shootout.yml"
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install comparator CLIs
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            gzip bzip2 xz-utils zstd lz4 brotli p7zip-full zip unzip
+          sudo apt-get install -y rar unrar || true
+          echo "=== versions ==="
+          gzip --version | head -1
+          bzip2 --version 2>&1 | head -1 || true
+          xz --version | head -1
+          zstd --version
+          lz4 --version
+          brotli --version
+          7z i | head -4
+          rar 2>&1 | head -4 || true
+
+      - name: Build KEPHIR candidate
+        run: |
+          cmake -S src/kephir2 -B build/kephir2 -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/kephir2 --config Release --parallel
+          ctest --test-dir build/kephir2 --output-on-failure
+
+      - name: Materialize canonical Silesia
+        run: |
+          mkdir -p corpora/silesia
+          curl -L --fail --retry 4 -o /tmp/silesia.zip \
+            https://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip
+          echo "c240c17d6805fb8a0bde763f1b94cd99  /tmp/silesia.zip" | md5sum -c -
+          unzip -q /tmp/silesia.zip -d corpora/silesia
+          test "$(find corpora/silesia -type f -printf '%s\n' | awk '{s+=$1} END {print s}')" -eq 211938580
+
+      - name: Run current compressor shootout
+        run: |
+          python3 research/benchmarks/exp119_current_compressor_shootout.py \
+            build/kephir2/kephir2_native_k75_cli | tee exp119.log
+
+      - name: Validate result
+        run: |
+          python3 - <<'PY'
+          import json
+          d=json.load(open('exp119_results.json'))
+          assert d['experiment']=='EXP-119'
+          assert d['raw_bytes']==211938580
+          rows={r['name']:r for r in d['results']}
+          k=rows['KEPHIR2 EXP-118B AUTO']
+          assert k['archive_bytes']==60963390
+          assert k['compress_MBps'] > 0
+          assert k['decompress_MBps'] > 0
+          for name in ('gzip-9','bzip2-9','xz-6','xz-9e','zstd-3','zstd-9','zstd-19','lz4','lz4hc-9','brotli-q5','brotli-q11','7z-lzma2-mx5','7z-lzma2-mx9','zip-deflate-9'):
+              assert rows[name]['available']
+              assert rows[name]['archive_bytes'] > 0
+              assert rows[name]['compress_MBps'] > 0
+              assert rows[name]['decompress_MBps'] > 0
+          print(
+              'EXP119_VALIDATION_PASS',
+              'KEPHIR_RATIO',k['ratio'],
+              'KEPHIR_COMP_MBPS',k['compress_MBps'],
+              'KEPHIR_FINAL_MBPS',k['final_encode_MBps_excluding_probe'],
+              'KEPHIR_DEC_MBPS',k['decompress_MBps'],
+              'RAR_AVAILABLE',rows['rar5-m5']['available'],
+          )
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exp119-current-compressor-shootout
+          path: |
+            exp119_results.json
+            exp119.log
