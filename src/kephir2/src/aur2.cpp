@@ -131,6 +131,7 @@ bool is_known_section_type(std::uint32_t type) noexcept {
         case SectionType::SeekIndex:
         case SectionType::ExtendedMetadata:
         case SectionType::UserMetadata:
+        case SectionType::FooterIntegrity:
             return true;
     }
     return false;
@@ -395,10 +396,29 @@ ByteBuffer encode_container(
     header.header_crc32 = 0;
     header.reserved = 0;
 
-    ByteBuffer out = encode_header(header);
-
-    for (const auto& section : sections) {
+    std::uint64_t cursor = kFixedHeaderSize;
+    std::size_t footer_count = 0;
+    for (std::size_t i = 0; i < sections.size(); ++i) {
+        const auto& section = sections[i];
         validate_section(section);
+
+        if (section.type == static_cast<std::uint32_t>(SectionType::FooterIntegrity)) {
+            ++footer_count;
+            if (footer_count != 1 || i + 1 != sections.size()) {
+                throw std::runtime_error("AUR2 footer must be unique and final");
+            }
+            header.footer_offset = cursor;
+        }
+
+        if (section.payload.size() >
+            std::numeric_limits<std::uint64_t>::max() - cursor - kSectionHeaderSize) {
+            throw std::runtime_error("AUR2 container size overflow");
+        }
+        cursor += kSectionHeaderSize + static_cast<std::uint64_t>(section.payload.size());
+    }
+
+    ByteBuffer out = encode_header(header);
+    for (const auto& section : sections) {
         append_u32(out, section.type);
         append_u32(out, section.flags);
         append_u64(out, section.payload.size());
@@ -412,14 +432,13 @@ Container decode_container(std::span<const std::uint8_t> data) {
     Container container;
     container.header = decode_header(data);
 
-    if (container.header.footer_offset != 0) {
-        throw std::runtime_error("AUR2 v2.0 footer is not supported yet");
-    }
-
     std::size_t pos = container.header.header_size;
     if (pos == data.size()) {
         if (container.header.toc_offset != 0) {
             throw std::runtime_error("AUR2 TOC offset points to missing sections");
+        }
+        if (container.header.footer_offset != 0) {
+            throw std::runtime_error("AUR2 footer offset points to missing section");
         }
         return container;
     }
@@ -427,12 +446,19 @@ Container decode_container(std::span<const std::uint8_t> data) {
     if (container.header.toc_offset != container.header.header_size) {
         throw std::runtime_error("AUR2 v2.0 TOC offset mismatch");
     }
+    if (container.header.footer_offset != 0 &&
+        (container.header.footer_offset < container.header.header_size ||
+         container.header.footer_offset >= data.size())) {
+        throw std::runtime_error("AUR2 footer offset is outside section area");
+    }
 
+    std::size_t footer_count = 0;
     while (pos < data.size()) {
         if (data.size() - pos < kSectionHeaderSize) {
             throw std::runtime_error("truncated AUR2 section header");
         }
 
+        const auto section_offset = static_cast<std::uint64_t>(pos);
         Section section;
         section.type = read_u32(data, pos + 0);
         section.flags = read_u32(data, pos + 4);
@@ -453,7 +479,27 @@ Container decode_container(std::span<const std::uint8_t> data) {
         pos += static_cast<std::size_t>(payload_size);
 
         validate_section(section);
+        if (section.type == static_cast<std::uint32_t>(SectionType::FooterIntegrity)) {
+            ++footer_count;
+            if (footer_count != 1) {
+                throw std::runtime_error("duplicate AUR2 footer section");
+            }
+            if (container.header.footer_offset != section_offset) {
+                throw std::runtime_error("AUR2 footer offset mismatch");
+            }
+            if (pos != data.size()) {
+                throw std::runtime_error("AUR2 footer must be the final section");
+            }
+        }
+
         container.sections.push_back(std::move(section));
+    }
+
+    if (footer_count == 0 && container.header.footer_offset != 0) {
+        throw std::runtime_error("AUR2 footer offset has no matching section");
+    }
+    if (footer_count == 1 && container.header.footer_offset == 0) {
+        throw std::runtime_error("AUR2 footer section is missing header offset");
     }
 
     return container;
