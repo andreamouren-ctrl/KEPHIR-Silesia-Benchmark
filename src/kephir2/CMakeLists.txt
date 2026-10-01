@@ -50,6 +50,7 @@ add_library(kephir2_core STATIC
     src/aur2.cpp
     src/aur2_execution.cpp
     src/aur2_inspection.cpp
+    src/aur2_selection.cpp
     src/aur2_streams.cpp
     src/auto_routing.cpp
     src/archive.cpp
@@ -112,6 +113,9 @@ target_link_libraries(kephir2_aur2_directory_k75_smoke PRIVATE kephir2_core)
 add_executable(kephir2_aur2_inspection_smoke tests/aur2_inspection_smoke.cpp)
 target_link_libraries(kephir2_aur2_inspection_smoke PRIVATE kephir2_core)
 
+add_executable(kephir2_aur2_selective_smoke tests/aur2_selective_smoke.cpp)
+target_link_libraries(kephir2_aur2_selective_smoke PRIVATE kephir2_core)
+
 add_executable(kephir2_packing_smoke tests/packing_smoke.cpp)
 target_link_libraries(kephir2_packing_smoke PRIVATE kephir2_core)
 
@@ -155,6 +159,7 @@ add_test(NAME kephir2_aur2_structure_smoke COMMAND kephir2_aur2_structure_smoke)
 add_test(NAME kephir2_aur2_native_k75_smoke COMMAND kephir2_aur2_native_k75_smoke)
 add_test(NAME kephir2_aur2_directory_k75_smoke COMMAND kephir2_aur2_directory_k75_smoke)
 add_test(NAME kephir2_aur2_inspection_smoke COMMAND kephir2_aur2_inspection_smoke)
+add_test(NAME kephir2_aur2_selective_smoke COMMAND kephir2_aur2_selective_smoke)
 add_test(NAME kephir2_packing_smoke COMMAND kephir2_packing_smoke)
 add_test(NAME kephir2_execution_smoke COMMAND kephir2_execution_smoke)
 add_test(NAME kephir2_native37_smoke COMMAND kephir2_native37_smoke)
