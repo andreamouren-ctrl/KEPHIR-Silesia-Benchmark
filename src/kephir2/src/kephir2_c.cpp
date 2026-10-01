@@ -806,12 +806,20 @@ kephir2_status kephir2_extract(
 
         if (archive[4] == static_cast<std::uint8_t>(kephir2::Kpf1Kind::File)) {
             const auto envelope = kephir2::decode_kpf1_file(archive);
-            output_bytes = 0;
             engine->executor.extract_file(
                 archive,
                 output,
                 engine->backend,
                 backend_options);
+
+            const auto extracted = kephir2::safe_archive_target(
+                output,
+                envelope.name);
+            if (!std::filesystem::is_regular_file(extracted)) {
+                throw std::runtime_error(
+                    "extracted file missing after successful decode");
+            }
+            output_bytes = std::filesystem::file_size(extracted);
         } else if (
             archive[4] == static_cast<std::uint8_t>(kephir2::Kpf1Kind::Directory)) {
 

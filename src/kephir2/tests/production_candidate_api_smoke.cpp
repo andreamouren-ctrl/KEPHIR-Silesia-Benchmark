@@ -168,6 +168,7 @@ int main() {
         &options,
         &adaptive_extract_result) == KEPHIR2_OK);
     assert(adaptive_extract_result.status == KEPHIR2_OK);
+    assert(adaptive_extract_result.output_bytes == std::filesystem::file_size(input));
     assert(read_all(input) == read_all(adaptive_extract / input.filename()));
 
     // FAST archive roundtrip.
@@ -181,6 +182,8 @@ int main() {
         fast_extract_s.c_str(),
         &options,
         &fast_extract_result) == KEPHIR2_OK);
+    assert(fast_extract_result.status == KEPHIR2_OK);
+    assert(fast_extract_result.output_bytes == std::filesystem::file_size(input));
     assert(read_all(input) == read_all(fast_extract / input.filename()));
 
     // AUTO archive roundtrip through the public AUTO profile.
@@ -196,6 +199,7 @@ int main() {
         &options,
         &auto_extract_result) == KEPHIR2_OK);
     assert(auto_extract_result.status == KEPHIR2_OK);
+    assert(auto_extract_result.output_bytes == std::filesystem::file_size(input));
     assert(read_all(input) == read_all(auto_extract / input.filename()));
 
     kephir2_destroy(engine);
