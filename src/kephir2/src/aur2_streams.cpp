@@ -89,11 +89,69 @@ std::vector<StreamRecord> decode_stream_table(std::span<const std::uint8_t> data
     return streams;
 }
 
+ByteBuffer encode_integrity_table(std::span<const IntegrityRecord> records) {
+    ByteBuffer out;
+    put_varint(out, records.size());
+
+    std::unordered_set<std::uint64_t> ids;
+    ids.reserve(records.size());
+
+    for (const auto& record : records) {
+        if (record.stream_id == 0) {
+            throw std::runtime_error("AUR2 integrity stream id zero is reserved");
+        }
+        if (!ids.insert(record.stream_id).second) {
+            throw std::runtime_error("duplicate AUR2 integrity stream id");
+        }
+        put_varint(out, record.stream_id);
+        put_varint(out, record.payload_crc32);
+    }
+    return out;
+}
+
+std::vector<IntegrityRecord> decode_integrity_table(
+    std::span<const std::uint8_t> data) {
+
+    std::size_t pos = 0;
+    const auto count = get_varint(data, pos);
+    if (count > data.size()) {
+        throw std::runtime_error("AUR2 integrity record count is not plausible");
+    }
+
+    std::vector<IntegrityRecord> records;
+    records.reserve(static_cast<std::size_t>(count));
+    std::unordered_set<std::uint64_t> ids;
+    ids.reserve(static_cast<std::size_t>(count));
+
+    for (std::uint64_t i = 0; i < count; ++i) {
+        IntegrityRecord record;
+        record.stream_id = get_varint(data, pos);
+        const auto checksum = get_varint(data, pos);
+        if (record.stream_id == 0) {
+            throw std::runtime_error("AUR2 integrity stream id zero is reserved");
+        }
+        if (checksum > std::numeric_limits<std::uint32_t>::max()) {
+            throw std::runtime_error("AUR2 integrity CRC32 overflow");
+        }
+        if (!ids.insert(record.stream_id).second) {
+            throw std::runtime_error("duplicate AUR2 integrity stream id");
+        }
+        record.payload_crc32 = static_cast<std::uint32_t>(checksum);
+        records.push_back(record);
+    }
+
+    if (pos != data.size()) {
+        throw std::runtime_error("AUR2 integrity table trailing bytes");
+    }
+    return records;
+}
+
 void validate_container_structure(const Container& container) {
     const Section* file_table = nullptr;
     const Section* codec_descriptor = nullptr;
     const Section* stream_table = nullptr;
     const Section* data_section = nullptr;
+    const Section* integrity_section = nullptr;
 
     auto assign_unique = [](const Section*& slot, const Section& section, const char* name) {
         if (slot != nullptr) {
@@ -116,6 +174,9 @@ void validate_container_structure(const Container& container) {
             case SectionType::Data:
                 assign_unique(data_section, section, "DATA");
                 break;
+            case SectionType::Integrity:
+                assign_unique(integrity_section, section, "INTEGRITY");
+                break;
             default:
                 break;
         }
@@ -124,6 +185,12 @@ void validate_container_structure(const Container& container) {
     if (file_table == nullptr || codec_descriptor == nullptr ||
         stream_table == nullptr || data_section == nullptr) {
         throw std::runtime_error("AUR2 complete archive requires FILE_TABLE, CODEC_DESCRIPTOR, BLOCK_TABLE and DATA");
+    }
+
+    const bool integrity_flag =
+        (container.header.feature_flags & feature_bit(Feature::Integrity)) != 0;
+    if (integrity_flag != (integrity_section != nullptr)) {
+        throw std::runtime_error("AUR2 INTEGRITY feature flag/section mismatch");
     }
 
     const auto entries = decode_file_table(file_table->payload);
@@ -184,6 +251,34 @@ void validate_container_structure(const Container& container) {
 
     if (expected_payload_offset != data_section->payload.size()) {
         throw std::runtime_error("AUR2 DATA payload size does not match stream table");
+    }
+
+    if (integrity_section != nullptr) {
+        const auto records = decode_integrity_table(integrity_section->payload);
+        if (records.size() != streams.size()) {
+            throw std::runtime_error("AUR2 integrity table does not cover every stream");
+        }
+
+        std::unordered_map<std::uint64_t, std::uint32_t> checksums;
+        checksums.reserve(records.size());
+        for (const auto& record : records) {
+            checksums.emplace(record.stream_id, record.payload_crc32);
+        }
+
+        for (const auto& stream : streams) {
+            const auto checksum_it = checksums.find(stream.stream_id);
+            if (checksum_it == checksums.end()) {
+                throw std::runtime_error("AUR2 integrity table references wrong stream set");
+            }
+            const auto begin = static_cast<std::size_t>(stream.payload_offset);
+            const auto size = static_cast<std::size_t>(stream.compressed_size);
+            const auto actual = crc32(std::span<const std::uint8_t>(
+                data_section->payload.data() + begin,
+                size));
+            if (actual != checksum_it->second) {
+                throw std::runtime_error("AUR2 stream payload CRC32 mismatch");
+            }
+        }
     }
 
     std::unordered_map<std::uint64_t, std::vector<const FileEntry*>> files_by_stream;
