@@ -174,7 +174,7 @@ add_library(kephir2_api SHARED
 )
 target_include_directories(kephir2_api PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_features(kephir2_api PUBLIC cxx_std_20)
-target_compile_definitions(kephir2_api PRIVATE KEPHIR2_BUILD_DLL=1)
+target_compile_definitions(kephir2_api PRIVATE KEPHIR2_BUILD_DLL=1 NOMINMAX)
 target_link_libraries(kephir2_api PRIVATE kephir2_core)
 
 add_executable(kephir2_api_smoke tests/api_smoke.cpp)
