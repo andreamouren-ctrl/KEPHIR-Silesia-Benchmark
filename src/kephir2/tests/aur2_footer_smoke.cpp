@@ -123,6 +123,8 @@ int main() {
     const auto model = decode_container(original);
     require((model.header.feature_flags & kFeatureFooterIntegrity) != 0,
             "public writer did not advertise footer integrity");
+    require(model.header.footer_offset != 0,
+            "public writer did not publish footer_offset");
     require(!model.sections.empty(), "footer archive has no sections");
     require(model.sections.back().type == kFooterSectionType,
             "FTR1 is not the final AUR2 section");
@@ -145,6 +147,8 @@ int main() {
     require(file_record != nullptr, "SEEK_INDEX does not contain FILE_TABLE");
     require(footer_record->payload_size == kFooterPayloadSize,
             "SEEK_INDEX reports wrong footer size");
+    require(model.header.footer_offset == footer_record->section_offset,
+            "header footer_offset does not match SEEK_INDEX FTR1 offset");
 
     kephir2_result_v1 test_result{};
     test_result.struct_size = sizeof(test_result);
