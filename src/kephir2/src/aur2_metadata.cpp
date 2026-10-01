@@ -128,7 +128,8 @@ void apply_mtime(
     std::int64_t unix_ns) {
 
     const auto system_target = std::chrono::system_clock::time_point(
-        std::chrono::nanoseconds(unix_ns));
+        std::chrono::duration_cast<std::chrono::system_clock::duration>(
+            std::chrono::nanoseconds(unix_ns)));
     const auto file_now = std::filesystem::file_time_type::clock::now();
     const auto system_now = std::chrono::system_clock::now();
     const auto file_target = file_now +
