@@ -1,11 +1,10 @@
 #include "kephir2/kephir2_c.h"
 
 #include "kephir2/aur2.hpp"
-#include "kephir2/aur2_file_extract.hpp"
 #include "kephir2/aur2_ranged_file.hpp"
-#include "kephir2/native_k75.hpp"
 
 #include <algorithm>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -68,7 +67,6 @@ void write_all(
 
 int main() {
     namespace fs = std::filesystem;
-    using namespace kephir2;
     using namespace kephir2::aur2;
 
     const auto base = fs::temp_directory_path() / "kephir2_aur2_file_extract_smoke";
@@ -121,16 +119,18 @@ int main() {
         &result) == KEPHIR2_OK,
         std::string("fixture compression failed: ") + result.message);
 
-    NativeK75Backend backend;
-    BackendOptions backend_options;
-    backend_options.workers = 2;
-    backend_options.allow_local_experience = false;
-
-    extract_indexed_file_backed(
-        archive,
-        output,
-        backend,
-        backend_options);
+    const auto output_s = utf8(output);
+    result = {};
+    result.struct_size = sizeof(result);
+    require(kephir2_extract(
+        engine,
+        archive_s.c_str(),
+        output_s.c_str(),
+        &options,
+        &result) == KEPHIR2_OK,
+        std::string("public file-backed extraction failed: ") + result.message);
+    require(std::strstr(result.message, "file-backed") != nullptr,
+            "public extraction did not report indexed file-backed path");
 
     require(read_all(input / "code.txt") == read_all(output / "code.txt"),
             "file-backed extraction code.txt mismatch");
@@ -146,8 +146,8 @@ int main() {
     require(fs::is_directory(output / "empty-dir"),
             "file-backed extraction did not preserve empty directory");
 
-    // Corrupt DATA while leaving the TOC/layout intact. The bounded extractor
-    // must reject the stream via its per-stream CRC before passing it to K75.
+    // Corrupt DATA while leaving the TOC/layout intact. Public extraction must
+    // reject the stream via its per-stream CRC before passing it to K75.
     auto bytes = read_all(archive);
     IndexedRangeReader reader(archive);
     const auto& data = reader.require_section(SectionType::Data);
@@ -157,17 +157,20 @@ int main() {
     bytes[corruption_offset] ^= 0x5au;
     write_all(corrupt_archive, bytes);
 
-    bool rejected = false;
-    try {
-        extract_indexed_file_backed(
-            corrupt_archive,
-            corrupt_output,
-            backend,
-            backend_options);
-    } catch (const std::runtime_error& error) {
-        rejected = std::string(error.what()).find("CRC32") != std::string::npos;
-    }
-    require(rejected, "file-backed extraction did not reject corrupted stream CRC");
+    result = {};
+    result.struct_size = sizeof(result);
+    const auto corrupt_archive_s = utf8(corrupt_archive);
+    const auto corrupt_output_s = utf8(corrupt_output);
+    const auto corrupt_status = kephir2_extract(
+        engine,
+        corrupt_archive_s.c_str(),
+        corrupt_output_s.c_str(),
+        &options,
+        &result);
+    require(corrupt_status == KEPHIR2_INTEGRITY_ERROR,
+            std::string("public file-backed corruption status mismatch: ")
+                + kephir2_status_name(corrupt_status)
+                + " / " + result.message);
 
     kephir2_destroy(engine);
     fs::remove_all(base);
