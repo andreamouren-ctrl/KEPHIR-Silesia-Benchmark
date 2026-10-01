@@ -1,0 +1,43 @@
+name: AUR2 Container Smoke
+
+on:
+  push:
+    branches:
+      - development/aur2-container-core
+    paths:
+      - "src/kephir2/**"
+      - ".github/workflows/aur2_container_smoke.yml"
+  pull_request:
+    paths:
+      - "src/kephir2/**"
+      - ".github/workflows/aur2_container_smoke.yml"
+  workflow_dispatch:
+
+jobs:
+  aur2-container:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S src/kephir2 -B build/kephir2 -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build AUR2 smoke
+        run: cmake --build build/kephir2 --config Release --target kephir2_aur2_smoke --parallel
+
+      - name: Run AUR2 smoke on Linux
+        if: runner.os != 'Windows'
+        run: ./build/kephir2/kephir2_aur2_smoke
+
+      - name: Run AUR2 smoke on Windows
+        if: runner.os == 'Windows'
+        run: ./build/kephir2/Release/kephir2_aur2_smoke.exe
+
+      - name: Run CTest AUR2
+        run: ctest --test-dir build/kephir2 -C Release -R kephir2_aur2_smoke --output-on-failure
