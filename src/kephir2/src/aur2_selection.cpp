@@ -2,6 +2,8 @@
 
 #include "kephir2/archive.hpp"
 #include "kephir2/aur2.hpp"
+#include "kephir2/aur2_indexed_file.hpp"
+#include "kephir2/aur2_ranged_file.hpp"
 
 #include <algorithm>
 #include <fstream>
@@ -40,19 +42,30 @@ std::uint32_t decode_backend_format_version(std::span<const std::uint8_t> data) 
            (static_cast<std::uint32_t>(data[3]) << 24u);
 }
 
-void verify_kephir_descriptor(
-    const Container& container,
+void verify_descriptor(
+    const CodecDescriptor& descriptor,
     const CompressionBackend& backend) {
 
-    const auto descriptor = decode_codec_descriptor(
-        find_required_section(container, SectionType::CodecDescriptor).payload);
     if (descriptor.codec_id != kCodecKephir) {
         throw std::runtime_error("AUR2 archive uses unsupported codec");
+    }
+    if (descriptor.codec_major != 2) {
+        throw std::runtime_error("unsupported AUR2 KEPHIR codec major version");
     }
     if (decode_backend_format_version(descriptor.private_data)
         != backend.format_version()) {
         throw std::runtime_error("AUR2 KEPHIR backend format version mismatch");
     }
+}
+
+void verify_kephir_descriptor(
+    const Container& container,
+    const CompressionBackend& backend) {
+
+    verify_descriptor(
+        decode_codec_descriptor(
+            find_required_section(container, SectionType::CodecDescriptor).payload),
+        backend);
 }
 
 std::span<const std::uint8_t> stream_blob(
@@ -168,30 +181,9 @@ private:
     std::vector<Segment> segments_;
 };
 
-} // namespace
-
-void extract_selected(
-    std::span<const std::uint8_t> archive,
-    const std::filesystem::path& output_directory,
-    CompressionBackend& backend,
+std::unordered_set<std::uint64_t> validate_selection(
     std::span<const std::uint64_t> entry_ids,
-    const BackendOptions& options) {
-
-    const auto container = decode_container(archive);
-    validate_container_structure(container);
-    verify_kephir_descriptor(container, backend);
-
-    const auto entries = decode_file_table(
-        find_required_section(container, SectionType::FileTable).payload);
-    const auto streams = decode_stream_table(
-        find_required_section(container, SectionType::BlockTable).payload);
-    const auto& data = find_required_section(container, SectionType::Data);
-
-    std::unordered_map<std::uint64_t, const FileEntry*> by_entry_id;
-    by_entry_id.reserve(entries.size());
-    for (const auto& entry : entries) {
-        by_entry_id.emplace(entry.entry_id, &entry);
-    }
+    const std::unordered_map<std::uint64_t, const FileEntry*>& by_entry_id) {
 
     std::unordered_set<std::uint64_t> selected_ids;
     selected_ids.reserve(entry_ids.size());
@@ -203,6 +195,13 @@ void extract_selected(
             throw std::invalid_argument("AUR2 selected entry id does not exist");
         }
     }
+    return selected_ids;
+}
+
+std::unordered_map<std::uint64_t, std::vector<const FileEntry*>> prepare_selected_targets(
+    const std::filesystem::path& output_directory,
+    const std::unordered_set<std::uint64_t>& selected_ids,
+    const std::unordered_map<std::uint64_t, const FileEntry*>& by_entry_id) {
 
     std::filesystem::create_directories(output_directory);
 
@@ -231,6 +230,58 @@ void extract_selected(
 
         selected_by_stream[entry.stream_id].push_back(&entry);
     }
+    return selected_by_stream;
+}
+
+void verify_selected_outputs(
+    const std::filesystem::path& output_directory,
+    const std::unordered_set<std::uint64_t>& selected_ids,
+    const std::unordered_map<std::uint64_t, const FileEntry*>& by_entry_id) {
+
+    for (const auto id : selected_ids) {
+        const auto& entry = *by_entry_id.at(id);
+        const auto target = safe_archive_target(output_directory, entry.path);
+        if (entry.type == EntryType::Directory) {
+            if (!std::filesystem::is_directory(target)) {
+                throw std::runtime_error("selected directory extraction verification failed");
+            }
+        } else if (!std::filesystem::is_regular_file(target)
+                   || std::filesystem::file_size(target) != entry.logical_size) {
+            throw std::runtime_error("selected file extraction verification failed");
+        }
+    }
+}
+
+} // namespace
+
+void extract_selected(
+    std::span<const std::uint8_t> archive,
+    const std::filesystem::path& output_directory,
+    CompressionBackend& backend,
+    std::span<const std::uint64_t> entry_ids,
+    const BackendOptions& options) {
+
+    const auto container = decode_container(archive);
+    validate_container_structure(container);
+    verify_kephir_descriptor(container, backend);
+
+    const auto entries = decode_file_table(
+        find_required_section(container, SectionType::FileTable).payload);
+    const auto streams = decode_stream_table(
+        find_required_section(container, SectionType::BlockTable).payload);
+    const auto& data = find_required_section(container, SectionType::Data);
+
+    std::unordered_map<std::uint64_t, const FileEntry*> by_entry_id;
+    by_entry_id.reserve(entries.size());
+    for (const auto& entry : entries) {
+        by_entry_id.emplace(entry.entry_id, &entry);
+    }
+
+    const auto selected_ids = validate_selection(entry_ids, by_entry_id);
+    const auto selected_by_stream = prepare_selected_targets(
+        output_directory,
+        selected_ids,
+        by_entry_id);
 
     for (const auto& stream : streams) {
         const auto selected_it = selected_by_stream.find(stream.stream_id);
@@ -258,18 +309,97 @@ void extract_selected(
         }
     }
 
-    for (const auto id : selected_ids) {
-        const auto& entry = *by_entry_id.at(id);
-        const auto target = safe_archive_target(output_directory, entry.path);
-        if (entry.type == EntryType::Directory) {
-            if (!std::filesystem::is_directory(target)) {
-                throw std::runtime_error("selected directory extraction verification failed");
+    verify_selected_outputs(output_directory, selected_ids, by_entry_id);
+}
+
+void extract_selected_indexed_file_backed(
+    const std::filesystem::path& archive,
+    const std::filesystem::path& output_directory,
+    CompressionBackend& backend,
+    std::span<const std::uint64_t> entry_ids,
+    const BackendOptions& options) {
+
+    // Validate all metadata/layout relationships without loading DATA.
+    (void)inspect_indexed_file(archive);
+
+    IndexedRangeReader reader(archive);
+    const auto entries = decode_file_table(
+        reader.read_section_payload(SectionType::FileTable));
+    const auto descriptor = decode_codec_descriptor(
+        reader.read_section_payload(SectionType::CodecDescriptor));
+    const auto streams = decode_stream_table(
+        reader.read_section_payload(SectionType::BlockTable));
+    verify_descriptor(descriptor, backend);
+
+    std::unordered_map<std::uint64_t, std::uint32_t> expected_crc;
+    if ((reader.header().feature_flags & feature_bit(Feature::Integrity)) != 0) {
+        const auto integrity = decode_integrity_table(
+            reader.read_section_payload(SectionType::Integrity));
+        expected_crc.reserve(integrity.size());
+        for (const auto& record : integrity) {
+            if (!expected_crc.emplace(record.stream_id, record.payload_crc32).second) {
+                throw std::runtime_error("duplicate AUR2 integrity stream id");
             }
-        } else if (!std::filesystem::is_regular_file(target)
-                   || std::filesystem::file_size(target) != entry.logical_size) {
-            throw std::runtime_error("selected file extraction verification failed");
         }
     }
+
+    std::unordered_map<std::uint64_t, const FileEntry*> by_entry_id;
+    by_entry_id.reserve(entries.size());
+    for (const auto& entry : entries) {
+        by_entry_id.emplace(entry.entry_id, &entry);
+    }
+
+    const auto selected_ids = validate_selection(entry_ids, by_entry_id);
+    const auto selected_by_stream = prepare_selected_targets(
+        output_directory,
+        selected_ids,
+        by_entry_id);
+
+    for (const auto& stream : streams) {
+        const auto selected_it = selected_by_stream.find(stream.stream_id);
+        if (selected_it == selected_by_stream.end()) {
+            continue;
+        }
+
+        if (options.operation) {
+            options.operation->throw_if_cancelled();
+        }
+
+        auto blob = reader.read_section_range(
+            SectionType::Data,
+            stream.payload_offset,
+            stream.compressed_size);
+
+        if (!expected_crc.empty()) {
+            const auto crc_it = expected_crc.find(stream.stream_id);
+            if (crc_it == expected_crc.end()) {
+                throw std::runtime_error("AUR2 integrity table does not cover selected stream");
+            }
+            if (crc32(blob) != crc_it->second) {
+                throw std::runtime_error("AUR2 selected stream payload CRC32 mismatch");
+            }
+        }
+
+        const auto& selected = selected_it->second;
+        SelectiveStreamSink sink(
+            output_directory,
+            stream.raw_size,
+            std::span<const FileEntry* const>(selected.data(), selected.size()));
+
+        const auto stats = backend.decode(
+            blob,
+            stream.raw_size,
+            sink,
+            options);
+        if (stats.output_bytes != 0 && stats.output_bytes != stream.raw_size) {
+            throw std::runtime_error("backend reported inconsistent file-backed selective decode length");
+        }
+
+        blob.clear();
+        blob.shrink_to_fit();
+    }
+
+    verify_selected_outputs(output_directory, selected_ids, by_entry_id);
 }
 
 } // namespace kephir2::aur2
