@@ -46,6 +46,7 @@ add_library(kephir2_core STATIC
     src/analyzer.cpp
     src/aur2.cpp
     src/aur2_execution.cpp
+    src/aur2_file_extract.cpp
     src/aur2_footer.cpp
     src/aur2_indexed_file.cpp
     src/aur2_inspection.cpp
@@ -209,6 +210,9 @@ add_test(NAME kephir2_aur2_indexed_public_smoke COMMAND kephir2_aur2_indexed_pub
 add_executable(kephir2_aur2_footer_smoke tests/aur2_footer_smoke.cpp)
 target_link_libraries(kephir2_aur2_footer_smoke PRIVATE kephir2_api kephir2_core)
 add_test(NAME kephir2_aur2_footer_smoke COMMAND kephir2_aur2_footer_smoke)
+add_executable(kephir2_aur2_file_extract_smoke tests/aur2_file_extract_smoke.cpp)
+target_link_libraries(kephir2_aur2_file_extract_smoke PRIVATE kephir2_api kephir2_core)
+add_test(NAME kephir2_aur2_file_extract_smoke COMMAND kephir2_aur2_file_extract_smoke)
 
 set(KEPHIR2_SMOKE_TARGETS
     kephir2_strategy_smoke
@@ -223,6 +227,7 @@ set(KEPHIR2_SMOKE_TARGETS
     kephir2_aur2_selective_smoke
     kephir2_aur2_seek_smoke
     kephir2_aur2_ranged_file_smoke
+    kephir2_aur2_file_extract_smoke
     kephir2_packing_smoke
     kephir2_execution_smoke
     kephir2_native37_smoke
