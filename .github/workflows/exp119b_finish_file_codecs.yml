@@ -1,0 +1,51 @@
+name: KEPHIR 2 EXP-119B Finish File Codecs
+on:
+  workflow_dispatch:
+  push:
+    branches: [research/exp119-current-compressor-shootout]
+    paths:
+      - "research/benchmarks/exp119b_finish_file_codecs.py"
+      - ".github/workflows/exp119b_finish_file_codecs.yml"
+jobs:
+  finish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full rar unrar
+      - name: Build KEPHIR
+        run: |
+          cmake -S src/kephir2 -B build/kephir2 -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/kephir2 --config Release --parallel
+          ctest --test-dir build/kephir2 --output-on-failure
+      - name: Materialize Silesia
+        run: |
+          mkdir -p corpora/silesia
+          curl -L --fail --retry 4 -o /tmp/silesia.zip https://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip
+          echo "c240c17d6805fb8a0bde763f1b94cd99  /tmp/silesia.zip" | md5sum -c -
+          unzip -q /tmp/silesia.zip -d corpora/silesia
+      - name: Finish benchmark
+        run: python3 research/benchmarks/exp119b_finish_file_codecs.py build/kephir2/kephir2_native_k75_cli | tee exp119b.log
+      - name: Validate
+        run: |
+          python3 - <<'PY'
+          import json
+          d=json.load(open('exp119b_results.json'))
+          assert d['experiment']=='EXP-119B'
+          rows={r['name']:r for r in d['results']}
+          assert rows['KEPHIR2 EXP-118B AUTO']['archive_bytes']==60963390
+          for n in ('7z-lzma2-mx5','7z-lzma2-mx9','zip-deflate-9','rar5-m5'):
+              assert rows[n]['archive_bytes']>0
+              assert rows[n]['compress_MBps']>0
+              assert rows[n]['decompress_MBps']>0
+          print('EXP119B_VALIDATION_PASS')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exp119b-file-codecs
+          path: |
+            exp119b_results.json
+            exp119b.log
