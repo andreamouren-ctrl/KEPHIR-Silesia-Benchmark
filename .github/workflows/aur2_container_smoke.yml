@@ -30,7 +30,7 @@ jobs:
         run: cmake -S src/kephir2 -B build/kephir2 -DCMAKE_BUILD_TYPE=Release
 
       - name: Build AUR2 tests
-        run: cmake --build build/kephir2 --config Release --target kephir2_aur2_smoke kephir2_aur2_structure_smoke kephir2_aur2_native_k75_smoke kephir2_aur2_directory_k75_smoke kephir2_aur2_inspection_smoke kephir2_aur2_c_api_smoke --parallel
+        run: cmake --build build/kephir2 --config Release --target kephir2_aur2_smoke kephir2_aur2_structure_smoke kephir2_aur2_native_k75_smoke kephir2_aur2_directory_k75_smoke kephir2_aur2_inspection_smoke kephir2_aur2_selective_smoke kephir2_aur2_c_api_smoke --parallel
 
       - name: Run AUR2 CTest suite
         run: ctest --test-dir build/kephir2 -C Release -R kephir2_aur2 --output-on-failure
