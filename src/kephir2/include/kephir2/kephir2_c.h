@@ -86,10 +86,49 @@ typedef struct kephir2_result_v1 {
     char message[512];
 } kephir2_result_v1;
 
+typedef enum kephir2_entry_type {
+    KEPHIR2_ENTRY_FILE = 0,
+    KEPHIR2_ENTRY_DIRECTORY = 1
+} kephir2_entry_type;
+
+typedef struct kephir2_archive_info_v1 {
+    uint32_t struct_size;
+    uint32_t container_major;
+    uint32_t container_minor;
+    uint32_t codec_major;
+    uint32_t codec_minor;
+    uint64_t feature_flags;
+    uint64_t entry_count;
+    uint64_t logical_bytes;
+    uint64_t archive_bytes;
+    uint64_t stream_count;
+    int is_encrypted;
+    int integrity_available;
+} kephir2_archive_info_v1;
+
+typedef struct kephir2_entry_info_v1 {
+    uint32_t struct_size;
+    uint64_t entry_id;
+    kephir2_entry_type type;
+    uint64_t logical_size;
+    uint64_t stream_id;
+    uint64_t stream_offset;
+    uint32_t attributes;
+    int64_t mtime_unix_ns;
+    const char* path_utf8;
+} kephir2_entry_info_v1;
+
+typedef int (*kephir2_entry_callback)(
+    const kephir2_entry_info_v1* entry,
+    void* user_data);
+
 KEPHIR2_API uint32_t kephir2_api_version(void);
 KEPHIR2_API const char* kephir2_engine_version(void);
 KEPHIR2_API kephir2_engine* kephir2_create(void);
 KEPHIR2_API void kephir2_destroy(kephir2_engine* engine);
+
+KEPHIR2_API void kephir2_options_init_v1(
+    kephir2_options_v1* options);
 
 KEPHIR2_API kephir2_status kephir2_compress(
     kephir2_engine* engine,
@@ -102,6 +141,24 @@ KEPHIR2_API kephir2_status kephir2_extract(
     kephir2_engine* engine,
     const char* archive_utf8,
     const char* output_directory_utf8,
+    const kephir2_options_v1* options,
+    kephir2_result_v1* result);
+
+/* AUR Container v2 read-side API. These calls do not mutate the archive. */
+KEPHIR2_API kephir2_status kephir2_inspect(
+    kephir2_engine* engine,
+    const char* archive_utf8,
+    kephir2_archive_info_v1* info);
+
+KEPHIR2_API kephir2_status kephir2_list_entries(
+    kephir2_engine* engine,
+    const char* archive_utf8,
+    kephir2_entry_callback callback,
+    void* user_data);
+
+KEPHIR2_API kephir2_status kephir2_test_archive(
+    kephir2_engine* engine,
+    const char* archive_utf8,
     const kephir2_options_v1* options,
     kephir2_result_v1* result);
 
