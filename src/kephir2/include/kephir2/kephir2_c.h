@@ -128,6 +128,39 @@ typedef struct kephir2_selection_v1 {
     size_t entry_count;
 } kephir2_selection_v1;
 
+/* Stable capability bits. Published bit numbers must never be reused. */
+#define KEPHIR2_CAP_COMPRESS_FILE          (UINT64_C(1) << 0)
+#define KEPHIR2_CAP_COMPRESS_DIRECTORY     (UINT64_C(1) << 1)
+#define KEPHIR2_CAP_EXTRACT                (UINT64_C(1) << 2)
+#define KEPHIR2_CAP_INSPECT                (UINT64_C(1) << 3)
+#define KEPHIR2_CAP_LIST_ENTRIES           (UINT64_C(1) << 4)
+#define KEPHIR2_CAP_EXTRACT_SELECTED       (UINT64_C(1) << 5)
+#define KEPHIR2_CAP_TEST_ARCHIVE           (UINT64_C(1) << 6)
+#define KEPHIR2_CAP_AUR2_READ              (UINT64_C(1) << 7)
+#define KEPHIR2_CAP_AUR2_WRITE             (UINT64_C(1) << 8)
+#define KEPHIR2_CAP_KPF1_LEGACY_READ       (UINT64_C(1) << 9)
+#define KEPHIR2_CAP_SEEK_INDEX             (UINT64_C(1) << 10)
+#define KEPHIR2_CAP_FILESYSTEM_METADATA    (UINT64_C(1) << 11)
+#define KEPHIR2_CAP_FOOTER_INTEGRITY       (UINT64_C(1) << 12)
+#define KEPHIR2_CAP_STREAM_CRC32           (UINT64_C(1) << 13)
+#define KEPHIR2_CAP_PROGRESS_CALLBACK      (UINT64_C(1) << 14)
+#define KEPHIR2_CAP_CANCELLATION           (UINT64_C(1) << 15)
+
+typedef struct kephir2_capabilities_v1 {
+    uint32_t struct_size;
+    uint32_t api_version;
+    uint32_t engine_major;
+    uint32_t engine_minor;
+    uint32_t engine_patch;
+    uint32_t max_workers;
+    uint64_t capability_flags;
+    uint32_t aur_read_major_min;
+    uint32_t aur_read_major_max;
+    uint32_t aur_write_major;
+    uint32_t reserved0;
+    uint64_t reserved1[2];
+} kephir2_capabilities_v1;
+
 KEPHIR2_API uint32_t kephir2_api_version(void);
 KEPHIR2_API const char* kephir2_engine_version(void);
 KEPHIR2_API kephir2_engine* kephir2_create(void);
@@ -135,6 +168,10 @@ KEPHIR2_API void kephir2_destroy(kephir2_engine* engine);
 
 KEPHIR2_API void kephir2_options_init_v1(
     kephir2_options_v1* options);
+
+KEPHIR2_API kephir2_status kephir2_get_capabilities(
+    kephir2_engine* engine,
+    kephir2_capabilities_v1* capabilities);
 
 KEPHIR2_API kephir2_status kephir2_compress(
     kephir2_engine* engine,
