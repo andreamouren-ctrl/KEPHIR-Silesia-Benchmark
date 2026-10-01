@@ -199,6 +199,7 @@ set_source_files_properties(src/kephir2_public_inspection.cpp PROPERTIES
 
 add_library(kephir2_api SHARED
     src/kephir2_c.cpp
+    src/kephir2_capabilities.cpp
     src/kephir2_public_aur2.cpp
     src/kephir2_public_metadata.cpp
     src/kephir2_public_seek.cpp
