@@ -5,6 +5,7 @@
 #include <cassert>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -28,10 +29,19 @@ void write_bytes(
         static_cast<std::streamsize>(bytes.size()));
 }
 
+std::string read_text(const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    return {
+        std::istreambuf_iterator<char>(in),
+        std::istreambuf_iterator<char>()
+    };
+}
+
 struct ListedEntries {
     std::vector<std::string> paths;
     std::size_t files{0};
     std::size_t directories{0};
+    std::uint64_t readme_id{0};
 };
 
 int collect_entry(const kephir2_entry_info_v1* entry, void* user_data) {
@@ -46,6 +56,9 @@ int collect_entry(const kephir2_entry_info_v1* entry, void* user_data) {
     } else {
         ++listed->files;
     }
+    if (std::string(entry->path_utf8) == "docs/readme.txt") {
+        listed->readme_id = entry->entry_id;
+    }
     return 0;
 }
 
@@ -58,6 +71,8 @@ int main() {
         std::filesystem::temp_directory_path() / "kephir2_aur2_c_api_smoke";
     const auto input = root / "input";
     const auto archive_path = root / "sample.aur";
+    const auto selected_output = root / "selected";
+    const std::string readme_text = "AUR2 public C API verification payload\n";
 
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(input / "docs");
@@ -65,7 +80,7 @@ int main() {
 
     {
         std::ofstream(input / "docs" / "readme.txt", std::ios::binary)
-            << "AUR2 public C API verification payload\n";
+            << readme_text;
         std::ofstream(input / "empty.bin", std::ios::binary);
     }
 
@@ -103,6 +118,7 @@ int main() {
     assert(listed.paths.size() == 4);
     assert(listed.files == 2);
     assert(listed.directories == 2);
+    assert(listed.readme_id != 0);
 
     kephir2_options_v1 options{};
     kephir2_options_init_v1(&options);
@@ -120,6 +136,29 @@ int main() {
     assert(result.status == KEPHIR2_OK);
     assert(result.input_bytes == archive.size());
     assert(result.output_bytes == info.logical_bytes);
+
+    // Extract exactly one entry through the public ABI. Other archive entries
+    // must not appear in the destination tree.
+    const std::uint64_t selected_ids[] = {listed.readme_id};
+    kephir2_selection_v1 selection{};
+    selection.struct_size = sizeof(selection);
+    selection.entry_ids = selected_ids;
+    selection.entry_count = 1;
+
+    const auto selected_utf8 = utf8(selected_output);
+    kephir2_result_v1 selective_result{};
+    selective_result.struct_size = sizeof(selective_result);
+    assert(kephir2_extract_selected(
+        engine,
+        archive_utf8.c_str(),
+        selected_utf8.c_str(),
+        &selection,
+        &options,
+        &selective_result) == KEPHIR2_OK);
+    assert(selective_result.status == KEPHIR2_OK);
+    assert(read_text(selected_output / "docs" / "readme.txt") == readme_text);
+    assert(!std::filesystem::exists(selected_output / "empty.bin"));
+    assert(!std::filesystem::exists(selected_output / "empty-dir"));
 
     // A structurally invalid file must be rejected through the public ABI.
     auto truncated = archive;
