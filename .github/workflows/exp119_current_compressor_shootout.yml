@@ -57,6 +57,21 @@ jobs:
           unzip -q /tmp/silesia.zip -d corpora/silesia
           test "$(find corpora/silesia -type f -printf '%s\n' | awk '{s+=$1} END {print s}')" -eq 211938580
 
+      - name: Fix archive extraction mode for per-file comparator validation
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('research/benchmarks/exp119_current_compressor_shootout.py')
+          s=p.read_text()
+          old='lambda a, o: ["7z", "x", "-bd", "-y", f"-o{o}", str(a)]'
+          new='lambda a, o: ["7z", "e", "-bd", "-y", f"-o{o}", str(a)]'
+          count=s.count(old)
+          if count != 3:
+              raise SystemExit(f'unexpected 7z extraction wrapper count: {count}')
+          p.write_text(s.replace(old,new))
+          print('EXP119_7Z_WRAPPER_FIXED', count)
+          PY
+
       - name: Run current compressor shootout
         run: |
           python3 research/benchmarks/exp119_current_compressor_shootout.py \
@@ -90,6 +105,7 @@ jobs:
           PY
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: exp119-current-compressor-shootout
           path: |
