@@ -105,11 +105,15 @@ jobs:
           build/kephir2/kephir2_production_layout_bench \
             exp117/matrix exp117/matrix_w4 4 adaptive | tee exp117/matrix_w4.log
 
-          grep -q '^ADAPTIVE_CONTEXT=1$' exp117/matrix_w1.log
-          grep -q '^SMART_BYTE_PERFECT=1$' exp117/matrix_w1.log
-          grep -q '^FLAT_BYTE_PERFECT=1$' exp117/matrix_w1.log
-          grep -q '^SMART_BYTE_PERFECT=1$' exp117/matrix_w4.log
-          grep -q '^FLAT_BYTE_PERFECT=1$' exp117/matrix_w4.log
+          for log in exp117/matrix_w1.log exp117/matrix_w4.log; do
+            grep -q '^ADAPTIVE_CONTEXT=1$' "$log"
+            grep -q '^SELECTED=smart$' "$log"
+            grep -q '^ORACLE=smart$' "$log"
+            grep -q '^REGRET_BYTES=0$' "$log"
+            grep -q '^PROBE_COUNT=1$' "$log"
+            grep -q '^SMART_BYTE_PERFECT=1$' "$log"
+            grep -q '^FLAT_BYTE_PERFECT=1$' "$log"
+          done
 
           cmp exp117/matrix_w1/smart.kpf exp117/matrix_w4/smart.kpf
           cmp exp117/matrix_w1/flat.kpf exp117/matrix_w4/flat.kpf
@@ -125,6 +129,7 @@ jobs:
           build/kephir2/kephir2_production_layout_bench \
             src/kephir2 exp117/repo_snapshot 4 adaptive | tee exp117/repo_snapshot.log
           grep -q '^ADAPTIVE_CONTEXT=1$' exp117/repo_snapshot.log
+          grep -q '^REGRET_BYTES=0$' exp117/repo_snapshot.log
           grep -q '^SMART_BYTE_PERFECT=1$' exp117/repo_snapshot.log
           grep -q '^FLAT_BYTE_PERFECT=1$' exp117/repo_snapshot.log
           echo EXP117A_REPO_ROUNDTRIP_PASS
@@ -176,8 +181,14 @@ jobs:
           assert result['single_file']['gain_bytes'] > 0
           assert result['directory_matrix']['smart_deterministic']
           assert result['directory_matrix']['flat_deterministic']
-          assert m1['SMART_BYTE_PERFECT']=='1' and m1['FLAT_BYTE_PERFECT']=='1'
-          assert m4['SMART_BYTE_PERFECT']=='1' and m4['FLAT_BYTE_PERFECT']=='1'
+          for matrix in (m1,m4):
+              assert matrix['SELECTED']=='smart'
+              assert matrix['ORACLE']=='smart'
+              assert matrix['REGRET_BYTES']=='0'
+              assert matrix['PROBE_COUNT']=='1'
+              assert matrix['SMART_BYTE_PERFECT']=='1'
+              assert matrix['FLAT_BYTE_PERFECT']=='1'
+          assert repo['REGRET_BYTES']=='0'
           assert repo['SMART_BYTE_PERFECT']=='1' and repo['FLAT_BYTE_PERFECT']=='1'
           print('EXP117A_VALIDATION_PASS',json.dumps(result['single_file'],sort_keys=True))
           PY
