@@ -9,6 +9,76 @@ import sys
 import tempfile
 
 
+PORTABLE_CPP_INCLUDES = r'''#include <algorithm>
+#include <array>
+#include <atomic>
+#include <bit>
+#include <bitset>
+#include <cassert>
+#include <cctype>
+#include <cerrno>
+#include <chrono>
+#include <cmath>
+#include <condition_variable>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <deque>
+#include <filesystem>
+#include <fstream>
+#include <functional>
+#include <future>
+#include <iomanip>
+#include <iostream>
+#include <iterator>
+#include <limits>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <numeric>
+#include <optional>
+#include <queue>
+#include <random>
+#include <set>
+#include <span>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <thread>
+#include <tuple>
+#include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <variant>
+#include <vector>'''
+
+PORTABLE_BIT_HELPERS = r'''
+static inline unsigned k2_ctzll(unsigned long long value) noexcept {
+    return value == 0
+        ? 64u
+        : static_cast<unsigned>(
+              std::countr_zero(static_cast<std::uint64_t>(value)));
+}
+'''
+
+
+def make_msvc_portable(src: str) -> str:
+    """Replace GCC-only facilities without changing codec logic."""
+    gcc_umbrella = "#include <bits/stdc++.h>"
+    if gcc_umbrella in src:
+        src = src.replace(
+            gcc_umbrella,
+            PORTABLE_CPP_INCLUDES + "\n" + PORTABLE_BIT_HELPERS,
+            1,
+        )
+    src = src.replace("__builtin_ctzll(", "k2_ctzll(")
+    return src
+
+
 def main():
     ap=argparse.ArgumentParser()
     ap.add_argument("--output",required=True)
@@ -42,6 +112,8 @@ def main():
             subprocess.run([sys.executable,str(gen)],cwd=td,check=True)
 
         src=(td/"KEPHIR_2_EXP37_DUAL_MATCH.cpp").read_text()
+
+    src=make_msvc_portable(src)
 
     needle="int main(int argc,char**argv){"
     if needle not in src:

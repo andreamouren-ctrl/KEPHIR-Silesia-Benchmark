@@ -85,6 +85,40 @@ int main() {
     auto* engine = kephir2_create();
     assert(engine != nullptr);
 
+    const std::uint64_t expected_capabilities =
+        KEPHIR2_CAP_COMPRESS_FILE |
+        KEPHIR2_CAP_COMPRESS_DIRECTORY |
+        KEPHIR2_CAP_EXTRACT |
+        KEPHIR2_CAP_INSPECT |
+        KEPHIR2_CAP_LIST_ENTRIES |
+        KEPHIR2_CAP_EXTRACT_SELECTED |
+        KEPHIR2_CAP_TEST_ARCHIVE |
+        KEPHIR2_CAP_AUR2_READ |
+        KEPHIR2_CAP_AUR2_WRITE |
+        KEPHIR2_CAP_KPF1_LEGACY_READ |
+        KEPHIR2_CAP_SEEK_INDEX |
+        KEPHIR2_CAP_FILESYSTEM_METADATA |
+        KEPHIR2_CAP_FOOTER_INTEGRITY |
+        KEPHIR2_CAP_STREAM_CRC32 |
+        KEPHIR2_CAP_PROGRESS_CALLBACK |
+        KEPHIR2_CAP_CANCELLATION;
+
+    kephir2_capabilities_v1 capabilities{};
+    capabilities.struct_size = sizeof(capabilities);
+    assert(kephir2_get_capabilities(engine, &capabilities) == KEPHIR2_OK);
+    assert(capabilities.struct_size == sizeof(capabilities));
+    assert(capabilities.api_version == KEPHIR2_API_VERSION);
+    assert(capabilities.engine_major == 2);
+    assert(capabilities.engine_minor == 0);
+    assert(capabilities.engine_patch == 0);
+    assert(capabilities.max_workers == 16);
+    assert(capabilities.capability_flags == expected_capabilities);
+    assert(capabilities.aur_read_major_min == 2);
+    assert(capabilities.aur_read_major_max == 2);
+    assert(capabilities.aur_write_major == 2);
+    assert(kephir2_get_capabilities(nullptr, &capabilities)
+        == KEPHIR2_INVALID_ARGUMENT);
+
     const auto base =
         std::filesystem::temp_directory_path() / "kephir2_api_smoke";
     const auto input = base / "input.dat";
