@@ -51,6 +51,7 @@ add_library(kephir2_core STATIC
     src/aur2_execution.cpp
     src/aur2_inspection.cpp
     src/aur2_metadata.cpp
+    src/aur2_seek.cpp
     src/aur2_selection.cpp
     src/aur2_streams.cpp
     src/auto_routing.cpp
@@ -117,6 +118,9 @@ target_link_libraries(kephir2_aur2_inspection_smoke PRIVATE kephir2_core)
 add_executable(kephir2_aur2_selective_smoke tests/aur2_selective_smoke.cpp)
 target_link_libraries(kephir2_aur2_selective_smoke PRIVATE kephir2_core)
 
+add_executable(kephir2_aur2_seek_smoke tests/aur2_seek_smoke.cpp)
+target_link_libraries(kephir2_aur2_seek_smoke PRIVATE kephir2_core)
+
 add_executable(kephir2_packing_smoke tests/packing_smoke.cpp)
 target_link_libraries(kephir2_packing_smoke PRIVATE kephir2_core)
 
@@ -161,6 +165,7 @@ add_test(NAME kephir2_aur2_native_k75_smoke COMMAND kephir2_aur2_native_k75_smok
 add_test(NAME kephir2_aur2_directory_k75_smoke COMMAND kephir2_aur2_directory_k75_smoke)
 add_test(NAME kephir2_aur2_inspection_smoke COMMAND kephir2_aur2_inspection_smoke)
 add_test(NAME kephir2_aur2_selective_smoke COMMAND kephir2_aur2_selective_smoke)
+add_test(NAME kephir2_aur2_seek_smoke COMMAND kephir2_aur2_seek_smoke)
 add_test(NAME kephir2_packing_smoke COMMAND kephir2_packing_smoke)
 add_test(NAME kephir2_execution_smoke COMMAND kephir2_execution_smoke)
 add_test(NAME kephir2_native37_smoke COMMAND kephir2_native37_smoke)
@@ -177,11 +182,15 @@ set_source_files_properties(src/kephir2_public_aur2.cpp PROPERTIES
 set_source_files_properties(src/kephir2_aur2_select_c.cpp PROPERTIES
     COMPILE_DEFINITIONS "kephir2_extract_selected=kephir2_extract_selected_payload"
 )
+set_source_files_properties(src/kephir2_public_metadata.cpp PROPERTIES
+    COMPILE_DEFINITIONS "kephir2_compress=kephir2_compress_metadata_payload;kephir2_extract=kephir2_extract_metadata_payload;kephir2_extract_selected=kephir2_extract_selected_metadata_payload"
+)
 
 add_library(kephir2_api SHARED
     src/kephir2_c.cpp
     src/kephir2_public_aur2.cpp
     src/kephir2_public_metadata.cpp
+    src/kephir2_public_seek.cpp
     src/kephir2_aur2_c.cpp
     src/kephir2_aur2_select_c.cpp
 )
