@@ -13,7 +13,6 @@ constexpr std::uint32_t kDiversityMinGroups = 3;
 constexpr double kDiversityMaxDominantFileFraction = 0.75;
 constexpr double kDiversityMaxDominantByteFraction = 0.80;
 constexpr std::uint64_t kDiversityMinLogicalBytes = 8u * 1024u * 1024u;
-constexpr std::uint64_t kBaseParentBytes = 512u * 1024u;
 
 // EXP-88 cheap gate. These values are inherited unchanged from EXP-86;
 // holdout validation showed they are safe only as a FLAT fast-path gate.
@@ -94,13 +93,11 @@ StrategyPlan GlobalRouter::plan(
         out.layout = Layout::Flat;
     } else if (features.sampled_content_groups == 1) {
         out.layout = Layout::Flat;
-    } else if (features.logical_bytes <= kBaseParentBytes
-        && features.flat_parent_count != 0
+    } else if (features.flat_parent_count != 0
         && features.flat_mixed_parent_count == 0) {
-        // EXP-94 structural dominance was derived for a fixed 512 KiB parent.
-        // EXP-117 can select 4/8 MiB context. Above one base parent, purity of
-        // the 512 KiB analysis windows no longer proves purity of the actual
-        // long-context parent, so AUTO must remain free to probe SMART/FLAT.
+        // EXP-94 structural dominance for the current 512 KiB parent backend:
+        // every FLAT parent is already content-pure. SMART cannot gain from
+        // class separation and only adds directory-group framing overhead.
         out.layout = Layout::Flat;
     } else if (probe && probe->valid()) {
         const auto measured_layout = (probe->smart_archive_bytes < probe->flat_archive_bytes)
