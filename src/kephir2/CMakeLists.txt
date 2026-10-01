@@ -167,8 +167,13 @@ add_test(NAME kephir2_native37_blob_smoke COMMAND kephir2_native37_blob_smoke)
 add_test(NAME kephir2_native_k75_smoke COMMAND kephir2_native_k75_smoke)
 add_test(NAME kephir2_auto_routing_smoke COMMAND kephir2_auto_routing_smoke)
 
+set_source_files_properties(src/kephir2_c.cpp PROPERTIES
+    COMPILE_DEFINITIONS "kephir2_compress=kephir2_compress_kpf1_legacy;kephir2_extract=kephir2_extract_kpf1_legacy"
+)
+
 add_library(kephir2_api SHARED
     src/kephir2_c.cpp
+    src/kephir2_public_aur2.cpp
     src/kephir2_aur2_c.cpp
     src/kephir2_aur2_select_c.cpp
 )
