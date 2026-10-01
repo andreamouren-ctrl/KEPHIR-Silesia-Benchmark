@@ -8,6 +8,7 @@
 5. [Project Structure](architecture/PROJECT_STRUCTURE.md)
 6. [File Catalog](architecture/FILE_CATALOG.md)
 7. [Workflow Policy](architecture/WORKFLOW_POLICY.md)
+8. [AURORA / KEPHIR Final Integration Specification](architecture/AURORA_KEPHIR_FINAL_INTEGRATION_SPEC.md)
 
 ## Release status
 
