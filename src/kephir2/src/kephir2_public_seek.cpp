@@ -4,6 +4,7 @@
 #include "kephir2/aur2_indexed_file.hpp"
 #include "kephir2/aur2_metadata.hpp"
 #include "kephir2/aur2_seek.hpp"
+#include "kephir2/aur2_selection.hpp"
 #include "kephir2/native_k75.hpp"
 
 #include <algorithm>
@@ -17,6 +18,8 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #ifdef _WIN32
@@ -117,6 +120,12 @@ bool options_value_valid(const kephir2_options_v1* options) noexcept {
     if (!options) return true;
     return options->profile >= KEPHIR2_PROFILE_AUTO
         && options->profile <= KEPHIR2_PROFILE_MAX;
+}
+
+bool selection_shape_valid(const kephir2_selection_v1* selection) noexcept {
+    return selection
+        && selection->struct_size >= sizeof(kephir2_selection_v1)
+        && (selection->entry_count == 0 || selection->entry_ids != nullptr);
 }
 
 kephir2_options_v1 forwarded_options(
@@ -295,6 +304,17 @@ kephir2_status map_file_backed_error(
             elapsed_seconds);
         return KEPHIR2_CANCELLED;
     }
+    if (dynamic_cast<const std::invalid_argument*>(&error) != nullptr
+        || message.find("selected entry id") != std::string_view::npos) {
+        fill_result(
+            result,
+            KEPHIR2_INVALID_ARGUMENT,
+            message,
+            input_bytes,
+            output_bytes,
+            elapsed_seconds);
+        return KEPHIR2_INVALID_ARGUMENT;
+    }
     if (message.find("CRC32") != std::string_view::npos
         || message.find("checksum") != std::string_view::npos) {
         fill_result(
@@ -324,7 +344,9 @@ kephir2_status map_file_backed_error(
         || message.find("duplicate") != std::string_view::npos
         || message.find("missing required") != std::string_view::npos
         || message.find("unsafe AUR2") != std::string_view::npos
-        || message.find("exceeds archive") != std::string_view::npos) {
+        || message.find("exceeds archive") != std::string_view::npos
+        || message.find("out of range") != std::string_view::npos
+        || message.find("overlap") != std::string_view::npos) {
         fill_result(
             result,
             KEPHIR2_CORRUPT_ARCHIVE,
@@ -343,6 +365,12 @@ kephir2_status map_file_backed_error(
         output_bytes,
         elapsed_seconds);
     return KEPHIR2_IO_ERROR;
+}
+
+bool can_use_indexed_path(const std::filesystem::path& archive_path) {
+    return std::filesystem::is_regular_file(archive_path)
+        && has_aur2_magic_file(archive_path)
+        && kephir2::aur2::has_seek_index_file(archive_path);
 }
 
 } // namespace
@@ -489,18 +517,8 @@ kephir2_status kephir2_extract(
     }
 
     const auto archive_path = from_utf8(archive_utf8);
-    if (!std::filesystem::is_regular_file(archive_path)
-        || !has_aur2_magic_file(archive_path)) {
-        return kephir2_extract_metadata_payload(
-            engine,
-            archive_utf8,
-            output_directory_utf8,
-            options,
-            result);
-    }
-
     try {
-        if (!kephir2::aur2::has_seek_index_file(archive_path)) {
+        if (!can_use_indexed_path(archive_path)) {
             return kephir2_extract_metadata_payload(
                 engine,
                 archive_utf8,
@@ -512,12 +530,7 @@ kephir2_status kephir2_extract(
         std::error_code ec;
         auto bytes = std::filesystem::file_size(archive_path, ec);
         if (ec) bytes = 0;
-        return map_file_backed_error(
-            error,
-            result,
-            bytes,
-            0,
-            0.0);
+        return map_file_backed_error(error, result, bytes, 0, 0.0);
     }
 
     const auto start = Clock::now();
@@ -621,13 +634,160 @@ kephir2_status kephir2_extract_selected(
     const kephir2_options_v1* options,
     kephir2_result_v1* result) {
 
-    return kephir2_extract_selected_metadata_payload(
-        engine,
-        archive_utf8,
-        output_directory_utf8,
-        selection,
-        options,
-        result);
+    if (!engine || !archive_utf8 || !output_directory_utf8
+        || !selection_shape_valid(selection) || !options_value_valid(options)) {
+        return kephir2_extract_selected_metadata_payload(
+            engine,
+            archive_utf8,
+            output_directory_utf8,
+            selection,
+            options,
+            result);
+    }
+
+    const auto archive_path = from_utf8(archive_utf8);
+    try {
+        if (!can_use_indexed_path(archive_path)) {
+            return kephir2_extract_selected_metadata_payload(
+                engine,
+                archive_utf8,
+                output_directory_utf8,
+                selection,
+                options,
+                result);
+        }
+    } catch (const std::exception& error) {
+        std::error_code ec;
+        auto bytes = std::filesystem::file_size(archive_path, ec);
+        if (ec) bytes = 0;
+        return map_file_backed_error(error, result, bytes, 0, 0.0);
+    }
+
+    const auto start = Clock::now();
+    const auto output = from_utf8(output_directory_utf8);
+    std::uint64_t input_bytes = 0;
+    std::uint64_t output_bytes = 0;
+
+    try {
+        input_bytes = std::filesystem::file_size(archive_path);
+        const bool overwrite = options ? options->overwrite_output != 0 : false;
+        if (std::filesystem::exists(output)
+            && !overwrite
+            && !std::filesystem::is_empty(output)) {
+            fill_result(
+                result,
+                KEPHIR2_OUTPUT_EXISTS,
+                "output directory is not empty",
+                input_bytes,
+                0,
+                std::chrono::duration<double>(Clock::now() - start).count());
+            return KEPHIR2_OUTPUT_EXISTS;
+        }
+
+        const auto entries = kephir2::aur2::list_indexed_file(archive_path);
+        std::unordered_map<std::uint64_t, std::uint64_t> sizes;
+        sizes.reserve(entries.size());
+        for (const auto& entry : entries) {
+            sizes.emplace(
+                entry.entry_id,
+                entry.type == kephir2::aur2::EntryType::File
+                    ? entry.logical_size
+                    : 0);
+        }
+
+        std::vector<std::uint64_t> ids;
+        ids.reserve(selection->entry_count);
+        std::unordered_set<std::uint64_t> seen;
+        seen.reserve(selection->entry_count);
+        for (std::size_t i = 0; i < selection->entry_count; ++i) {
+            const auto id = selection->entry_ids[i];
+            const auto size_it = sizes.find(id);
+            if (size_it == sizes.end()) {
+                fill_result(
+                    result,
+                    KEPHIR2_INVALID_ARGUMENT,
+                    "selected entry id does not exist",
+                    input_bytes,
+                    0,
+                    std::chrono::duration<double>(Clock::now() - start).count());
+                return KEPHIR2_INVALID_ARGUMENT;
+            }
+            if (!seen.insert(id).second) continue;
+            ids.push_back(id);
+            if (size_it->second > UINT64_MAX - output_bytes) {
+                throw std::runtime_error("selected output size overflow");
+            }
+            output_bytes += size_it->second;
+        }
+
+        auto operation = make_file_backed_operation(options);
+        kephir2::BackendOptions backend_options;
+        backend_options.workers = options ? options->workers : 0;
+        backend_options.allow_local_experience =
+            !options || options->allow_local_experience != 0;
+        backend_options.operation = &operation;
+
+        operation.report({
+            kephir2::OperationPhase::Extracting,
+            0.0,
+            0,
+            output_bytes,
+            archive_path.generic_string()
+        });
+
+        kephir2::NativeK75Backend backend;
+        kephir2::aur2::extract_selected_indexed_file_backed(
+            archive_path,
+            output,
+            backend,
+            ids,
+            backend_options);
+
+        operation.throw_if_cancelled();
+        kephir2::aur2::restore_selected_filesystem_metadata_file(
+            archive_path,
+            output,
+            ids);
+        operation.throw_if_cancelled();
+
+        const auto elapsed = std::chrono::duration<double>(
+            Clock::now() - start).count();
+        if (options && options->progress_callback) {
+            kephir2_progress_v1 done{};
+            done.struct_size = sizeof(done);
+            done.phase = KEPHIR2_PHASE_DONE;
+            done.fraction = 1.0;
+            done.processed_bytes = output_bytes;
+            done.total_bytes = output_bytes;
+            done.current_path_utf8 = output_directory_utf8;
+            options->progress_callback(&done, options->user_data);
+        }
+
+        fill_result(
+            result,
+            KEPHIR2_OK,
+            "AUR2 indexed file-backed selective extraction completed with filesystem metadata",
+            input_bytes,
+            output_bytes,
+            elapsed);
+        return KEPHIR2_OK;
+    } catch (const std::exception& error) {
+        return map_file_backed_error(
+            error,
+            result,
+            input_bytes,
+            output_bytes,
+            std::chrono::duration<double>(Clock::now() - start).count());
+    } catch (...) {
+        fill_result(
+            result,
+            KEPHIR2_INTERNAL_ERROR,
+            "unknown AUR2 file-backed selective extraction error",
+            input_bytes,
+            output_bytes,
+            std::chrono::duration<double>(Clock::now() - start).count());
+        return KEPHIR2_INTERNAL_ERROR;
+    }
 }
 
 } // extern "C"
