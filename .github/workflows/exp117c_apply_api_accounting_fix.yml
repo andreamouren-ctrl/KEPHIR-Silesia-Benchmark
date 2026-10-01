@@ -23,36 +23,66 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           c = Path('src/kephir2/src/kephir2_c.cpp')
           text = c.read_text()
-          old = "        if (archive[4] == static_cast<std::uint8_t>(kephir2::Kpf1Kind::File)) {\n              const auto envelope = kephir2::decode_kpf1_file(archive);\n              output_bytes = 0;\n              engine->executor.extract_file(\n                  archive,\n                  output,\n                  engine->backend,\n                  backend_options);\n          } else if ("
-          new = "        if (archive[4] == static_cast<std::uint8_t>(kephir2::Kpf1Kind::File)) {\n              const auto envelope = kephir2::decode_kpf1_file(archive);\n              engine->executor.extract_file(\n                  archive,\n                  output,\n                  engine->backend,\n                  backend_options);\n\n              const auto extracted = kephir2::safe_archive_target(\n                  output,\n                  envelope.name);\n              if (!std::filesystem::is_regular_file(extracted)) {\n                  throw std::runtime_error(\n                      \"extracted file missing after successful decode\");\n              }\n              output_bytes = std::filesystem::file_size(extracted);\n          } else if ("
-          if old not in text:
+          pattern = re.compile(
+              r'(?P<i>\s*)if \(archive\[4\] == static_cast<std::uint8_t>\(kephir2::Kpf1Kind::File\)\) \{\n'
+              r'(?P=i)    const auto envelope = kephir2::decode_kpf1_file\(archive\);\n'
+              r'(?P=i)    output_bytes = 0;\n'
+              r'(?P=i)    engine->executor\.extract_file\(\n'
+              r'(?P=i)        archive,\n'
+              r'(?P=i)        output,\n'
+              r'(?P=i)        engine->backend,\n'
+              r'(?P=i)        backend_options\);\n'
+              r'(?P=i)\} else if \('
+          )
+          match = pattern.search(text)
+          if not match:
               raise SystemExit('kephir2_c.cpp target block not found')
-          c.write_text(text.replace(old, new, 1))
+          i = match.group('i')
+          replacement = (
+              f'{i}if (archive[4] == static_cast<std::uint8_t>(kephir2::Kpf1Kind::File)) {{\n'
+              f'{i}    const auto envelope = kephir2::decode_kpf1_file(archive);\n'
+              f'{i}    engine->executor.extract_file(\n'
+              f'{i}        archive,\n'
+              f'{i}        output,\n'
+              f'{i}        engine->backend,\n'
+              f'{i}        backend_options);\n\n'
+              f'{i}    const auto extracted = kephir2::safe_archive_target(\n'
+              f'{i}        output,\n'
+              f'{i}        envelope.name);\n'
+              f'{i}    if (!std::filesystem::is_regular_file(extracted)) {{\n'
+              f'{i}        throw std::runtime_error(\n'
+              f'{i}            "extracted file missing after successful decode");\n'
+              f'{i}    }}\n'
+              f'{i}    output_bytes = std::filesystem::file_size(extracted);\n'
+              f'{i}}} else if ('
+          )
+          c.write_text(text[:match.start()] + replacement + text[match.end():])
 
           t = Path('src/kephir2/tests/production_candidate_api_smoke.cpp')
           text = t.read_text()
 
-          old = "    assert(adaptive_extract_result.status == KEPHIR2_OK);\n    assert(read_all(input) == read_all(adaptive_extract / input.filename()));"
-          new = "    assert(adaptive_extract_result.status == KEPHIR2_OK);\n    assert(adaptive_extract_result.output_bytes == std::filesystem::file_size(input));\n    assert(read_all(input) == read_all(adaptive_extract / input.filename()));"
-          if old not in text:
-              raise SystemExit('adaptive extraction assertion block not found')
-          text = text.replace(old, new, 1)
-
-          old = "    assert(kephir2_extract(\n        engine,\n        api_fast_s.c_str(),\n        fast_extract_s.c_str(),\n        &options,\n        &fast_extract_result) == KEPHIR2_OK);\n    assert(read_all(input) == read_all(fast_extract / input.filename()));"
-          new = "    assert(kephir2_extract(\n        engine,\n        api_fast_s.c_str(),\n        fast_extract_s.c_str(),\n        &options,\n        &fast_extract_result) == KEPHIR2_OK);\n    assert(fast_extract_result.status == KEPHIR2_OK);\n    assert(fast_extract_result.output_bytes == std::filesystem::file_size(input));\n    assert(read_all(input) == read_all(fast_extract / input.filename()));"
-          if old not in text:
-              raise SystemExit('fast extraction assertion block not found')
-          text = text.replace(old, new, 1)
-
-          old = "    assert(auto_extract_result.status == KEPHIR2_OK);\n    assert(read_all(input) == read_all(auto_extract / input.filename()));"
-          new = "    assert(auto_extract_result.status == KEPHIR2_OK);\n    assert(auto_extract_result.output_bytes == std::filesystem::file_size(input));\n    assert(read_all(input) == read_all(auto_extract / input.filename()));"
-          if old not in text:
-              raise SystemExit('auto extraction assertion block not found')
-          text = text.replace(old, new, 1)
-
+          replacements = [
+              (
+                  "    assert(adaptive_extract_result.status == KEPHIR2_OK);\n    assert(read_all(input) == read_all(adaptive_extract / input.filename()));",
+                  "    assert(adaptive_extract_result.status == KEPHIR2_OK);\n    assert(adaptive_extract_result.output_bytes == std::filesystem::file_size(input));\n    assert(read_all(input) == read_all(adaptive_extract / input.filename()));"
+              ),
+              (
+                  "    assert(kephir2_extract(\n        engine,\n        api_fast_s.c_str(),\n        fast_extract_s.c_str(),\n        &options,\n        &fast_extract_result) == KEPHIR2_OK);\n    assert(read_all(input) == read_all(fast_extract / input.filename()));",
+                  "    assert(kephir2_extract(\n        engine,\n        api_fast_s.c_str(),\n        fast_extract_s.c_str(),\n        &options,\n        &fast_extract_result) == KEPHIR2_OK);\n    assert(fast_extract_result.status == KEPHIR2_OK);\n    assert(fast_extract_result.output_bytes == std::filesystem::file_size(input));\n    assert(read_all(input) == read_all(fast_extract / input.filename()));"
+              ),
+              (
+                  "    assert(auto_extract_result.status == KEPHIR2_OK);\n    assert(read_all(input) == read_all(auto_extract / input.filename()));",
+                  "    assert(auto_extract_result.status == KEPHIR2_OK);\n    assert(auto_extract_result.output_bytes == std::filesystem::file_size(input));\n    assert(read_all(input) == read_all(auto_extract / input.filename()));"
+              ),
+          ]
+          for old, new in replacements:
+              if old not in text:
+                  raise SystemExit('production_candidate_api_smoke target block not found')
+              text = text.replace(old, new, 1)
           t.write_text(text)
           PY
 
