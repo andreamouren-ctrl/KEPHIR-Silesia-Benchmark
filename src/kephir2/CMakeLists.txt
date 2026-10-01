@@ -105,6 +105,9 @@ target_link_libraries(kephir2_aur2_structure_smoke PRIVATE kephir2_core)
 add_executable(kephir2_aur2_native_k75_smoke tests/aur2_native_k75_smoke.cpp)
 target_link_libraries(kephir2_aur2_native_k75_smoke PRIVATE kephir2_core)
 
+add_executable(kephir2_aur2_directory_k75_smoke tests/aur2_directory_k75_smoke.cpp)
+target_link_libraries(kephir2_aur2_directory_k75_smoke PRIVATE kephir2_core)
+
 add_executable(kephir2_packing_smoke tests/packing_smoke.cpp)
 target_link_libraries(kephir2_packing_smoke PRIVATE kephir2_core)
 
@@ -146,6 +149,7 @@ add_test(NAME kephir2_archive_smoke COMMAND kephir2_archive_smoke)
 add_test(NAME kephir2_aur2_smoke COMMAND kephir2_aur2_smoke)
 add_test(NAME kephir2_aur2_structure_smoke COMMAND kephir2_aur2_structure_smoke)
 add_test(NAME kephir2_aur2_native_k75_smoke COMMAND kephir2_aur2_native_k75_smoke)
+add_test(NAME kephir2_aur2_directory_k75_smoke COMMAND kephir2_aur2_directory_k75_smoke)
 add_test(NAME kephir2_packing_smoke COMMAND kephir2_packing_smoke)
 add_test(NAME kephir2_execution_smoke COMMAND kephir2_execution_smoke)
 add_test(NAME kephir2_native37_smoke COMMAND kephir2_native37_smoke)
