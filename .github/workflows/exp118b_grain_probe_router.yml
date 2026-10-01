@@ -1,0 +1,96 @@
+name: KEPHIR 2 EXP-118B Grain Probe Router
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/exp118b-grain-probe-router
+    paths:
+      - "src/kephir2/**"
+      - "research/benchmarks/exp118b_grain_probe_router.py"
+      - ".github/workflows/exp118b_grain_probe_router.yml"
+  pull_request:
+    branches:
+      - research/exp118-adaptive-parent-grain
+    paths:
+      - "src/kephir2/**"
+      - "research/benchmarks/exp118b_grain_probe_router.py"
+      - ".github/workflows/exp118b_grain_probe_router.yml"
+
+jobs:
+  probe-router:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build research candidate
+        run: |
+          cmake -S src/kephir2 -B build/kephir2 -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/kephir2 --config Release --parallel
+
+      - name: Regression suite
+        run: ctest --test-dir build/kephir2 --output-on-failure
+
+      - name: Materialize canonical Silesia
+        run: |
+          mkdir -p corpora/silesia
+          curl -L --fail --retry 4 -o /tmp/silesia.zip \
+            https://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip
+          echo "c240c17d6805fb8a0bde763f1b94cd99  /tmp/silesia.zip" | md5sum -c -
+          unzip -q /tmp/silesia.zip -d corpora/silesia
+          test "$(find corpora/silesia -type f -printf '%s\n' | awk '{s+=$1} END {print s}')" -eq 211938580
+
+      - name: Materialize pinned external corpora
+        run: |
+          set -euo pipefail
+          MIRROR_SHA=c380ef9dc1dc62691757fdfeebdc2f85710e1e46
+          git clone --no-checkout --filter=blob:none \
+            https://github.com/pfalcon/canterbury-corpus.git /tmp/canterbury-corpus
+          git -C /tmp/canterbury-corpus fetch --depth 1 origin "$MIRROR_SHA"
+          git -C /tmp/canterbury-corpus checkout --detach "$MIRROR_SHA"
+          mkdir -p corpora
+          cp -a /tmp/canterbury-corpus/canterbury corpora/canterbury
+          cp -a /tmp/canterbury-corpus/calgary corpora/calgary
+          cp -a /tmp/canterbury-corpus/large corpora/large
+          rm -f corpora/canterbury/SHA1SUM corpora/calgary/SHA1SUM corpora/large/SHA1SUM
+
+      - name: Sweep bounded grain probes
+        run: |
+          python3 research/benchmarks/exp118b_grain_probe_router.py \
+            build/kephir2/kephir2_native_k75_cli | tee exp118b.log
+
+      - name: Validate experiment integrity
+        run: |
+          python3 - <<'PY'
+          import json
+          d=json.load(open('exp118b_results.json'))
+          assert d['experiment']=='EXP-118B'
+          assert d['candidates']==['adaptive','grain4','grain8']
+          assert d['budgets_bytes']==[1048576,2097152,4194304]
+          assert len(d['files'])==44
+          assert len(d['policies'])==24
+          for row in d['files']:
+              assert all(v['sha_ok'] for v in row['full'].values())
+          best=d['best_zero_harm_on_measured_set']
+          assert best is not None
+          assert best['harmful_count']==0
+          print(
+              'EXP118B_VALIDATION_PASS',
+              'PROBE',best['probe'],
+              'MARGIN',best['margin'],
+              'GAIN',best['gain_vs_adaptive'],
+              'REGRET',best['regret_bytes'],
+              'CAPTURE',best['oracle_capture'],
+              'SILESIA',best['silesia']['selected_bytes'],
+              'EXTERNAL',best['external']['selected_bytes'],
+          )
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exp118b-grain-probe-router
+          path: |
+            exp118b_results.json
+            exp118b.log
