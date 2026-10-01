@@ -170,6 +170,7 @@ add_test(NAME kephir2_auto_routing_smoke COMMAND kephir2_auto_routing_smoke)
 add_library(kephir2_api SHARED
     src/kephir2_c.cpp
     src/kephir2_aur2_c.cpp
+    src/kephir2_aur2_select_c.cpp
 )
 target_include_directories(kephir2_api PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_features(kephir2_api PUBLIC cxx_std_20)
