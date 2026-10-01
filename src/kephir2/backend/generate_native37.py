@@ -12,6 +12,7 @@ import tempfile
 PORTABLE_CPP_INCLUDES = r'''#include <algorithm>
 #include <array>
 #include <atomic>
+#include <bit>
 #include <bitset>
 #include <cassert>
 #include <cctype>
@@ -55,12 +56,26 @@ PORTABLE_CPP_INCLUDES = r'''#include <algorithm>
 #include <variant>
 #include <vector>'''
 
+PORTABLE_BIT_HELPERS = r'''
+static inline unsigned k2_ctzll(unsigned long long value) noexcept {
+    return value == 0
+        ? 64u
+        : static_cast<unsigned>(
+              std::countr_zero(static_cast<std::uint64_t>(value)));
+}
+'''
+
 
 def make_msvc_portable(src: str) -> str:
-    """Replace GCC-only umbrella headers without changing codec logic."""
+    """Replace GCC-only facilities without changing codec logic."""
     gcc_umbrella = "#include <bits/stdc++.h>"
     if gcc_umbrella in src:
-        src = src.replace(gcc_umbrella, PORTABLE_CPP_INCLUDES, 1)
+        src = src.replace(
+            gcc_umbrella,
+            PORTABLE_CPP_INCLUDES + "\n" + PORTABLE_BIT_HELPERS,
+            1,
+        )
+    src = src.replace("__builtin_ctzll(", "k2_ctzll(")
     return src
 
 
