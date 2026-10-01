@@ -1,0 +1,148 @@
+name: KEPHIR 2 EXP-117A2 Layout Probe Sweep
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/exp117-production-candidate
+    paths:
+      - ".github/workflows/exp117a2_layout_probe_sweep.yml"
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build candidate tools
+        run: |
+          cmake -S src/kephir2 -B build/kephir2 -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/kephir2 --config Release --parallel
+
+      - name: Create canonical EXP-117 matrix and stratified probes
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import random, shutil
+
+          MiB=1024*1024
+          KiB=1024
+          root=Path('exp117a2/full')
+          root.mkdir(parents=True,exist_ok=True)
+          (root/'nested').mkdir(exist_ok=True)
+
+          def repeat(path,pattern,n):
+              path.write_bytes((pattern*((n+len(pattern)-1)//len(pattern)))[:n])
+
+          repeat(root/'prose.txt',b'ordinary prose words and spaces form a natural sentence. ',3*MiB)
+          repeat(root/'nested'/'code.cpp',b'int f(int x){return x*x+17;}\n',2*MiB)
+          repeat(root/'nested'/'table.bin',bytes(range(256)),2*MiB)
+          rng=random.Random(117)
+          (root/'noise.bin').write_bytes(rng.randbytes(1*MiB))
+
+          files=sorted(p for p in root.rglob('*') if p.is_file())
+
+          def stratified(data,budget):
+              if len(data)<=budget:
+                  return data
+              parts=min(4,max(1,budget//4096))
+              part=max(1,budget//parts)
+              maxoff=max(0,len(data)-part)
+              offs=[maxoff//2] if parts==1 else [(maxoff*i)//(parts-1) for i in range(parts)]
+              out=bytearray()
+              prev=None
+              for off in offs:
+                  if off==prev: continue
+                  prev=off
+                  remain=budget-len(out)
+                  if remain<=0: break
+                  out += data[off:off+min(part,remain)]
+              return bytes(out[:budget])
+
+          def budgets(total):
+              sizes=[p.stat().st_size for p in files]
+              if sum(sizes)<=total: return sizes
+              base=max(4096,total//len(files))
+              out=[min(s,base) for s in sizes]
+              used=sum(out)
+              remain=max(0,total-used)
+              while remain:
+                  elig=[i for i,s in enumerate(sizes) if out[i]<s]
+                  if not elig: break
+                  share=max(1,remain//len(elig))
+                  progressed=0
+                  for i in elig:
+                      add=min(share,sizes[i]-out[i],remain)
+                      out[i]+=add; remain-=add; progressed+=add
+                      if not remain: break
+                  if not progressed: break
+              return out
+
+          for label,total in [('512k',512*KiB),('1m',MiB),('2m',2*MiB),('4m',4*MiB),('8m',8*MiB)]:
+              dst=Path('exp117a2')/label
+              dst.mkdir(parents=True,exist_ok=True)
+              bs=budgets(total)
+              sampled=0
+              for src,b in zip(files,bs):
+                  rel=src.relative_to(root)
+                  target=dst/rel
+                  target.parent.mkdir(parents=True,exist_ok=True)
+                  data=stratified(src.read_bytes(),b)
+                  target.write_bytes(data)
+                  sampled+=len(data)
+              print('EXP117A2_SAMPLE',label,sampled)
+          PY
+
+      - name: Sweep adaptive layout oracle by sample budget
+        run: |
+          set -euo pipefail
+          mkdir -p exp117a2/out
+          : > exp117a2/sweep.txt
+          for b in 512k 1m 2m 4m 8m; do
+            echo "=== $b ===" | tee -a exp117a2/sweep.txt
+            build/kephir2/kephir2_production_layout_bench \
+              "exp117a2/$b" "exp117a2/out/$b" 1 adaptive \
+              | tee -a exp117a2/sweep.txt
+          done
+
+          echo '=== full ===' | tee -a exp117a2/sweep.txt
+          build/kephir2/kephir2_production_layout_bench \
+            exp117a2/full exp117a2/out/full 1 adaptive \
+            | tee -a exp117a2/sweep.txt
+
+      - name: Summarize sweep
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+
+          text=Path('exp117a2/sweep.txt').read_text().splitlines()
+          rows={}; current=None
+          for line in text:
+              if line.startswith('=== '):
+                  current=line.split()[1]
+                  rows[current]={}
+              elif current and '=' in line:
+                  k,v=line.split('=',1)
+                  rows[current][k]=v
+
+          for name,row in rows.items():
+              print('EXP117A2_RESULT',name,
+                    'ORACLE',row.get('ORACLE'),
+                    'SMART',row.get('SMART_BYTES'),
+                    'FLAT',row.get('FLAT_BYTES'),
+                    'SELECTED',row.get('SELECTED'),
+                    'PROBES',row.get('PROBE_COUNT'))
+
+          Path('exp117a2_results.json').write_text(json.dumps(rows,indent=2,sort_keys=True))
+          assert rows['full']['ORACLE']=='smart'
+          print('EXP117A2_COMPLETE')
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exp117a2-layout-probe-sweep
+          path: |
+            exp117a2_results.json
+            exp117a2/sweep.txt

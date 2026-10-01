@@ -1,0 +1,202 @@
+name: KEPHIR 2 EXP-117A Production Candidate Qualification
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/exp117-production-candidate
+    paths:
+      - "src/kephir2/**"
+      - ".github/workflows/exp117a_production_candidate.yml"
+  pull_request:
+    branches:
+      - research/exp116-structural-drift-gate
+    paths:
+      - "src/kephir2/**"
+      - ".github/workflows/exp117a_production_candidate.yml"
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build production candidate
+        run: |
+          cmake -S src/kephir2 -B build/kephir2 -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/kephir2 --config Release --parallel
+
+      - name: Native and C API test suite
+        run: ctest --test-dir build/kephir2 --output-on-failure
+
+      - name: Materialize canonical Silesia
+        run: |
+          mkdir -p corpora/silesia
+          curl -L --fail --retry 4 -o /tmp/silesia.zip \
+            https://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip
+          echo "c240c17d6805fb8a0bde763f1b94cd99  /tmp/silesia.zip" | md5sum -c -
+          unzip -q /tmp/silesia.zip -d corpora/silesia
+          test "$(find corpora/silesia -type f -printf '%s\n' | awk '{s+=$1} END {print s}')" -eq 211938580
+
+      - name: Qualify single-file adaptive determinism
+        run: |
+          set -euo pipefail
+          mkdir -p exp117/file
+
+          build/kephir2/kephir2_native_k75_cli \
+            c corpora/silesia/dickens exp117/file/dickens_baseline.kpf 1 \
+            > exp117/file/baseline.log
+
+          for w in 1 4 16; do
+            build/kephir2/kephir2_native_k75_cli \
+              c corpora/silesia/dickens "exp117/file/dickens_w${w}.kpf" "$w" adaptive \
+              > "exp117/file/w${w}.log"
+            rm -rf "exp117/file/out_w${w}"
+            build/kephir2/kephir2_native_k75_cli \
+              d "exp117/file/dickens_w${w}.kpf" "exp117/file/out_w${w}" "$w" \
+              >> "exp117/file/w${w}.log"
+            cmp corpora/silesia/dickens "exp117/file/out_w${w}/dickens"
+          done
+
+          cmp exp117/file/dickens_w1.kpf exp117/file/dickens_w4.kpf
+          cmp exp117/file/dickens_w1.kpf exp117/file/dickens_w16.kpf
+
+          BASE=$(stat -c%s exp117/file/dickens_baseline.kpf)
+          ADAPT=$(stat -c%s exp117/file/dickens_w1.kpf)
+          test "$ADAPT" -lt "$BASE"
+
+          echo "EXP117A_FILE_PASS BASE=$BASE ADAPT=$ADAPT GAIN=$((BASE-ADAPT))"
+          sha256sum exp117/file/dickens_w1.kpf exp117/file/dickens_w4.kpf exp117/file/dickens_w16.kpf
+
+      - name: Create deterministic directory matrix
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import random
+
+          root=Path('exp117/matrix')
+          root.mkdir(parents=True,exist_ok=True)
+          (root/'nested').mkdir(exist_ok=True)
+          (root/'empty-dir').mkdir(exist_ok=True)
+
+          def repeat(path,pattern,n):
+              data=(pattern*((n+len(pattern)-1)//len(pattern)))[:n]
+              path.write_bytes(data)
+
+          MiB=1024*1024
+          repeat(root/'prose.txt',b'ordinary prose words and spaces form a natural sentence. ',3*MiB)
+          repeat(root/'nested'/'code.cpp',b'int f(int x){return x*x+17;}\n',2*MiB)
+          repeat(root/'nested'/'table.bin',bytes(range(256)),2*MiB)
+
+          rng=random.Random(117)
+          with open(root/'noise.bin','wb') as f:
+              f.write(rng.randbytes(1*MiB))
+
+          print('EXP117_MATRIX_BYTES',sum(p.stat().st_size for p in root.rglob('*') if p.is_file()))
+          PY
+
+      - name: Qualify SMART and FLAT determinism
+        run: |
+          set -euo pipefail
+          build/kephir2/kephir2_production_layout_bench \
+            exp117/matrix exp117/matrix_w1 1 adaptive | tee exp117/matrix_w1.log
+          build/kephir2/kephir2_production_layout_bench \
+            exp117/matrix exp117/matrix_w4 4 adaptive | tee exp117/matrix_w4.log
+
+          for log in exp117/matrix_w1.log exp117/matrix_w4.log; do
+            grep -q '^ADAPTIVE_CONTEXT=1$' "$log"
+            grep -q '^SELECTED=smart$' "$log"
+            grep -q '^ORACLE=smart$' "$log"
+            grep -q '^REGRET_BYTES=0$' "$log"
+            grep -q '^PROBE_COUNT=1$' "$log"
+            grep -q '^SMART_BYTE_PERFECT=1$' "$log"
+            grep -q '^FLAT_BYTE_PERFECT=1$' "$log"
+          done
+
+          cmp exp117/matrix_w1/smart.kpf exp117/matrix_w4/smart.kpf
+          cmp exp117/matrix_w1/flat.kpf exp117/matrix_w4/flat.kpf
+
+          echo EXP117A_DIRECTORY_DETERMINISM_PASS
+          sha256sum \
+            exp117/matrix_w1/smart.kpf exp117/matrix_w4/smart.kpf \
+            exp117/matrix_w1/flat.kpf exp117/matrix_w4/flat.kpf
+
+      - name: Qualify real repository directory
+        run: |
+          set -euo pipefail
+          build/kephir2/kephir2_production_layout_bench \
+            src/kephir2 exp117/repo_snapshot 4 adaptive | tee exp117/repo_snapshot.log
+          grep -q '^ADAPTIVE_CONTEXT=1$' exp117/repo_snapshot.log
+          grep -q '^REGRET_BYTES=0$' exp117/repo_snapshot.log
+          grep -q '^SMART_BYTE_PERFECT=1$' exp117/repo_snapshot.log
+          grep -q '^FLAT_BYTE_PERFECT=1$' exp117/repo_snapshot.log
+          echo EXP117A_REPO_ROUNDTRIP_PASS
+
+      - name: Summarize qualification
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib,json
+
+          def kv(path):
+              out={}
+              for line in Path(path).read_text().splitlines():
+                  if '=' in line:
+                      k,v=line.split('=',1)
+                      out[k]=v
+              return out
+
+          def sha(path):
+              return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+          base=Path('exp117/file/dickens_baseline.kpf').stat().st_size
+          adapt=Path('exp117/file/dickens_w1.kpf').stat().st_size
+          m1=kv('exp117/matrix_w1.log')
+          m4=kv('exp117/matrix_w4.log')
+          repo=kv('exp117/repo_snapshot.log')
+
+          result={
+              'experiment':'EXP-117A',
+              'single_file':{
+                  'baseline_bytes':base,
+                  'adaptive_bytes':adapt,
+                  'gain_bytes':base-adapt,
+                  'workers':[1,4,16],
+                  'deterministic_sha256':sha('exp117/file/dickens_w1.kpf'),
+                  'byte_perfect':True,
+              },
+              'directory_matrix':{
+                  'worker1':m1,
+                  'worker4':m4,
+                  'smart_deterministic':sha('exp117/matrix_w1/smart.kpf')==sha('exp117/matrix_w4/smart.kpf'),
+                  'flat_deterministic':sha('exp117/matrix_w1/flat.kpf')==sha('exp117/matrix_w4/flat.kpf'),
+              },
+              'repo_snapshot':repo,
+              'c_api_candidate_archive_extract':'PASS',
+          }
+          Path('exp117_results.json').write_text(json.dumps(result,indent=2,sort_keys=True))
+
+          assert result['single_file']['gain_bytes'] > 0
+          assert result['directory_matrix']['smart_deterministic']
+          assert result['directory_matrix']['flat_deterministic']
+          for matrix in (m1,m4):
+              assert matrix['SELECTED']=='smart'
+              assert matrix['ORACLE']=='smart'
+              assert matrix['REGRET_BYTES']=='0'
+              assert matrix['PROBE_COUNT']=='1'
+              assert matrix['SMART_BYTE_PERFECT']=='1'
+              assert matrix['FLAT_BYTE_PERFECT']=='1'
+          assert repo['REGRET_BYTES']=='0'
+          assert repo['SMART_BYTE_PERFECT']=='1' and repo['FLAT_BYTE_PERFECT']=='1'
+          print('EXP117A_VALIDATION_PASS',json.dumps(result['single_file'],sort_keys=True))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exp117a-production-candidate
+          path: |
+            exp117_results.json
+            exp117/*.log
+            exp117/file/*.log

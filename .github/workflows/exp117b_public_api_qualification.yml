@@ -1,0 +1,156 @@
+name: KEPHIR 2 EXP-117B Public API Qualification
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/exp117-production-candidate
+    paths:
+      - "src/kephir2/**"
+      - "research/benchmarks/exp117b_public_api_profiles.py"
+      - ".github/workflows/exp117b_public_api_qualification.yml"
+  pull_request:
+    branches:
+      - research/exp116-structural-drift-gate
+    paths:
+      - "src/kephir2/**"
+      - "research/benchmarks/exp117b_public_api_profiles.py"
+      - ".github/workflows/exp117b_public_api_qualification.yml"
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build public candidate
+        run: |
+          cmake -S src/kephir2 -B build/kephir2 -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/kephir2 --config Release --parallel
+
+      - name: Public/native regression suite
+        run: ctest --test-dir build/kephir2 --output-on-failure
+
+      - name: Materialize canonical Silesia
+        run: |
+          mkdir -p corpora/silesia
+          curl -L --fail --retry 4 -o /tmp/silesia.zip \
+            https://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip
+          echo "c240c17d6805fb8a0bde763f1b94cd99  /tmp/silesia.zip" | md5sum -c -
+          unzip -q /tmp/silesia.zip -d corpora/silesia
+          test "$(find corpora/silesia -type f -printf '%s\n' | awk '{s+=$1} END {print s}')" -eq 211938580
+
+      - name: Materialize pinned external corpora
+        run: |
+          set -euo pipefail
+          MIRROR_SHA=c380ef9dc1dc62691757fdfeebdc2f85710e1e46
+          git clone --no-checkout --filter=blob:none \
+            https://github.com/pfalcon/canterbury-corpus.git /tmp/canterbury-corpus
+          git -C /tmp/canterbury-corpus fetch --depth 1 origin "$MIRROR_SHA"
+          git -C /tmp/canterbury-corpus checkout --detach "$MIRROR_SHA"
+          mkdir -p corpora
+          cp -a /tmp/canterbury-corpus/canterbury corpora/canterbury
+          cp -a /tmp/canterbury-corpus/calgary corpora/calgary
+          cp -a /tmp/canterbury-corpus/large corpora/large
+          rm -f corpora/canterbury/SHA1SUM corpora/calgary/SHA1SUM corpora/large/SHA1SUM
+
+      - name: Qualify FAST and AUTO through public C API
+        run: |
+          python3 research/benchmarks/exp117b_public_api_profiles.py \
+            build/kephir2/kephir2_c_api_cli
+
+      - name: Create public directory matrix
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import random
+
+          root=Path('exp117b_matrix')
+          root.mkdir(parents=True,exist_ok=True)
+          (root/'nested').mkdir(exist_ok=True)
+          (root/'empty-dir').mkdir(exist_ok=True)
+
+          def repeat(path,pattern,n):
+              path.write_bytes((pattern*((n+len(pattern)-1)//len(pattern)))[:n])
+
+          MiB=1024*1024
+          repeat(root/'prose.txt',b'ordinary prose words and spaces form a natural sentence. ',3*MiB)
+          repeat(root/'nested'/'code.cpp',b'int f(int x){return x*x+17;}\n',2*MiB)
+          repeat(root/'nested'/'table.bin',bytes(range(256)),2*MiB)
+          rng=random.Random(117)
+          (root/'noise.bin').write_bytes(rng.randbytes(MiB))
+          PY
+
+      - name: Qualify public AUTO directory selection
+        run: |
+          set -euo pipefail
+          build/kephir2/kephir2_production_layout_bench \
+            exp117b_matrix exp117b_core 4 adaptive | tee exp117b_core.log
+          grep -q '^SELECTED=smart$' exp117b_core.log
+          grep -q '^ORACLE=smart$' exp117b_core.log
+          grep -q '^REGRET_BYTES=0$' exp117b_core.log
+          grep -q '^PROBE_COUNT=1$' exp117b_core.log
+
+          build/kephir2/kephir2_c_api_cli \
+            c auto exp117b_matrix exp117b_api_auto.kpf 4 1 | tee exp117b_api_auto.log
+          cmp exp117b_api_auto.kpf exp117b_core/smart.kpf
+
+          rm -rf exp117b_api_extract
+          build/kephir2/kephir2_c_api_cli \
+            d fast exp117b_api_auto.kpf exp117b_api_extract 4 1 \
+            | tee exp117b_api_extract.log
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+
+          def sha(p):
+              return hashlib.sha256(Path(p).read_bytes()).hexdigest()
+
+          source=Path('exp117b_matrix')
+          restored=Path('exp117b_api_extract')
+          sf=sorted(p.relative_to(source) for p in source.rglob('*') if p.is_file())
+          rf=sorted(p.relative_to(restored) for p in restored.rglob('*') if p.is_file())
+          assert sf == rf
+          for rel in sf:
+              assert sha(source/rel) == sha(restored/rel)
+          print('EXP117B_PUBLIC_DIRECTORY_PASS',len(sf))
+          PY
+
+      - name: Validate public candidate result
+        run: |
+          python3 - <<'PY'
+          import json
+          d=json.load(open('exp117b_results.json'))
+          assert d['experiment']=='EXP-117B'
+          assert d['surface']=='public-c-api-v1'
+          s,e=d['datasets']
+          assert s['dataset']=='silesia'
+          assert s['fast_bytes']==62925489
+          assert s['auto_bytes']==61677233
+          assert s['gain_vs_fast']==1248256
+          assert len(s['harmful'])==0
+          assert e['dataset']=='external'
+          assert e['fast_bytes']==4915548
+          assert e['auto_bytes']==4855203
+          assert e['gain_vs_fast']==60345
+          assert len(e['harmful'])==0
+          print(
+              'EXP117B_VALIDATION_PASS',
+              'SILESIA_AUTO',s['auto_bytes'],
+              'SILESIA_RATIO',s['auto_ratio'],
+              'EXTERNAL_AUTO',e['auto_bytes'],
+              'EXTERNAL_RATIO',e['auto_ratio'],
+          )
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exp117b-public-api-qualification
+          path: |
+            exp117b_results.json
+            exp117b_core.log
+            exp117b_api_auto.log
+            exp117b_api_extract.log

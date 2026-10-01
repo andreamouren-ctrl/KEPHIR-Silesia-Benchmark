@@ -1,0 +1,102 @@
+name: EXP-117C Apply API Accounting Fix
+
+on:
+  push:
+    branches:
+      - research/exp117-production-candidate
+    paths:
+      - ".github/workflows/exp117c_apply_api_accounting_fix.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/exp117-production-candidate
+          fetch-depth: 0
+
+      - name: Apply surgical API accounting fix and regression assertions
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          c = Path('src/kephir2/src/kephir2_c.cpp')
+          text = c.read_text()
+          pattern = re.compile(
+              r'(?P<i>\s*)if \(archive\[4\] == static_cast<std::uint8_t>\(kephir2::Kpf1Kind::File\)\) \{\n'
+              r'(?P=i)    const auto envelope = kephir2::decode_kpf1_file\(archive\);\n'
+              r'(?P=i)    output_bytes = 0;\n'
+              r'(?P=i)    engine->executor\.extract_file\(\n'
+              r'(?P=i)        archive,\n'
+              r'(?P=i)        output,\n'
+              r'(?P=i)        engine->backend,\n'
+              r'(?P=i)        backend_options\);\n'
+              r'(?P=i)\} else if \('
+          )
+          match = pattern.search(text)
+          if not match:
+              raise SystemExit('kephir2_c.cpp target block not found')
+          i = match.group('i')
+          replacement = (
+              f'{i}if (archive[4] == static_cast<std::uint8_t>(kephir2::Kpf1Kind::File)) {{\n'
+              f'{i}    const auto envelope = kephir2::decode_kpf1_file(archive);\n'
+              f'{i}    engine->executor.extract_file(\n'
+              f'{i}        archive,\n'
+              f'{i}        output,\n'
+              f'{i}        engine->backend,\n'
+              f'{i}        backend_options);\n\n'
+              f'{i}    const auto extracted = kephir2::safe_archive_target(\n'
+              f'{i}        output,\n'
+              f'{i}        envelope.name);\n'
+              f'{i}    if (!std::filesystem::is_regular_file(extracted)) {{\n'
+              f'{i}        throw std::runtime_error(\n'
+              f'{i}            "extracted file missing after successful decode");\n'
+              f'{i}    }}\n'
+              f'{i}    output_bytes = std::filesystem::file_size(extracted);\n'
+              f'{i}}} else if ('
+          )
+          c.write_text(text[:match.start()] + replacement + text[match.end():])
+
+          t = Path('src/kephir2/tests/production_candidate_api_smoke.cpp')
+          text = t.read_text()
+
+          replacements = [
+              (
+                  "    assert(adaptive_extract_result.status == KEPHIR2_OK);\n    assert(read_all(input) == read_all(adaptive_extract / input.filename()));",
+                  "    assert(adaptive_extract_result.status == KEPHIR2_OK);\n    assert(adaptive_extract_result.output_bytes == std::filesystem::file_size(input));\n    assert(read_all(input) == read_all(adaptive_extract / input.filename()));"
+              ),
+              (
+                  "    assert(kephir2_extract(\n        engine,\n        api_fast_s.c_str(),\n        fast_extract_s.c_str(),\n        &options,\n        &fast_extract_result) == KEPHIR2_OK);\n    assert(read_all(input) == read_all(fast_extract / input.filename()));",
+                  "    assert(kephir2_extract(\n        engine,\n        api_fast_s.c_str(),\n        fast_extract_s.c_str(),\n        &options,\n        &fast_extract_result) == KEPHIR2_OK);\n    assert(fast_extract_result.status == KEPHIR2_OK);\n    assert(fast_extract_result.output_bytes == std::filesystem::file_size(input));\n    assert(read_all(input) == read_all(fast_extract / input.filename()));"
+              ),
+              (
+                  "    assert(auto_extract_result.status == KEPHIR2_OK);\n    assert(read_all(input) == read_all(auto_extract / input.filename()));",
+                  "    assert(auto_extract_result.status == KEPHIR2_OK);\n    assert(auto_extract_result.output_bytes == std::filesystem::file_size(input));\n    assert(read_all(input) == read_all(auto_extract / input.filename()));"
+              ),
+          ]
+          for old, new in replacements:
+              if old not in text:
+                  raise SystemExit('production_candidate_api_smoke target block not found')
+              text = text.replace(old, new, 1)
+          t.write_text(text)
+          PY
+
+      - name: Build and run API regression suite
+        run: |
+          cmake -S src/kephir2 -B build/kephir2 -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/kephir2 --config Release --parallel
+          ctest --test-dir build/kephir2 --output-on-failure
+
+      - name: Commit fix
+        run: |
+          git config user.name "KEPHIR CI"
+          git config user.email "actions@users.noreply.github.com"
+          git add src/kephir2/src/kephir2_c.cpp src/kephir2/tests/production_candidate_api_smoke.cpp
+          git diff --cached --check
+          git commit -m "EXP-117C fix C API extraction byte accounting"
+          git push origin HEAD:research/exp117-production-candidate
