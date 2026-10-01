@@ -50,6 +50,7 @@ add_library(kephir2_core STATIC
     src/aur2.cpp
     src/aur2_execution.cpp
     src/aur2_inspection.cpp
+    src/aur2_metadata.cpp
     src/aur2_selection.cpp
     src/aur2_streams.cpp
     src/auto_routing.cpp
@@ -170,10 +171,17 @@ add_test(NAME kephir2_auto_routing_smoke COMMAND kephir2_auto_routing_smoke)
 set_source_files_properties(src/kephir2_c.cpp PROPERTIES
     COMPILE_DEFINITIONS "kephir2_compress=kephir2_compress_kpf1_legacy;kephir2_extract=kephir2_extract_kpf1_legacy"
 )
+set_source_files_properties(src/kephir2_public_aur2.cpp PROPERTIES
+    COMPILE_DEFINITIONS "kephir2_compress=kephir2_compress_aur2_payload;kephir2_extract=kephir2_extract_aur2_payload"
+)
+set_source_files_properties(src/kephir2_aur2_select_c.cpp PROPERTIES
+    COMPILE_DEFINITIONS "kephir2_extract_selected=kephir2_extract_selected_payload"
+)
 
 add_library(kephir2_api SHARED
     src/kephir2_c.cpp
     src/kephir2_public_aur2.cpp
+    src/kephir2_public_metadata.cpp
     src/kephir2_aur2_c.cpp
     src/kephir2_aur2_select_c.cpp
 )
@@ -193,3 +201,7 @@ add_test(NAME kephir2_aur2_c_api_smoke COMMAND kephir2_aur2_c_api_smoke)
 add_executable(kephir2_aur2_legacy_compat_smoke tests/aur2_legacy_compat_smoke.cpp)
 target_link_libraries(kephir2_aur2_legacy_compat_smoke PRIVATE kephir2_api kephir2_core)
 add_test(NAME kephir2_aur2_legacy_compat_smoke COMMAND kephir2_aur2_legacy_compat_smoke)
+
+add_executable(kephir2_aur2_public_writer_smoke tests/aur2_public_writer_smoke.cpp)
+target_link_libraries(kephir2_aur2_public_writer_smoke PRIVATE kephir2_api)
+add_test(NAME kephir2_aur2_public_writer_smoke COMMAND kephir2_aur2_public_writer_smoke)
