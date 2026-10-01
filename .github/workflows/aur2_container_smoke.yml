@@ -15,6 +15,7 @@ on:
 
 jobs:
   aur2-container:
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
