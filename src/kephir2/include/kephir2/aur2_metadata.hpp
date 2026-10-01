@@ -14,6 +14,13 @@ inline constexpr std::uint32_t kMetadataPermissionMask = 0x00000fffu;
 inline constexpr std::uint32_t kMetadataPermissionsPresent = 1u << 31u;
 inline constexpr std::uint32_t kMetadataMtimePresent = 1u << 30u;
 
+// Captures portable permissions and mtimes from the source tree into already
+// decoded FILE_TABLE entries. This does not touch compressed DATA and is the
+// primitive used by file-backed finalization.
+void capture_filesystem_metadata_entries(
+    std::span<FileEntry> entries,
+    const std::filesystem::path& source);
+
 // Rewrites only the AUR2 FILE_TABLE metadata for the supplied source.
 // Compressed DATA and per-stream INTEGRITY records remain unchanged.
 [[nodiscard]] ByteBuffer attach_filesystem_metadata(
