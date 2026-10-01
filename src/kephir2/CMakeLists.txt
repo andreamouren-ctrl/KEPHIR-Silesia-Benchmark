@@ -162,7 +162,10 @@ add_test(NAME kephir2_native37_blob_smoke COMMAND kephir2_native37_blob_smoke)
 add_test(NAME kephir2_native_k75_smoke COMMAND kephir2_native_k75_smoke)
 add_test(NAME kephir2_auto_routing_smoke COMMAND kephir2_auto_routing_smoke)
 
-add_library(kephir2_api SHARED src/kephir2_c.cpp)
+add_library(kephir2_api SHARED
+    src/kephir2_c.cpp
+    src/kephir2_aur2_c.cpp
+)
 target_include_directories(kephir2_api PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_features(kephir2_api PUBLIC cxx_std_20)
 target_compile_definitions(kephir2_api PRIVATE KEPHIR2_BUILD_DLL=1)
@@ -171,3 +174,7 @@ target_link_libraries(kephir2_api PRIVATE kephir2_core)
 add_executable(kephir2_api_smoke tests/api_smoke.cpp)
 target_link_libraries(kephir2_api_smoke PRIVATE kephir2_api)
 add_test(NAME kephir2_api_smoke COMMAND kephir2_api_smoke)
+
+add_executable(kephir2_aur2_c_api_smoke tests/aur2_c_api_smoke.cpp)
+target_link_libraries(kephir2_aur2_c_api_smoke PRIVATE kephir2_api kephir2_core)
+add_test(NAME kephir2_aur2_c_api_smoke COMMAND kephir2_aur2_c_api_smoke)
