@@ -1,0 +1,71 @@
+name: KEPHIR 2 EXP-118D Feature Grain Holdout 2
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/exp118d-feature-grain-holdout2
+    paths:
+      - "src/kephir2/**"
+      - "research/benchmarks/exp118d_feature_grain_holdout2.py"
+      - ".github/workflows/exp118d_feature_grain_holdout2.yml"
+  pull_request:
+    branches:
+      - research/exp118c-grain-holdout
+    paths:
+      - "src/kephir2/**"
+      - "research/benchmarks/exp118d_feature_grain_holdout2.py"
+      - ".github/workflows/exp118d_feature_grain_holdout2.yml"
+
+jobs:
+  holdout2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build frozen candidate
+        run: |
+          cmake -S src/kephir2 -B build/kephir2 -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/kephir2 --config Release --parallel
+
+      - name: Regression suite
+        run: ctest --test-dir build/kephir2 --output-on-failure
+
+      - name: Run second independent holdout
+        run: |
+          python3 research/benchmarks/exp118d_feature_grain_holdout2.py \
+            build/kephir2/kephir2_native_k75_cli | tee exp118d.log
+
+      - name: Validate experiment integrity only
+        run: |
+          python3 - <<'PY'
+          import json
+          d=json.load(open('exp118d_results.json'))
+          assert d['experiment']=='EXP-118D'
+          assert d['v2_frozen_before_measurement'] is True
+          assert len(d['files'])==18
+          for row in d['files']:
+              assert all(v['sha_ok'] for v in row['full'].values())
+              assert row['v1_choice'] in ('adaptive','grain8')
+              assert row['v2_choice'] in ('adaptive','grain8')
+          for key in ('v1','v2'):
+              p=d[key]
+              assert p['selected_bytes'] >= p['oracle_bytes']
+              print(
+                  'EXP118D_RESULT',key,
+                  'GAIN',p['gain_vs_adaptive'],
+                  'REGRET',p['regret_bytes'],
+                  'HARM',p['harmful_count'],
+                  'CAPTURE',p['oracle_capture'],
+              )
+          print('EXP118D_VALIDATION_PASS')
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exp118d-feature-grain-holdout2
+          path: |
+            exp118d_results.json
+            exp118d.log
