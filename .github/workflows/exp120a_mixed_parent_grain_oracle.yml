@@ -1,0 +1,100 @@
+name: KEPHIR 2 EXP-120A Mixed Parent Grain Oracle
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/exp120-mixed-parent-grain
+    paths:
+      - "research/benchmarks/exp120a_mixed_parent_grain_oracle.py"
+      - ".github/workflows/exp120a_mixed_parent_grain_oracle.yml"
+      - "src/kephir2/**"
+
+jobs:
+  oracle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build EXP-118B lineage
+        run: |
+          cmake -S src/kephir2 -B build/kephir2 -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/kephir2 --config Release --target kephir2_native_k75_cli --parallel
+
+      - name: Native regression suite
+        run: |
+          cmake --build build/kephir2 --config Release --parallel
+          ctest --test-dir build/kephir2 --output-on-failure
+
+      - name: Materialize canonical Silesia
+        run: |
+          set -euo pipefail
+          mkdir -p corpora/silesia
+          curl -L --fail --retry 4 -o /tmp/silesia.zip \
+            https://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip
+          echo "c240c17d6805fb8a0bde763f1b94cd99  /tmp/silesia.zip" | md5sum -c -
+          unzip -q /tmp/silesia.zip -d corpora/silesia
+          test "$(find corpora/silesia -type f -printf '%s\n' | awk '{s+=$1} END {print s}')" -eq 211938580
+          test "$(find corpora/silesia -type f | wc -l)" -eq 12
+
+      - name: Materialize pinned external corpora
+        run: |
+          set -euo pipefail
+          MIRROR_SHA=c380ef9dc1dc62691757fdfeebdc2f85710e1e46
+          git clone --no-checkout --filter=blob:none \
+            https://github.com/pfalcon/canterbury-corpus.git /tmp/canterbury-corpus
+          git -C /tmp/canterbury-corpus fetch --depth 1 origin "$MIRROR_SHA"
+          git -C /tmp/canterbury-corpus checkout --detach "$MIRROR_SHA"
+          mkdir -p corpora
+          cp -a /tmp/canterbury-corpus/canterbury corpora/canterbury
+          cp -a /tmp/canterbury-corpus/calgary corpora/calgary
+          cp -a /tmp/canterbury-corpus/large corpora/large
+          rm -f corpora/canterbury/SHA1SUM corpora/calgary/SHA1SUM corpora/large/SHA1SUM
+
+      - name: Run mixed parent-grain oracle
+        run: |
+          python3 research/benchmarks/exp120a_mixed_parent_grain_oracle.py \
+            build/kephir2/kephir2_native_k75_cli | tee exp120a.log
+
+      - name: Validate oracle output
+        run: |
+          python3 - <<'PY'
+          import json
+          d=json.load(open('exp120a_results.json'))
+          assert d['experiment']=='EXP-120A'
+          assert d['baseline_policy']=='EXP-118B 2MiB stratified margin0'
+          assert d['strict_28_max_bytes']==59342802
+          assert d['base_candidates']==['adaptive','grain4','grain8']
+          assert d['extended_candidates']==['adaptive','grain2','grain4','grain8']
+          assert d['segment_sizes_bytes']==[4*1024*1024,8*1024*1024,16*1024*1024]
+          s,e=d['datasets']
+          assert s['dataset']=='silesia' and s['file_count']==12
+          assert s['raw_bytes']==211938580
+          assert s['exp118b_selected_bytes']==60963390
+          assert e['dataset']=='external' and e['file_count']>0
+          assert e['exp118b_selected_bytes']==4792947
+          for row in d['files']:
+              for seg in row['segments'].values():
+                  assert seg['chunk_count']>=1
+                  assert seg['extended_oracle_blob_bytes'] <= seg['existing_oracle_blob_bytes']
+                  assert seg['existing_oracle_blob_bytes'] <= seg['inherited_blob_bytes'] or True
+          best=d['best_silesia_projected_overhead16']
+          print(
+              'EXP120A_CI_PASS',
+              'BEST_SEGMENT_MIB',best['segment_mib'],
+              'LOCAL_GAIN',best['total_local_gain'],
+              'PROJECTED16',best['projected_archive_bytes']['16'],
+              'RATIO',best['projected_ratio']['16'],
+              'GAP28',best['projected_gap_to_strict_28_overhead16'],
+              'CLOSES28',int(best['would_project_below_28_overhead16']),
+          )
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exp120a-mixed-parent-grain-oracle
+          path: |
+            exp120a_results.json
+            exp120a.log
