@@ -12,13 +12,27 @@ on:
   pull_request:
     branches:
       - development/kephir-2-core
+    # EXP-111 measures K75 inner-context behaviour. Container/API-only work must
+    # not download and benchmark the full Silesia corpus on every PR sync.
     paths:
-      - "src/kephir2/**"
+      - "src/kephir2/src/native_k75.cpp"
+      - "src/kephir2/include/kephir2/native_k75.hpp"
+      - "src/kephir2/include/kephir2/backend.hpp"
+      - "src/kephir2/src/native37_blob.cpp"
+      - "src/kephir2/include/kephir2/native37_blob.hpp"
+      - "src/kephir2/backend/**"
+      - "engine/source_parts/**"
       - "research/benchmarks/exp111_adaptive_inner_context.py"
-      - ".github/workflows/exp111_adaptive_inner_context.yml"
 
 jobs:
   benchmark:
+    # A long-lived feature PR can still contain historical K75 changes in its
+    # total diff. Only the dedicated EXP-111 head branch may auto-run Silesia;
+    # workflow_dispatch remains available from any branch when explicitly needed.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
+      github.head_ref == 'research/exp111-adaptive-inner-context'
     runs-on: ubuntu-latest
     timeout-minutes: 300
 

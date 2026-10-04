@@ -1,0 +1,36 @@
+name: AUR2 Container Smoke
+
+on:
+  push:
+    branches:
+      - development/aur2-container-core
+    paths:
+      - "src/kephir2/**"
+      - ".github/workflows/aur2_container_smoke.yml"
+  pull_request:
+    paths:
+      - "src/kephir2/**"
+      - ".github/workflows/aur2_container_smoke.yml"
+  workflow_dispatch:
+
+jobs:
+  aur2-container:
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S src/kephir2 -B build/kephir2 -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build AUR2 tests
+        run: cmake --build build/kephir2 --config Release --target kephir2_aur2_smoke kephir2_aur2_structure_smoke kephir2_aur2_native_k75_smoke kephir2_aur2_directory_k75_smoke kephir2_aur2_inspection_smoke kephir2_aur2_selective_smoke kephir2_aur2_seek_smoke kephir2_aur2_finalize_file_smoke kephir2_aur2_transactional_directory_smoke kephir2_aur2_public_transactional_smoke kephir2_aur2_ranged_file_smoke kephir2_aur2_file_extract_smoke kephir2_aur2_footer_smoke kephir2_aur2_c_api_smoke kephir2_aur2_legacy_compat_smoke kephir2_aur2_public_writer_smoke kephir2_aur2_metadata_smoke kephir2_aur2_indexed_public_smoke kephir2_api_smoke --parallel
+
+      - name: Run AUR2 and public API CTest suite
+        run: ctest --test-dir build/kephir2 -C Release -R "kephir2_(aur2|api_smoke)" --output-on-failure
