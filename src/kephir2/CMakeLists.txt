@@ -173,7 +173,7 @@ set_source_files_properties(src/kephir2_aur2_c.cpp PROPERTIES
     COMPILE_DEFINITIONS "kephir2_inspect=kephir2_inspect_scan;kephir2_list_entries=kephir2_list_entries_scan;kephir2_test_archive=kephir2_test_archive_scan"
 )
 set_source_files_properties(src/kephir2_public_seek.cpp PROPERTIES
-    COMPILE_DEFINITIONS "kephir2_compress=kephir2_compress_seek_payload"
+    COMPILE_DEFINITIONS "kephir2_compress=kephir2_compress_seek_payload;kephir2_extract=kephir2_extract_indexed_payload;kephir2_extract_selected=kephir2_extract_selected_indexed_payload"
 )
 set_source_files_properties(src/kephir2_public_inspection.cpp PROPERTIES
     COMPILE_DEFINITIONS "kephir2_test_archive=kephir2_test_archive_indexed"
@@ -185,6 +185,7 @@ add_library(kephir2_api SHARED
     src/kephir2_public_aur2.cpp
     src/kephir2_public_metadata.cpp
     src/kephir2_public_seek.cpp
+    src/kephir2_public_transactional.cpp
     src/kephir2_public_inspection.cpp
     src/kephir2_public_footer.cpp
     src/kephir2_aur2_c.cpp
@@ -221,6 +222,9 @@ add_test(NAME kephir2_aur2_footer_smoke COMMAND kephir2_aur2_footer_smoke)
 add_executable(kephir2_aur2_file_extract_smoke tests/aur2_file_extract_smoke.cpp)
 target_link_libraries(kephir2_aur2_file_extract_smoke PRIVATE kephir2_api kephir2_core)
 add_test(NAME kephir2_aur2_file_extract_smoke COMMAND kephir2_aur2_file_extract_smoke)
+add_executable(kephir2_aur2_public_transactional_smoke tests/aur2_public_transactional_smoke.cpp)
+target_link_libraries(kephir2_aur2_public_transactional_smoke PRIVATE kephir2_api kephir2_core)
+add_test(NAME kephir2_aur2_public_transactional_smoke COMMAND kephir2_aur2_public_transactional_smoke)
 
 set(KEPHIR2_SMOKE_TARGETS
     kephir2_strategy_smoke
@@ -251,6 +255,7 @@ set(KEPHIR2_SMOKE_TARGETS
     kephir2_aur2_metadata_smoke
     kephir2_aur2_indexed_public_smoke
     kephir2_aur2_footer_smoke
+    kephir2_aur2_public_transactional_smoke
 )
 
 foreach(_target IN LISTS KEPHIR2_SMOKE_TARGETS)
