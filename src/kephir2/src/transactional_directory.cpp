@@ -33,6 +33,19 @@ void ensure_directory_or_absent(const std::filesystem::path& path) {
     }
 }
 
+void reject_symlinks(const std::filesystem::path& root) {
+    if (!std::filesystem::exists(root)) return;
+    const auto root_status = std::filesystem::symlink_status(root);
+    if (std::filesystem::is_symlink(root_status)) {
+        throw std::runtime_error("transactional extraction destination contains unsupported symlink");
+    }
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(root)) {
+        if (entry.is_symlink()) {
+            throw std::runtime_error("transactional extraction destination contains unsupported symlink");
+        }
+    }
+}
+
 } // namespace
 
 std::filesystem::path make_directory_stage_path(
@@ -68,11 +81,11 @@ void prepare_directory_stage(
     }
 
     if (clone_existing && std::filesystem::exists(destination)) {
+        reject_symlinks(destination);
         std::filesystem::copy(
             destination,
             stage,
             std::filesystem::copy_options::recursive
-                | std::filesystem::copy_options::copy_symlinks
                 | std::filesystem::copy_options::overwrite_existing);
         if (!std::filesystem::is_directory(stage)) {
             throw std::runtime_error("unable to clone transactional extraction destination");
