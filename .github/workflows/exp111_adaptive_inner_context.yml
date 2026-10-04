@@ -13,7 +13,9 @@ on:
     branches:
       - development/kephir-2-core
     # EXP-111 measures K75 inner-context behaviour. Container/API-only work must
-    # not download and benchmark the full Silesia corpus on every commit.
+    # not download and benchmark the full Silesia corpus on every PR sync.
+    # Deliberately do not include this workflow file itself here: otherwise once
+    # edited in a long-lived PR, every later synchronize event matches forever.
     paths:
       - "src/kephir2/src/native_k75.cpp"
       - "src/kephir2/include/kephir2/native_k75.hpp"
@@ -23,7 +25,6 @@ on:
       - "src/kephir2/backend/**"
       - "engine/source_parts/**"
       - "research/benchmarks/exp111_adaptive_inner_context.py"
-      - ".github/workflows/exp111_adaptive_inner_context.yml"
 
 jobs:
   benchmark:
