@@ -1,21 +1,10 @@
 name: AUR2 Scale Qualification
 
 on:
+  # Deliberately manual after the initial qualified baseline. This benchmark
+  # creates large fixtures and measures peak RSS, so it should not run on every
+  # container PR synchronize event.
   workflow_dispatch:
-  pull_request:
-    branches:
-      - development/kephir-2-core
-    paths:
-      - "src/kephir2/src/aur2_file_extract.cpp"
-      - "src/kephir2/src/aur2_finalize_file.cpp"
-      - "src/kephir2/src/aur2_ranged_file.cpp"
-      - "src/kephir2/src/aur2_metadata.cpp"
-      - "src/kephir2/src/kephir2_public_footer.cpp"
-      - "src/kephir2/src/kephir2_public_seek.cpp"
-      - "src/kephir2/src/kephir2_public_transactional.cpp"
-      - "src/kephir2/include/kephir2/aur2_progress.hpp"
-      - "research/benchmarks/aur2_scale_qualification.py"
-      - ".github/workflows/aur2_scale_qualification.yml"
 
 jobs:
   scale:
