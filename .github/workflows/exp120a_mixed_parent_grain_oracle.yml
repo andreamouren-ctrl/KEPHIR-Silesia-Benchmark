@@ -79,7 +79,9 @@ jobs:
               for seg in row['segments'].values():
                   assert seg['chunk_count']>=1
                   assert seg['extended_oracle_blob_bytes'] <= seg['existing_oracle_blob_bytes']
-                  assert seg['existing_oracle_blob_bytes'] <= seg['inherited_blob_bytes'] or True
+                  assert seg['existing_oracle_blob_bytes'] <= seg['inherited_blob_bytes']
+                  assert seg['total_local_gain'] >= 0
+                  assert seg['grain2_incremental_gain'] >= 0
           best=d['best_silesia_projected_overhead16']
           print(
               'EXP120A_CI_PASS',
