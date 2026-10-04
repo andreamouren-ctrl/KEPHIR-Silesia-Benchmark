@@ -3,12 +3,14 @@
 #include "kephir2/archive.hpp"
 #include "kephir2/aur2.hpp"
 #include "kephir2/aur2_indexed_file.hpp"
+#include "kephir2/aur2_progress.hpp"
 #include "kephir2/aur2_ranged_file.hpp"
 #include "kephir2/packing.hpp"
 
 #include <algorithm>
 #include <cstdint>
 #include <fstream>
+#include <limits>
 #include <stdexcept>
 #include <unordered_map>
 #include <vector>
@@ -40,6 +42,17 @@ void verify_descriptor(
         != backend.format_version()) {
         throw std::runtime_error("AUR2 KEPHIR backend format version mismatch");
     }
+}
+
+std::uint64_t sum_stream_units(std::span<const StreamRecord> streams) {
+    std::uint64_t total = 0;
+    for (const auto& stream : streams) {
+        if (stream.raw_size > std::numeric_limits<std::uint64_t>::max() - total) {
+            throw std::runtime_error("AUR2 extraction progress size overflow");
+        }
+        total += stream.raw_size;
+    }
+    return total;
 }
 
 } // namespace
@@ -118,6 +131,9 @@ void extract_indexed_file_backed(
         return a.stream_id < b.stream_id;
     });
 
+    const auto total_units = sum_stream_units(streams);
+    std::uint64_t completed_units = 0;
+
     for (const auto& stream : streams) {
         if (options.operation) {
             options.operation->throw_if_cancelled();
@@ -145,17 +161,29 @@ void extract_indexed_file_backed(
             stream.stream_id,
             stream.raw_size);
 
+        StreamProgressAdapter progress(
+            options,
+            completed_units,
+            stream.raw_size,
+            total_units);
+        const auto stream_options = progress.options(options);
+
         const auto stats = backend.decode(
             blob,
             stream.raw_size,
             sink,
-            options);
+            stream_options);
         if (stats.output_bytes != 0 && stats.output_bytes != stream.raw_size) {
             throw std::runtime_error("backend reported inconsistent file-backed output length");
         }
         if (sink.size() != stream.raw_size) {
             throw std::runtime_error("file-backed AUR2 decoded stream size mismatch");
         }
+
+        if (stream.raw_size > std::numeric_limits<std::uint64_t>::max() - completed_units) {
+            throw std::runtime_error("AUR2 extraction progress accumulation overflow");
+        }
+        completed_units += stream.raw_size;
 
         // Explicit release before moving to the next stream.
         blob.clear();
