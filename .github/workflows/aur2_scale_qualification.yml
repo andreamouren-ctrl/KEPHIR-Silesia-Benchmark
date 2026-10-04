@@ -1,0 +1,69 @@
+name: AUR2 Scale Qualification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - development/kephir-2-core
+    paths:
+      - "src/kephir2/src/aur2_file_extract.cpp"
+      - "src/kephir2/src/aur2_finalize_file.cpp"
+      - "src/kephir2/src/aur2_ranged_file.cpp"
+      - "src/kephir2/src/aur2_metadata.cpp"
+      - "src/kephir2/src/kephir2_public_footer.cpp"
+      - "src/kephir2/src/kephir2_public_seek.cpp"
+      - "src/kephir2/src/kephir2_public_transactional.cpp"
+      - "src/kephir2/include/kephir2/aur2_progress.hpp"
+      - "research/benchmarks/aur2_scale_qualification.py"
+      - ".github/workflows/aur2_scale_qualification.yml"
+
+jobs:
+  scale:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure public KEPHIR API
+        run: cmake -S src/kephir2 -B build/kephir2 -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build public KEPHIR API
+        run: cmake --build build/kephir2 --config Release --target kephir2_api --parallel
+
+      - name: Run AUR2 scale qualification
+        run: |
+          python3 research/benchmarks/aur2_scale_qualification.py \
+            --library build/kephir2/libkephir2_api.so \
+            --sizes 16,64 \
+            --output-json aur2_scale_results.json
+
+      - name: Validate and summarize metrics
+        run: |
+          python3 - <<'PY'
+          import json
+          d=json.load(open('aur2_scale_results.json'))
+          assert d['all_roundtrips_pass']
+          assert [r['fixture_mib'] for r in d['rows']] == [16,64]
+          for r in d['rows']:
+              assert r['encode']['status'] == 0
+              assert r['decode']['status'] == 0
+              assert r['encode']['peak_rss_bytes'] > 0
+              assert r['decode']['peak_rss_bytes'] > 0
+              print(
+                  'AUR2_SCALE_SUMMARY',
+                  r['fixture_mib'],
+                  'MiB',
+                  'ratio', f"{r['ratio']:.6f}",
+                  'enc_mib_s', f"{r['encode']['logical_mib_per_s']:.3f}",
+                  'dec_mib_s', f"{r['decode']['logical_mib_per_s']:.3f}",
+                  'enc_peak_mib', f"{r['encode']['peak_rss_bytes']/1048576:.2f}",
+                  'dec_peak_mib', f"{r['decode']['peak_rss_bytes']/1048576:.2f}",
+              )
+          print('AUR2_SCALE_CI_PASS')
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aur2-scale-qualification
+          path: aur2_scale_results.json
