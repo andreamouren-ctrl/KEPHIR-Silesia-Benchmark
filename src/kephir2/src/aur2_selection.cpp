@@ -3,10 +3,12 @@
 #include "kephir2/archive.hpp"
 #include "kephir2/aur2.hpp"
 #include "kephir2/aur2_indexed_file.hpp"
+#include "kephir2/aur2_progress.hpp"
 #include "kephir2/aur2_ranged_file.hpp"
 
 #include <algorithm>
 #include <fstream>
+#include <limits>
 #include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
@@ -233,6 +235,36 @@ std::unordered_map<std::uint64_t, std::vector<const FileEntry*>> prepare_selecte
     return selected_by_stream;
 }
 
+std::uint64_t selected_stream_units(
+    std::span<const FileEntry* const> selected) {
+
+    std::uint64_t units = 0;
+    for (const auto* entry : selected) {
+        if (!entry) continue;
+        if (entry->logical_size > std::numeric_limits<std::uint64_t>::max() - units) {
+            throw std::runtime_error("AUR2 selective progress size overflow");
+        }
+        units += entry->logical_size;
+    }
+    return units;
+}
+
+std::uint64_t selected_total_units(
+    const std::unordered_map<std::uint64_t, std::vector<const FileEntry*>>& selected_by_stream) {
+
+    std::uint64_t total = 0;
+    for (const auto& [stream_id, selected] : selected_by_stream) {
+        (void)stream_id;
+        const auto units = selected_stream_units(
+            std::span<const FileEntry* const>(selected.data(), selected.size()));
+        if (units > std::numeric_limits<std::uint64_t>::max() - total) {
+            throw std::runtime_error("AUR2 selective progress total overflow");
+        }
+        total += units;
+    }
+    return total;
+}
+
 void verify_selected_outputs(
     const std::filesystem::path& output_directory,
     const std::unordered_set<std::uint64_t>& selected_ids,
@@ -282,6 +314,8 @@ void extract_selected(
         output_directory,
         selected_ids,
         by_entry_id);
+    const auto total_units = selected_total_units(selected_by_stream);
+    std::uint64_t completed_units = 0;
 
     for (const auto& stream : streams) {
         const auto selected_it = selected_by_stream.find(stream.stream_id);
@@ -299,14 +333,27 @@ void extract_selected(
             stream.raw_size,
             std::span<const FileEntry* const>(selected.data(), selected.size()));
 
+        const auto stream_units = selected_stream_units(
+            std::span<const FileEntry* const>(selected.data(), selected.size()));
+        StreamProgressAdapter progress(
+            options,
+            completed_units,
+            stream_units,
+            total_units);
+        const auto stream_options = progress.options(options);
+
         const auto stats = backend.decode(
             stream_blob(data, stream),
             stream.raw_size,
             sink,
-            options);
+            stream_options);
         if (stats.output_bytes != 0 && stats.output_bytes != stream.raw_size) {
             throw std::runtime_error("backend reported inconsistent selective decode length");
         }
+        if (stream_units > std::numeric_limits<std::uint64_t>::max() - completed_units) {
+            throw std::runtime_error("AUR2 selective progress accumulation overflow");
+        }
+        completed_units += stream_units;
     }
 
     verify_selected_outputs(output_directory, selected_ids, by_entry_id);
@@ -354,6 +401,8 @@ void extract_selected_indexed_file_backed(
         output_directory,
         selected_ids,
         by_entry_id);
+    const auto total_units = selected_total_units(selected_by_stream);
+    std::uint64_t completed_units = 0;
 
     for (const auto& stream : streams) {
         const auto selected_it = selected_by_stream.find(stream.stream_id);
@@ -386,14 +435,27 @@ void extract_selected_indexed_file_backed(
             stream.raw_size,
             std::span<const FileEntry* const>(selected.data(), selected.size()));
 
+        const auto stream_units = selected_stream_units(
+            std::span<const FileEntry* const>(selected.data(), selected.size()));
+        StreamProgressAdapter progress(
+            options,
+            completed_units,
+            stream_units,
+            total_units);
+        const auto stream_options = progress.options(options);
+
         const auto stats = backend.decode(
             blob,
             stream.raw_size,
             sink,
-            options);
+            stream_options);
         if (stats.output_bytes != 0 && stats.output_bytes != stream.raw_size) {
             throw std::runtime_error("backend reported inconsistent file-backed selective decode length");
         }
+        if (stream_units > std::numeric_limits<std::uint64_t>::max() - completed_units) {
+            throw std::runtime_error("AUR2 selective progress accumulation overflow");
+        }
+        completed_units += stream_units;
 
         blob.clear();
         blob.shrink_to_fit();
