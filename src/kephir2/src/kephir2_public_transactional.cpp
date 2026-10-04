@@ -136,6 +136,7 @@ kephir2_status run_transactional_extract(
     const char* output_directory_utf8,
     const kephir2_options_v1* options,
     kephir2_result_v1* result,
+    std::string_view success_message,
     Invoke&& invoke) {
 
     const auto start = Clock::now();
@@ -211,7 +212,7 @@ kephir2_status run_transactional_extract(
         fill_result(
             result,
             KEPHIR2_OK,
-            "transactional extraction committed",
+            success_message,
             inner_result.input_bytes,
             inner_result.output_bytes,
             elapsed);
@@ -274,6 +275,7 @@ kephir2_status kephir2_extract(
         output_directory_utf8,
         options,
         result,
+        "AUR2 indexed file-backed transactional extraction committed",
         [engine, archive_utf8](
             const char* destination_utf8,
             const kephir2_options_v1* forwarded,
@@ -313,6 +315,7 @@ kephir2_status kephir2_extract_selected(
         output_directory_utf8,
         options,
         result,
+        "AUR2 indexed file-backed selective transactional extraction committed",
         [engine, archive_utf8, selection](
             const char* destination_utf8,
             const kephir2_options_v1* forwarded,
