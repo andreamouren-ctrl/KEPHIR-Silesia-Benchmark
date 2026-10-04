@@ -1,12 +1,20 @@
 #include "kephir2/aur2.hpp"
+#include "kephir2/aur2_execution.hpp"
+#include "kephir2/aur2_finalize_file.hpp"
+#include "kephir2/aur2_indexed_file.hpp"
 #include "kephir2/aur2_ranged_file.hpp"
 #include "kephir2/kephir2_c.h"
+#include "kephir2/native_k75.hpp"
+#include "kephir2/strategy.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <map>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -49,6 +57,19 @@ void write_repeat(
     }
 }
 
+void write_binary(const std::filesystem::path& path, std::size_t size) {
+    std::filesystem::create_directories(path.parent_path());
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    require(static_cast<bool>(out), "unable to create binary progress fixture");
+    std::uint32_t state = 0x12345678u;
+    for (std::size_t i = 0; i < size; ++i) {
+        state = state * 1664525u + 1013904223u;
+        const auto byte = static_cast<char>((state >> 24u) & 0xffu);
+        out.write(&byte, 1);
+    }
+    require(static_cast<bool>(out), "unable to persist binary progress fixture");
+}
+
 std::vector<std::uint8_t> read_bytes(const std::filesystem::path& path) {
     std::ifstream in(path, std::ios::binary);
     require(static_cast<bool>(in), "unable to read transactional public fixture");
@@ -68,11 +89,11 @@ void write_bytes(
     const std::vector<std::uint8_t>& bytes) {
 
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    require(static_cast<bool>(out), "unable to create corrupted transactional archive");
+    require(static_cast<bool>(out), "unable to create transactional archive");
     out.write(
         reinterpret_cast<const char*>(bytes.data()),
         static_cast<std::streamsize>(bytes.size()));
-    require(static_cast<bool>(out), "unable to persist corrupted transactional archive");
+    require(static_cast<bool>(out), "unable to persist transactional archive");
 }
 
 int cancel_immediately(void*) {
@@ -99,6 +120,183 @@ void assert_original_destination(const std::filesystem::path& output) {
             "transaction rollback modified colliding file");
     require(read_text(output / "other.txt") == "other-old",
             "transaction rollback modified second colliding file");
+}
+
+struct ProgressSample {
+    kephir2_phase phase{KEPHIR2_PHASE_IDLE};
+    double fraction{0.0};
+    std::uint64_t processed{0};
+    std::uint64_t total{0};
+};
+
+struct ProgressTrace {
+    std::vector<ProgressSample> samples;
+};
+
+void record_progress(const kephir2_progress_v1* progress, void* user_data) {
+    if (!progress || !user_data) return;
+    auto& trace = *static_cast<ProgressTrace*>(user_data);
+    trace.samples.push_back({
+        progress->phase,
+        progress->fraction,
+        progress->processed_bytes,
+        progress->total_bytes
+    });
+}
+
+void validate_progress_trace(
+    const ProgressTrace& trace,
+    std::uint64_t expected_total,
+    const std::string& label) {
+
+    double last_fraction = 0.0;
+    std::uint64_t last_processed = 0;
+    bool saw_midpoint = false;
+    std::size_t done_count = 0;
+
+    for (const auto& sample : trace.samples) {
+        require(sample.fraction >= -1e-12 && sample.fraction <= 1.0 + 1e-12,
+                label + ": fraction outside [0,1]");
+
+        if (sample.phase == KEPHIR2_PHASE_EXTRACTING) {
+            require(sample.fraction + 1e-12 >= last_fraction,
+                    label + ": extraction fraction regressed");
+            require(sample.processed >= last_processed,
+                    label + ": processed bytes regressed");
+            require(sample.total == expected_total,
+                    label + ": total bytes changed during extraction");
+            if (sample.fraction > 0.0 && sample.fraction < 1.0) {
+                saw_midpoint = true;
+            }
+            last_fraction = sample.fraction;
+            last_processed = sample.processed;
+        } else if (sample.phase == KEPHIR2_PHASE_DONE) {
+            ++done_count;
+            require(std::abs(sample.fraction - 1.0) < 1e-12,
+                    label + ": DONE fraction mismatch");
+            require(sample.processed == expected_total,
+                    label + ": DONE processed mismatch");
+            require(sample.total == expected_total,
+                    label + ": DONE total mismatch");
+        }
+    }
+
+    require(saw_midpoint, label + ": no intermediate progress sample observed");
+    require(done_count == 1, label + ": DONE callback count mismatch");
+}
+
+void run_multistream_progress_qualification(
+    kephir2_engine* engine,
+    const std::filesystem::path& root) {
+
+    namespace fs = std::filesystem;
+    using namespace kephir2;
+    using namespace kephir2::aur2;
+
+    const auto input = root / "progress-input";
+    const auto base_archive = root / "progress-base.aur";
+    const auto archive = root / "progress.aur";
+    const auto full_output = root / "progress-full";
+    const auto selected_output = root / "progress-selected";
+
+    fs::create_directories(input / "empty-dir");
+    write_repeat(
+        input / "code.cpp",
+        "template<class T> T combine(T a,T b){ return a + b; }\n",
+        768u * 1024u);
+    write_repeat(
+        input / "prose.txt",
+        "The quiet archive contains ordinary words, spaces and sentences. ",
+        704u * 1024u);
+    write_binary(input / "random.bin", 640u * 1024u);
+    write_repeat(
+        input / "zeros.bin",
+        std::string("\0\0\0\0\1\0\0\0", 8),
+        576u * 1024u);
+
+    NativeK75Backend backend;
+    BackendOptions backend_options;
+    backend_options.workers = 2;
+    backend_options.allow_local_experience = false;
+
+    ArchiveExecutor executor;
+    const auto base_bytes = executor.compress_directory(
+        input,
+        backend,
+        backend_options,
+        Layout::Smart);
+    write_bytes(base_archive, base_bytes);
+    finalize_archive_file_backed(base_archive, input, archive);
+
+    const auto info = inspect_indexed_file(archive);
+    require(info.stream_count >= 2,
+            "progress fixture did not create multiple SMART streams");
+
+    kephir2_options_v1 options{};
+    kephir2_options_init_v1(&options);
+    options.workers = 2;
+    options.verify_integrity = 1;
+    options.overwrite_output = 1;
+    options.allow_local_experience = 0;
+    options.progress_callback = record_progress;
+
+    const auto archive_s = utf8(archive);
+    const auto full_output_s = utf8(full_output);
+    ProgressTrace full_trace;
+    options.user_data = &full_trace;
+    kephir2_result_v1 result{};
+    result.struct_size = sizeof(result);
+    require(kephir2_extract(
+        engine,
+        archive_s.c_str(),
+        full_output_s.c_str(),
+        &options,
+        &result) == KEPHIR2_OK,
+        std::string("full progress extraction failed: ") + result.message);
+    validate_progress_trace(full_trace, info.logical_bytes, "full progress");
+
+    const auto entries = list_indexed_file(archive);
+    std::map<std::uint64_t, const FileEntry*> first_by_stream;
+    for (const auto& entry : entries) {
+        if (entry.type != EntryType::File || entry.stream_id == 0 || entry.logical_size == 0) {
+            continue;
+        }
+        first_by_stream.emplace(entry.stream_id, &entry);
+    }
+    require(first_by_stream.size() >= 2,
+            "progress fixture lacks two selectable streams");
+
+    std::vector<std::uint64_t> selected_ids;
+    std::uint64_t selected_total = 0;
+    for (const auto& [stream_id, entry] : first_by_stream) {
+        (void)stream_id;
+        selected_ids.push_back(entry->entry_id);
+        selected_total += entry->logical_size;
+        if (selected_ids.size() == 2) break;
+    }
+
+    kephir2_selection_v1 selection{};
+    selection.struct_size = sizeof(selection);
+    selection.entry_ids = selected_ids.data();
+    selection.entry_count = selected_ids.size();
+
+    const auto selected_output_s = utf8(selected_output);
+    ProgressTrace selected_trace;
+    options.user_data = &selected_trace;
+    result = {};
+    result.struct_size = sizeof(result);
+    require(kephir2_extract_selected(
+        engine,
+        archive_s.c_str(),
+        selected_output_s.c_str(),
+        &selection,
+        &options,
+        &result) == KEPHIR2_OK,
+        std::string("selective progress extraction failed: ") + result.message);
+    validate_progress_trace(
+        selected_trace,
+        selected_total,
+        "selective progress");
 }
 
 } // namespace
@@ -151,8 +349,6 @@ int main() {
     write_text(output / "payload.txt", "payload-old");
     write_text(output / "other.txt", "other-old");
 
-    // Corrupt only DATA. The public wrapper must discard its staging tree and
-    // leave the original destination byte-for-byte unchanged.
     auto corrupt_bytes = read_bytes(archive);
     IndexedRangeReader reader(archive);
     const auto& data = reader.require_section(SectionType::Data);
@@ -178,7 +374,6 @@ int main() {
                 + " / " + result.message);
     assert_original_destination(output);
 
-    // Cancellation must have the same rollback guarantee.
     auto cancel_options = options;
     cancel_options.cancel_callback = cancel_immediately;
     result = {};
@@ -195,7 +390,6 @@ int main() {
                 + " / " + result.message);
     assert_original_destination(output);
 
-    // Success commits atomically and preserves unrelated pre-existing files.
     result = {};
     result.struct_size = sizeof(result);
     require(kephir2_extract(
@@ -214,8 +408,6 @@ int main() {
     require(read_bytes(output / "other.txt") == read_bytes(input / "other.txt"),
             "transactional success second payload mismatch");
 
-    // Selective extraction uses the same transaction layer and must preserve an
-    // unselected colliding file from the existing destination clone.
     write_text(output / "payload.txt", "payload-old");
     write_text(output / "other.txt", "other-old");
 
@@ -253,6 +445,8 @@ int main() {
             "transactional selective extraction modified unselected file");
     require(read_text(output / "keep.txt") == "keep-original",
             "transactional selective extraction lost unrelated file");
+
+    run_multistream_progress_qualification(engine, root);
 
     kephir2_destroy(engine);
     fs::remove_all(root);
