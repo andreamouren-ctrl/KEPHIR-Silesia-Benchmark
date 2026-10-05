@@ -41,9 +41,11 @@ jobs:
           New-Item -ItemType Directory -Force "$sdk/include/kephir2" | Out-Null
           New-Item -ItemType Directory -Force "$sdk/bin" | Out-Null
           New-Item -ItemType Directory -Force "$sdk/lib" | Out-Null
+          New-Item -ItemType Directory -Force "$sdk/cmake" | Out-Null
           New-Item -ItemType Directory -Force "$sdk/docs" | Out-Null
 
           Copy-Item 'src/kephir2/include/kephir2/kephir2_c.h' "$sdk/include/kephir2/kephir2_c.h"
+          Copy-Item 'src/kephir2/cmake/Kephir2Config.cmake' "$sdk/cmake/Kephir2Config.cmake"
           Copy-Item 'docs/integration/KEPHIR2_AUR2_RC1_FREEZE_MANIFEST.md' "$sdk/docs/"
           Copy-Item 'docs/integration/AURORA_KEPHIR2_INTEGRATION_CHECKLIST.md' "$sdk/docs/"
           Copy-Item 'docs/architecture/AUR2_CONTAINER_FORMAT.md' "$sdk/docs/"
@@ -63,14 +65,52 @@ jobs:
           ARCH=x64
           CONFIG=Release
           SOURCE_COMMIT=$env:GITHUB_SHA
-          "@ | Set-Content -NoNewline "$sdk/VERSION.txt"
+          "@ | Set-Content -NoNewline "$sdk/VERSION"
 
-          Get-FileHash "$sdk/bin/kephir2_api.dll" -Algorithm SHA256 | ForEach-Object {
-            "kephir2_api.dll SHA256=$($_.Hash.ToLower())"
-          } | Set-Content "$sdk/SHA256SUMS.txt"
-          Get-FileHash "$sdk/lib/kephir2_api.lib" -Algorithm SHA256 | ForEach-Object {
-            "kephir2_api.lib SHA256=$($_.Hash.ToLower())"
-          } | Add-Content "$sdk/SHA256SUMS.txt"
+          $sumLines = @()
+          Get-ChildItem "$sdk/bin","$sdk/lib","$sdk/include","$sdk/cmake" -Recurse -File | Sort-Object FullName | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            $relative = [IO.Path]::GetRelativePath((Resolve-Path $sdk), $_.FullName).Replace('\\','/')
+            $sumLines += "$hash  $relative"
+          }
+          $sumLines | Set-Content "$sdk/SHA256SUMS"
+
+      - name: Validate Windows SDK consumer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sdk = (Resolve-Path 'kephir2-sdk-2.0.0-rc1-windows-x64').Path
+          $consumer = 'build/sdk-consumer'
+          New-Item -ItemType Directory -Force $consumer | Out-Null
+
+          @'
+          cmake_minimum_required(VERSION 3.20)
+          project(kephir2_sdk_consumer LANGUAGES CXX)
+          find_package(Kephir2 CONFIG REQUIRED)
+          add_executable(kephir2_sdk_consumer main.cpp)
+          target_link_libraries(kephir2_sdk_consumer PRIVATE Kephir2::kephir2)
+          '@ | Set-Content "$consumer/CMakeLists.txt"
+
+          @'
+          #include <kephir2/kephir2_c.h>
+          #include <cstring>
+          int main() {
+              if (kephir2_api_version() != KEPHIR2_API_VERSION) return 2;
+              const char* version = kephir2_engine_version();
+              if (!version || std::strcmp(version, "2.0.0-rc1") != 0) return 3;
+              kephir2_engine* engine = kephir2_create();
+              if (!engine) return 4;
+              kephir2_destroy(engine);
+              return 0;
+          }
+          '@ | Set-Content "$consumer/main.cpp"
+
+          cmake -S $consumer -B "$consumer/out" -DKephir2_DIR="$sdk/cmake"
+          cmake --build "$consumer/out" --config Release --parallel
+          $env:PATH = "$sdk/bin;$env:PATH"
+          & "$consumer/out/Release/kephir2_sdk_consumer.exe"
+          if ($LASTEXITCODE -ne 0) { throw "SDK consumer smoke failed with exit code $LASTEXITCODE" }
 
       - uses: actions/upload-artifact@v4
         if: runner.os == 'Windows'
