@@ -1,860 +1,163 @@
-# AURORA / KEPHIR — Specifica tecnica completa per integrazione finale
+# AURORA / KEPHIR — Specifica tecnica finale di integrazione RC1
 
 **Documento:** Integration & Technology Handoff Specification  
 **Progetto:** AURORA Compressor / KEPHIR  
-**Scopo:** fornire a chi integrerà il motore KEPHIR dentro AURORA tutte le informazioni necessarie senza dover ricostruire la storia R&D del progetto.  
-**Data snapshot:** 2026-10-01  
-**Stato:** **HANDOFF MASTER — da aggiornare e congelare alla Release Candidate finale**
+**Data snapshot:** 2026-10-05  
+**Stato:** **KEPHIR 2.0.0 RC1 / AUR Container 2.0 — FEATURE FREEZE**  
+**C ABI:** `KEPHIR2_API_VERSION = 1`
 
-> **Regola fondamentale:** AURORA non deve dipendere da file `research/`, numeri EXP, script Python sperimentali, layout temporanei o dettagli interni del backend. L'applicazione deve integrare KEPHIR esclusivamente attraverso una **C ABI versionata e stabile**, preferibilmente distribuita come DLL + import library + header pubblico.
-
----
-
-# 1. Obiettivo del documento
-
-Questo file deve essere consegnato al programmatore, all'IA o al sistema che effettuerà l'integrazione finale del compressore dentro l'applicazione AURORA.
-
-Definisce:
-
-- architettura generale AURORA ↔ KEPHIR;
-- responsabilità dell'applicazione e del motore;
-- tecnologie usate nel motore;
-- tecnologie encoder-only e decoder-required;
-- formato archivio attuale e direzione del container `.aur`;
-- API pubblica già esistente;
-- API che devono esistere prima della sostituzione definitiva del vecchio motore;
-- gestione profili, progresso, cancellazione ed errori;
-- compatibilità e sicurezza di estrazione;
-- regole ABI;
-- struttura del pacchetto SDK;
-- integrazione CMake/Windows;
-- integrazione con `ProgressManager`, `JobManager` e GUI;
-- test obbligatori e checklist finale di migrazione.
+> Regola fondamentale: AURORA non deve dipendere da `research/`, numeri EXP, script Python, generatori, corpus, K75, grain, context, router o altri dettagli interni. L'applicazione integra KEPHIR esclusivamente tramite la C ABI pubblica e il pacchetto SDK RC1.
 
 ---
 
-# 2. Legenda dello stato
+# 1. Obiettivo
 
-| Stato | Significato |
-|---|---|
-| **IMPLEMENTED** | presente nel core o nella linea nativa corrente |
-| **VALIDATED** | implementata e validata tramite test/CI/roundtrip |
-| **PROMOTED** | ricerca accettata come direzione di prodotto |
-| **R&D** | presente nella linea sperimentale, non ancora contratto stabile |
-| **REQUIRED** | necessaria prima dell'integrazione finale |
-| **PLANNED** | prevista ma non ancora parte del core qualificato |
-| **LEGACY** | esiste per compatibilità con la linea precedente |
-| **DO NOT EXPOSE** | dettaglio interno che non deve arrivare alla GUI/API pubblica |
+Questo documento è il contratto tecnico di handoff per sostituire/affiancare il motore legacy KEPHIR1/AUR1 dentro AURORA Compressor con KEPHIR2/AUR2 senza riscrivere la GUI.
 
----
-
-# 3. Architettura di integrazione
+Architettura target:
 
 ```text
-┌───────────────────────────────────────────────┐
-│                 AURORA.exe                    │
-│                                               │
-│  GUI                                          │
-│   │                                           │
-│   ├── JobManager                              │
-│   ├── ProgressManager                         │
-│   ├── Settings                                │
-│   └── CompressionService                      │
-│              │                                │
-│              ▼                                │
-│       KephirBackend Adapter                   │
-└──────────────┬────────────────────────────────┘
-               │ C ABI stabile
-               ▼
-┌───────────────────────────────────────────────┐
-│              kephir2.dll                      │
-│                                               │
-│  Public C API                                 │
-│       ↓                                       │
-│  Content Analyzer                             │
-│       ↓                                       │
-│  Global Strategy Router                       │
-│       ↓                                       │
-│  Compression Planner                          │
-│       ↓                                       │
-│  Directory Packing                            │
-│       ↓                                       │
-│  Scheduler / Execution                        │
-│       ↓                                       │
-│  KEPHIR Native Backend                        │
-│       ↓                                       │
-│  Archive / Integrity Layer                    │
-└───────────────────────────────────────────────┘
+AURORA.exe
+  -> GUI
+  -> JobManager / ProgressManager
+  -> CompressionService
+  -> KephirBackend
+  -> KEPHIR C ABI v1
+  -> KEPHIR 2.0.0 RC1
+  -> AUR Container 2.0
 ```
 
-La GUI **non deve** scegliere transform interni, conoscere EXP, implementare il router AUTO, replicare regole di grain/context, leggere Factory Knowledge o interpretare direttamente i blocchi compressi.
-
-La GUI deve conoscere solo concetti di prodotto:
+Durante la migrazione:
 
 ```text
-AUTO
-FAST
-BALANCED
-MAX
-workers opzionali
-verifica integrità
-overwrite
-progresso
-cancellazione
-informazioni archivio
-lista file
-estrazione
-verifica/test archivio
+CompressionService
+  +-- Kephir2Backend   -> nuovo default writer AUR2 / KEPHIR2
+  +-- LegacyBackend    -> compatibilità AUR1 / KEPHIR1 finché validata
 ```
+
+Non rimuovere il reader legacy prima della qualification applicativa su archivi reali precedenti.
 
 ---
 
-# 4. Responsabilità
+# 2. Stato congelato
 
-## 4.1 AURORA possiede
+Versioni RC1:
 
-- selezione file/cartelle;
-- destinazione output;
+```text
+KEPHIR Engine:       2.0.0-rc1
+KEPHIR C ABI:        1
+AUR Container:       2.0
+Native K75 stream:   1
+Legacy engine read:  KPF1
+```
+
+Branch motore di integrazione:
+
+```text
+release/kephir-2.0-aur2-integration-rc1
+```
+
+AUR2 qualificato deriva da:
+
+```text
+development/kephir-2-core
+AUR2 integration commit: a46b84363a207db8d4a4e85a6ef9ea2f7e7a4a23
+```
+
+Il ramo RC1 contiene inoltre il core adaptive-context production-safe promosso dalla lineage precedente, senza importare EXP-120A o altre modifiche di ricerca incompatibili con il freeze.
+
+---
+
+# 3. Policy FEATURE FREEZE
+
+Sono congelati:
+
+- AUR2 major format;
+- magic e fixed header;
+- section ID pubblicati;
+- feature bit pubblicati;
+- C ABI v1;
+- valori numerici di status/profile/phase;
+- layout delle struct pubbliche v1;
+- API base di integrazione;
+- semantica delle API esistenti;
+- stream format K75 usato dal decoder RC.
+
+Sono consentiti prima della release finale 2.0.0:
+
+- bug fix;
+- security/data-loss fix;
+- compatibilità;
+- correzioni necessarie all'integrazione AURORA;
+- API additive e backward-compatible solo se realmente indispensabili;
+- packaging/SDK/installer support;
+- documentazione;
+- qualification/release engineering.
+
+Sono vietati in KEPHIR2/AUR2:
+
+- nuove strategie ratio;
+- nuovi transform;
+- mixed grain;
+- nuovi matcher;
+- nuovi entropy coder;
+- redesign del container;
+- breaking ABI;
+- EXP-120/121 o altre grandi linee R&D.
+
+Queste attività appartengono a KEPHIR3/AUR3, che inizierà solo dopo integrazione, test applicazione, installer e prima release AURORA.
+
+---
+
+# 4. Responsabilità dei layer
+
+## AURORA possiede
+
+- GUI e localizzazione;
+- selezione input/output;
 - conferma overwrite;
-- GUI;
-- gestione job;
-- cronologia;
-- notifiche;
-- progress bar;
-- pulsante annulla;
-- preferenze utente;
-- scelta profilo;
-- visualizzazione statistiche;
-- associazione file `.aur`;
-- eventuale UI password/sicurezza.
+- JobManager;
+- ProgressManager;
+- history/notifiche;
+- impostazioni utente;
+- scelta profilo pubblico;
+- thread/UI marshaling;
+- compatibilità applicativa legacy AUR1/KEPHIR1;
+- distribuzione della DLL tramite installer.
 
-## 4.2 KEPHIR possiede
+## KEPHIR2/AUR2 possiede
 
 - scansione input;
 - analisi contenuto;
-- classificazione content-first;
-- scelta AUTO;
-- layout directory;
-- grain/context;
-- transform;
-- scheduling;
+- pianificazione;
+- routing AUTO;
+- packing directory;
+- grain/context interni;
+- transform interni;
 - compressione/decompressione;
-- framing archivio;
-- manifest;
-- verifica integrità;
-- path-safety;
-- conteggi byte;
-- backend;
-- compatibilità stream;
+- framing AUR2;
+- metadata container;
+- integrity;
+- path safety;
+- selective extraction;
+- transactional extraction;
 - progress tecnico;
-- cancellazione cooperativa.
+- cancellation cooperativa;
+- KPF1 legacy read.
+
+La GUI non deve replicare alcuna logica di compressione.
 
 ---
 
-# 5. Tecnologie KEPHIR
+# 5. C ABI pubblica congelata
 
-## 5.1 Compressione lossless general-purpose
-
-**Stato:** IMPLEMENTED / VALIDATED
-
-Requisito assoluto:
+Header canonico:
 
 ```text
-SHA256(originale) == SHA256(estratto)
+include/kephir2/kephir2_c.h
 ```
 
-Nessuna modalità general-purpose può introdurre perdita.
-
-## 5.2 Native Content Analyzer
-
-**Stato:** IMPLEMENTED / VALIDATED
-
-Analizza il contenuto indipendentemente dall'estensione del file.
-
-Metriche principali:
-
-- file count;
-- logical bytes;
-- average file size;
-- median file size;
-- small-file fraction;
-- sampled entropy;
-- printable fraction;
-- zero fraction;
-- content family count;
-- dominant file-family fraction;
-- dominant byte-family fraction;
-- repeatable-content fraction;
-- segnali strutturali relativi alla segmentazione.
-
-Classi content-first della linea nativa:
-
-```text
-empty
-tiny-text
-tiny-binary
-encoded-text
-text-code
-text-config
-text-prose
-text-generic
-binary-zero
-binary-low
-binary-mid
-binary-high
-```
-
-**DO NOT EXPOSE:** la GUI non deve dipendere da queste classi.
-
-## 5.3 Global Strategy Router
-
-**Stato:** IMPLEMENTED / PROMOTED
-
-Profili pubblici:
-
-```text
-AUTO
-FAST
-BALANCED
-MAX
-```
-
-Layout interni:
-
-```text
-FLAT
-SMART
-HYBRID
-```
-
-`HYBRID` non va assunto disponibile dalla GUI finché non viene dichiarato capability stabile.
-
-## 5.4 AUTO routing
-
-**Stato:** IMPLEMENTED / R&D evolutivo
-
-AUTO può usare:
-
-- metriche del Content Analyzer;
-- probe limitati;
-- confronto SMART/FLAT;
-- rappresentatività del campione;
-- diversità contenuto;
-- volatilità strutturale;
-- bounded sampling;
-- criteri zero-regret/zero-harm dove validati.
-
-L'implementazione interna può cambiare senza cambiare l'API.
-
-## 5.5 Compression Planner
-
-**Stato:** IMPLEMENTED
-
-```text
-Input
-  ↓
-ContentAnalyzer
-  ↓
-ArchiveFeatures
-  ↓
-GlobalRouter
-  ↓
-StrategyPlan
-  ↓
-Execution
-```
-
----
-
-# 6. Directory Packing
-
-## 6.1 FLAT
-
-**Stato:** IMPLEMENTED
-
-Ordine lineare dei file.
-
-## 6.2 SMART
-
-**Stato:** IMPLEMENTED / VALIDATED
-
-Raggruppamento content-first per aumentare similarità locale e ridurre confini sfavorevoli.
-
-## 6.3 PackedGroupSource / PackedGroupSink
-
-**Stato:** IMPLEMENTED
-
-Astrazioni per leggere/scrivere gruppi logici senza imporre alla GUI il layout fisico interno.
-
----
-
-# 7. Adaptive Grain e Context
-
-**Stato:** PROMOTED / R&D evolutivo
-
-Dimensioni studiate includono:
-
-```text
-512 KiB
-4 MiB
-8 MiB
-```
-
-La ricerca comprende:
-
-- adaptive grain;
-- parent grain;
-- inner context esteso;
-- selezione mediante probe;
-- segnali di distribuzione/volatilità.
-
-**Regola API:** parent grain, inner chunk e controlli di ricerca non devono essere esposti nella ABI di prodotto salvo futura decisione esplicita.
-
----
-
-# 8. Structural Transforms
-
-Transform reversibili presenti nella lineage KEPHIR 2:
-
-```text
-Base
-Delta2 + Transpose2
-Delta4 + Transpose4
-Delta16 + Transpose16
-Delta1024 + Transpose1024
-WordXor16 + Transpose2
-TextToken
-```
-
-Il decoder deve sempre ricavare dal bitstream tutto ciò che serve per invertire il transform.
-
-La GUI non seleziona questi transform.
-
----
-
-# 9. Word-XOR
-
-**Stato:** PROMOTED
-
-Lineage sviluppata:
-
-- Word-XOR;
-- predictive Word-XOR;
-- lazy Word-XOR;
-- fingerprint-aware selection.
-
-È una decisione encoder/backend interna.
-
----
-
-# 10. TextToken
-
-**Stato:** R&D / strategia interna
-
-Trasformazione specializzata per contenuti testuali/tokenizzabili.
-
-Non deve essere necessariamente esposta come opzione utente.
-
----
-
-# 11. Backend nativo
-
-## 11.1 CompressionBackend
-
-**Stato:** IMPLEMENTED abstraction
-
-```text
-ByteSource
-    ↓
-CompressionBackend::encode()
-    ↓
-CompressedBlob
-
-CompressedBlob
-    ↓
-CompressionBackend::decode()
-    ↓
-ByteSink
-```
-
-## 11.2 ByteSource
-
-```cpp
-virtual uint64_t size() const noexcept = 0;
-virtual size_t read(
-    uint64_t offset,
-    std::span<uint8_t> destination) const = 0;
-```
-
-## 11.3 ByteSink
-
-```cpp
-virtual void write(
-    uint64_t offset,
-    std::span<const uint8_t> source) = 0;
-```
-
-Queste astrazioni servono per large file, directory packing, streaming progressivo e riduzione della materializzazione in RAM.
-
----
-
-# 12. Native K75 Backend
-
-**Stato:** IMPLEMENTED / R&D production candidate
-
-Caratteristiche:
-
-- stream lossless;
-- grain/context adattivi;
-- transform reversibili;
-- parallel encode/decode in evoluzione;
-- decoder indipendente dal router;
-- blob auto-descrivente per i parametri necessari.
-
-**DO NOT EXPOSE:** `K75` non deve diventare un nome richiesto dalla GUI.
-
----
-
-# 13. Prediction ed Entropy Coding
-
-La lineage KEPHIR comprende:
-
-- predictive parsing;
-- LZ/dictionary matching;
-- residual coding;
-- probability modelling adattivo;
-- arithmetic coding 32-bit;
-- quantizzazione di probabilità;
-- trasformazioni strutturali pre-coding.
-
-Sono dettagli del backend.
-
-L'outer container `.aur` deve evitarne la duplicazione quando il payload KEPHIR è già auto-descrivente.
-
----
-
-# 14. Scheduling e Parallelismo
-
-Tecnologie:
-
-- cost-aware scheduling;
-- work parcels;
-- worker selection;
-- parallel encoder;
-- parallel decoder;
-- bounded worker count;
-- metriche worker utilizzati.
-
-La GUI può offrire:
-
-```text
-Workers = AUTO
-Workers = N
-```
-
-`0` nell'API significa **AUTO**.
-
----
-
-# 15. Factory Knowledge / Local Experience
-
-## Factory Knowledge
-
-**Stato:** IMPLEMENTED nella linea qualificata KEPHIR 1.x; concetto mantenuto.
-
-Conoscenza read-only distribuita con il prodotto.
-
-## Local Experience
-
-**Stato:** opzionale / encoder-only
-
-Persistenza locale di esperienza.
-
-Regola assoluta:
-
-> Un archivio deve essere decodificabile senza Factory Knowledge e senza Local Experience.
-
----
-
-# 16. Integrità
-
-Requisiti:
-
-- exact roundtrip;
-- checksum/CRC a livello appropriato;
-- validazione lunghezze;
-- corruption rejection;
-- verifica opzionale post-compressione;
-- SHA nei test di qualification;
-- nessuna eccezione C++ oltre la C ABI.
-
----
-
-# 17. Sicurezza di estrazione
-
-**REQUIRED**
-
-Bloccare:
-
-- `../`;
-- path traversal;
-- path assoluti malevoli;
-- uscita dalla destination root;
-- collisioni non autorizzate;
-- overwrite non consentito.
-
----
-
-# 18. Formato KPF1 attuale
-
-**Stato:** IMPLEMENTED / LEGACY-COMPATIBLE INTERNAL FORMAT
-
-Concetti:
-
-```text
-KPF1 File Envelope
-KPF1 Directory Envelope
-Manifest
-Groups
-Compressed blobs
-Varint
-Safe archive target
-```
-
-Manifest record:
-
-```text
-path
-group_id
-size
-```
-
-Directory envelope:
-
-```text
-group_names
-manifest
-groups[]
-```
-
----
-
-# 19. `.aur` e KPF non devono essere confusi
-
-Raccomandazione:
-
-```text
-.aur = container di prodotto AURORA
-KPF/KEPHIR stream = payload/codec format interno
-```
-
-Il container AURORA deve poter evolvere più lentamente del codec.
-
-```text
-AUR Container 2
- ├── KEPHIR 2.0
- ├── KEPHIR 2.1
- ├── KEPHIR 2.8
- └── KEPHIR 3.x
-```
-
----
-
-# 20. AUR Container v2 — Specifica proposta
-
-**Stato:** REQUIRED / DRAFT DA CONGELARE PRIMA DELLA RELEASE
-
-Obiettivi:
-
-- versionato;
-- little-endian;
-- auto-descrivente;
-- estensibile;
-- 64-bit clean;
-- adatto a file grandi e directory;
-- capace di sezioni opzionali;
-- sicuro da ispezionare prima dell'estrazione;
-- capace di dichiarare feature obbligatorie.
-
-## 20.1 Magic
-
-Proposta:
-
-```text
-41 55 52 32 0D 0A 1A 0A
-```
-
-ovvero:
-
-```text
-"AUR2\r\n\x1A\n"
-```
-
-## 20.2 Fixed Header — 64 byte
-
-| Offset | Size | Campo | Tipo |
-|---:|---:|---|---|
-| 0 | 8 | magic | bytes |
-| 8 | 2 | container_major | uint16 LE |
-| 10 | 2 | container_minor | uint16 LE |
-| 12 | 4 | header_size | uint32 LE |
-| 16 | 8 | feature_flags | uint64 LE |
-| 24 | 8 | archive_id | uint64 LE |
-| 32 | 8 | logical_size | uint64 LE |
-| 40 | 8 | toc_offset | uint64 LE |
-| 48 | 8 | footer_offset | uint64 LE |
-| 56 | 4 | header_crc32 | uint32 LE |
-| 60 | 4 | reserved | uint32 LE |
-
-Regole:
-
-- `header_size >= 64`;
-- major incompatibile → rifiuto;
-- minor più recente accettabile solo senza feature obbligatorie sconosciute;
-- `reserved = 0` in scrittura;
-- serializzazione esplicita campo per campo, mai `fwrite(sizeof(struct))`.
-
----
-
-# 21. AUR2 — Sezioni TLV
-
-Header sezione:
-
-| Campo | Tipo |
-|---|---|
-| type | uint32 LE |
-| flags | uint32 LE |
-| payload_length | uint64 LE |
-
-Tipi iniziali proposti:
-
-```text
-0x0001 FILE_TABLE
-0x0002 CODEC_DESCRIPTOR
-0x0003 BLOCK_TABLE
-0x0004 DATA
-0x0005 INTEGRITY
-0x0006 ENCRYPTION
-0x0007 RECOVERY
-0x0008 SEEK_INDEX
-0x0009 EXTENDED_METADATA
-0x000A USER_METADATA
-```
-
-Sezione sconosciuta:
-
-- `IGNORABLE` → reader può saltarla;
-- `REQUIRED` → `UNSUPPORTED_ARCHIVE`.
-
----
-
-# 22. Feature Flags AUR2
-
-Proposta:
-
-```text
-AUR_FEATURE_DIRECTORY
-AUR_FEATURE_MULTISTREAM
-AUR_FEATURE_INTEGRITY
-AUR_FEATURE_SEEK_INDEX
-AUR_FEATURE_ENCRYPTION
-AUR_FEATURE_RECOVERY
-AUR_FEATURE_EXTENDED_METADATA
-AUR_FEATURE_KEPHIR2
-AUR_FEATURE_LEGACY_PAYLOAD
-```
-
-I bit number devono essere congelati prima della release.
-
-Una volta pubblicato, un bit non cambia significato.
-
----
-
-# 23. Codec Descriptor
-
-Deve contenere almeno:
-
-```text
-codec_id
-codec_major
-codec_minor
-minimum_decoder_major
-minimum_decoder_minor
-codec_flags
-codec_private_data_length
-codec_private_data
-```
-
-Esempio:
-
-```text
-codec_id = KEPHIR
-codec_major = 2
-codec_minor = 0
-```
-
-Il container non deve replicare dettagli KEPHIR già presenti nel payload.
-
----
-
-# 24. File Table
-
-Ogni entry dovrebbe descrivere:
-
-```text
-entry_id
-parent_id / path
-entry_type
-logical_size
-stream_id
-stream_offset
-attributes
-mtime
-optional checksum
-optional permissions
-```
-
-Tipi iniziali:
-
-```text
-FILE
-DIRECTORY
-```
-
-Symlink solo dopo design e test di sicurezza espliciti.
-
----
-
-# 25. Block / Stream Table
-
-Campi raccomandati:
-
-```text
-stream_id
-file/group owner
-payload_offset
-compressed_size
-raw_size
-codec_id
-codec_flags
-integrity_ref
-```
-
-Informazioni come Delta4, WordXor, parent grain, inner context e modello aritmetico devono preferibilmente restare nel payload KEPHIR.
-
----
-
-# 26. Integrity Section
-
-Può contenere:
-
-- CRC32 header/section;
-- checksum per stream;
-- hash file opzionale;
-- hash globale opzionale.
-
-La qualification può continuare a usare SHA-256 anche se il runtime usa checksum più leggeri.
-
----
-
-# 27. Encryption Section
-
-**Stato:** PLANNED, NON ASSUMERE IMPLEMENTATA
-
-Il container deve poter aggiungere in futuro:
-
-- authenticated encryption;
-- KDF parametrica;
-- salt;
-- nonce/IV;
-- key slot;
-- encrypted metadata opzionale;
-- autenticazione prima dell'estrazione.
-
-La C API sicurezza dovrà essere una estensione separata.
-
----
-
-# 28. Recovery Section
-
-**Stato:** PLANNED
-
-Possibili dati:
-
-- recovery points;
-- segment CRC;
-- parity/redundancy future;
-- restart points.
-
----
-
-# 29. Seek Index
-
-**Stato:** PLANNED / utile per large archive
-
-Permette:
-
-- listing veloce;
-- estrazione selettiva;
-- accesso diretto;
-- apertura senza scansione completa del payload.
-
----
-
-# 30. Compatibilità AUR1 / AUR2
-
-```text
-if AUR1:
-    LegacyContainerReader
-elif AUR2:
-    Aur2Reader
-else:
-    UnsupportedArchive
-```
-
-Non eliminare il decoder legacy finché gli archivi storici devono restare apribili.
-
----
-
-# 31. Versioni da separare
-
-Servono almeno:
-
-```text
-Application Version
-AUR Container Version
-KEPHIR API Version
-KEPHIR Engine Version
-KEPHIR Stream/Codec Version
-```
-
-Esempio:
-
-```text
-AURORA App:      1.4.0
-AUR Container:  2.0
-KEPHIR API:      1
-KEPHIR Engine:   2.3.0
-KEPHIR Stream:   2
-```
-
----
-
-# 32. C ABI pubblica esistente
-
-La linea nativa corrente contiene:
-
-```c
-#define KEPHIR2_API_VERSION 1u
-```
-
-Opaque handle:
-
-```c
-typedef struct kephir2_engine kephir2_engine;
-```
-
-Funzioni correnti:
+API:
 
 ```c
 uint32_t kephir2_api_version(void);
@@ -863,243 +166,148 @@ const char* kephir2_engine_version(void);
 kephir2_engine* kephir2_create(void);
 void kephir2_destroy(kephir2_engine* engine);
 
-kephir2_status kephir2_compress(
-    kephir2_engine* engine,
-    const char* input_utf8,
-    const char* output_utf8,
-    const kephir2_options_v1* options,
-    kephir2_result_v1* result);
+void kephir2_options_init_v1(kephir2_options_v1* options);
 
-kephir2_status kephir2_extract(
+kephir2_status kephir2_get_capabilities(
     kephir2_engine* engine,
-    const char* archive_utf8,
-    const char* output_directory_utf8,
-    const kephir2_options_v1* options,
-    kephir2_result_v1* result);
+    kephir2_capabilities_v1* capabilities);
+
+kephir2_status kephir2_compress(...);
+kephir2_status kephir2_extract(...);
+kephir2_status kephir2_inspect(...);
+kephir2_status kephir2_list_entries(...);
+kephir2_status kephir2_test_archive(...);
+kephir2_status kephir2_extract_selected(...);
 
 const char* kephir2_status_name(kephir2_status status);
 ```
 
----
-
-# 33. Status Code esistenti
-
-```c
-typedef enum kephir2_status {
-    KEPHIR2_OK = 0,
-    KEPHIR2_CANCELLED = 1,
-    KEPHIR2_INVALID_ARGUMENT = 2,
-    KEPHIR2_INPUT_NOT_FOUND = 3,
-    KEPHIR2_OUTPUT_EXISTS = 4,
-    KEPHIR2_IO_ERROR = 5,
-    KEPHIR2_UNSUPPORTED_ARCHIVE = 6,
-    KEPHIR2_CORRUPT_ARCHIVE = 7,
-    KEPHIR2_INTEGRITY_ERROR = 8,
-    KEPHIR2_BACKEND_UNAVAILABLE = 9,
-    KEPHIR2_INTERNAL_ERROR = 10
-} kephir2_status;
-```
-
-Una volta pubblicati non vanno rinumerati.
-
-Possibili estensioni future:
+Runtime RC1:
 
 ```text
-KEPHIR2_PASSWORD_REQUIRED
-KEPHIR2_AUTHENTICATION_FAILED
-KEPHIR2_UNSUPPORTED_FEATURE
-KEPHIR2_VERSION_TOO_NEW
-KEPHIR2_PERMISSION_DENIED
-KEPHIR2_DISK_FULL
+kephir2_api_version()    -> 1
+kephir2_engine_version() -> "2.0.0-rc1"
 ```
+
+Opaque handle:
+
+```c
+typedef struct kephir2_engine kephir2_engine;
+```
+
+AURORA non deve includere header C++ interni del motore.
 
 ---
 
-# 34. Profili pubblici
-
-```c
-typedef enum kephir2_profile {
-    KEPHIR2_PROFILE_AUTO = 0,
-    KEPHIR2_PROFILE_FAST = 1,
-    KEPHIR2_PROFILE_BALANCED = 2,
-    KEPHIR2_PROFILE_MAX = 3
-} kephir2_profile;
-```
-
-La GUI non hard-coda parametri interni per i profili.
-
----
-
-# 35. Progress Phases pubbliche
-
-```c
-typedef enum kephir2_phase {
-    KEPHIR2_PHASE_IDLE = 0,
-    KEPHIR2_PHASE_SCANNING = 1,
-    KEPHIR2_PHASE_ANALYZING = 2,
-    KEPHIR2_PHASE_PLANNING = 3,
-    KEPHIR2_PHASE_PACKING = 4,
-    KEPHIR2_PHASE_COMPRESSING = 5,
-    KEPHIR2_PHASE_WRITING = 6,
-    KEPHIR2_PHASE_VERIFYING = 7,
-    KEPHIR2_PHASE_EXTRACTING = 8,
-    KEPHIR2_PHASE_DONE = 9
-} kephir2_phase;
-```
-
-Queste fasi sono il contratto GUI. L'implementazione interna può cambiare.
-
----
-
-# 36. Progress Callback
-
-```c
-typedef struct kephir2_progress_v1 {
-    uint32_t struct_size;
-    kephir2_phase phase;
-    double fraction;
-    uint64_t processed_bytes;
-    uint64_t total_bytes;
-    const char* current_path_utf8;
-} kephir2_progress_v1;
-```
-
-```c
-typedef void (*kephir2_progress_callback)(
-    const kephir2_progress_v1* progress,
-    void* user_data);
-```
-
-Regole:
-
-- `fraction` in `[0,1]`;
-- può non essere lineare fra fasi;
-- `current_path_utf8` è valido durante la callback salvo contratto diverso;
-- callback breve e non bloccante;
-- la GUI deve fare marshal sul UI thread;
-- il motore può chiamare da worker thread.
-
----
-
-# 37. Cancellation Callback
-
-```c
-typedef int (*kephir2_cancel_callback)(void* user_data);
-```
-
-Semantica:
+# 6. Profili pubblici
 
 ```text
-0 = continua
-!= 0 = richiedi cancellazione
+AUTO
+FAST
+BALANCED
+MAX
 ```
 
-La cancellazione deve essere cooperativa e non lasciare un archivio apparentemente valido ma parziale.
+`AUTO` è il default raccomandato.
 
----
-
-# 38. Options v1 esistenti
-
-```c
-typedef struct kephir2_options_v1 {
-    uint32_t struct_size;
-    kephir2_profile profile;
-    uint32_t workers;
-    int verify_integrity;
-    int overwrite_output;
-    int allow_local_experience;
-    kephir2_progress_callback progress_callback;
-    kephir2_cancel_callback cancel_callback;
-    void* user_data;
-} kephir2_options_v1;
-```
+Il profilo AUTO abilita nel backend RC1 la policy adaptive-context production-safe. Grain/context restano completamente interni e non fanno parte della ABI pubblica.
 
 Default raccomandati:
 
 ```text
 profile                = AUTO
-workers                = 0 (AUTO)
-verify_integrity       = 1
-overwrite_output       = 0
-allow_local_experience = 1 se consentito dalle impostazioni
-callbacks              = NULL
-user_data              = NULL
+workers                = 0
+verify_integrity       = true
+overwrite_output       = false
+allow_local_experience = true, salvo Privacy Mode
+```
+
+Inizializzare sempre con:
+
+```c
+kephir2_options_v1 options;
+kephir2_options_init_v1(&options);
 ```
 
 ---
 
-# 39. Result v1 esistente
+# 7. Status code pubblici
 
-```c
-typedef struct kephir2_result_v1 {
-    uint32_t struct_size;
-    kephir2_status status;
-    uint64_t input_bytes;
-    uint64_t output_bytes;
-    double elapsed_seconds;
-    char message[512];
-} kephir2_result_v1;
+Valori congelati:
+
+```text
+0  OK
+1  CANCELLED
+2  INVALID_ARGUMENT
+3  INPUT_NOT_FOUND
+4  OUTPUT_EXISTS
+5  IO_ERROR
+6  UNSUPPORTED_ARCHIVE
+7  CORRUPT_ARCHIVE
+8  INTEGRITY_ERROR
+9  BACKEND_UNAVAILABLE
+10 INTERNAL_ERROR
 ```
 
-Regole:
+La GUI deve basare la logica sul valore `kephir2_status`, non sul testo diagnostico di `result.message`.
 
-- byte count sempre corretti;
-- `message` sempre NUL-terminated;
-- `message` è diagnostico e non va parsato;
-- la logica usa `status`.
+La localizzazione degli errori appartiene ad AURORA.
 
 ---
 
-# 40. Versioning delle Struct
+# 8. Progress e cancellation
 
-Ogni struct pubblica usa:
+Fasi pubbliche congelate:
 
-```c
-uint32_t struct_size;
+```text
+IDLE
+SCANNING
+ANALYZING
+PLANNING
+PACKING
+COMPRESSING
+WRITING
+VERIFYING
+EXTRACTING
+DONE
 ```
 
-Il chiamante:
+Il callback riceve:
 
-```c
-kephir2_options_v1 opt = {0};
-opt.struct_size = sizeof(opt);
+```text
+phase
+fraction
+processed_bytes
+total_bytes
+current_path_utf8
 ```
 
-Non modificare layout dei campi già pubblicati.
+Il progress multi-stream AUR2 è qualificato come globale e monotono:
+
+- `fraction` non decresce;
+- `processed_bytes` non decresce;
+- `total_bytes` resta stabile;
+- esiste un solo `DONE` finale.
+
+Qualification storica: run `37237913015` PASS Linux/Windows.
+
+Cancellation:
+
+```c
+typedef int (*kephir2_cancel_callback)(void* user_data);
+```
+
+`0` continua, non-zero richiede cancellazione.
+
+AURORA non deve terminare forzatamente il worker. La cancellazione deve propagarsi in modo cooperativo al motore.
 
 ---
 
-# 41. API REQUIRED prima dell'integrazione finale
+# 9. Capability query
 
-## 41.1 Default Options
+AURORA deve interrogare `kephir2_get_capabilities()` invece di dedurre feature dalla versione della DLL.
 
-```c
-KEPHIR2_API void kephir2_options_init_v1(
-    kephir2_options_v1* options);
-```
-
-Motivo: evitare che ogni host ricrei i default.
-
-## 41.2 Capability Query
-
-```c
-typedef struct kephir2_capabilities_v1 {
-    uint32_t struct_size;
-    uint32_t api_version;
-    uint32_t engine_major;
-    uint32_t engine_minor;
-    uint32_t engine_patch;
-    uint64_t feature_flags;
-    uint32_t max_workers;
-    uint32_t reserved0;
-} kephir2_capabilities_v1;
-
-KEPHIR2_API kephir2_status kephir2_get_capabilities(
-    kephir2_engine* engine,
-    kephir2_capabilities_v1* caps);
-```
-
-Capability possibili:
+Capability RC1 dichiarate:
 
 ```text
 COMPRESS_FILE
@@ -1109,353 +317,386 @@ INSPECT
 LIST_ENTRIES
 EXTRACT_SELECTED
 TEST_ARCHIVE
-AUR1_READ
 AUR2_READ
 AUR2_WRITE
-KEPHIR_STREAM_V1_READ
-KEPHIR_STREAM_V2_READ
-ENCRYPTION
-RECOVERY
+KPF1_LEGACY_READ
 SEEK_INDEX
+FILESYSTEM_METADATA
+FOOTER_INTEGRITY
+STREAM_CRC32
+PROGRESS_CALLBACK
+CANCELLATION
 ```
 
----
-
-# 42. API Inspect — REQUIRED
-
-```c
-typedef struct kephir2_archive_info_v1 {
-    uint32_t struct_size;
-    uint32_t container_major;
-    uint32_t container_minor;
-    uint32_t codec_major;
-    uint32_t codec_minor;
-    uint64_t feature_flags;
-    uint64_t entry_count;
-    uint64_t logical_bytes;
-    uint64_t archive_bytes;
-    int is_encrypted;
-    int integrity_available;
-    int integrity_verified;
-    int reserved0;
-} kephir2_archive_info_v1;
-
-KEPHIR2_API kephir2_status kephir2_inspect(
-    kephir2_engine* engine,
-    const char* archive_utf8,
-    kephir2_archive_info_v1* info);
-```
-
-La GUI usa questa API per mostrare dimensione, numero file, versioni e compatibilità prima dell'estrazione.
-
----
-
-# 43. API Listing — REQUIRED
-
-```c
-typedef enum kephir2_entry_type {
-    KEPHIR2_ENTRY_FILE = 0,
-    KEPHIR2_ENTRY_DIRECTORY = 1
-} kephir2_entry_type;
-
-typedef struct kephir2_entry_info_v1 {
-    uint32_t struct_size;
-    uint64_t entry_id;
-    kephir2_entry_type type;
-    uint64_t logical_size;
-    const char* path_utf8;
-} kephir2_entry_info_v1;
-
-typedef int (*kephir2_entry_callback)(
-    const kephir2_entry_info_v1* entry,
-    void* user_data);
-
-KEPHIR2_API kephir2_status kephir2_list_entries(
-    kephir2_engine* engine,
-    const char* archive_utf8,
-    kephir2_entry_callback callback,
-    void* user_data);
-```
-
-Callback evita allocazioni ABI cross-module.
-
----
-
-# 44. API Test Archive — REQUIRED
-
-```c
-KEPHIR2_API kephir2_status kephir2_test_archive(
-    kephir2_engine* engine,
-    const char* archive_utf8,
-    const kephir2_options_v1* options,
-    kephir2_result_v1* result);
-```
-
-Deve verificare header, manifest, bounds, checksum, backend frames e integrità senza estrazione su disco.
-
----
-
-# 45. API Selective Extraction — REQUIRED per UX completa
-
-```c
-typedef struct kephir2_selection_v1 {
-    uint32_t struct_size;
-    const uint64_t* entry_ids;
-    size_t entry_count;
-} kephir2_selection_v1;
-
-KEPHIR2_API kephir2_status kephir2_extract_selected(
-    kephir2_engine* engine,
-    const char* archive_utf8,
-    const char* output_directory_utf8,
-    const kephir2_selection_v1* selection,
-    const kephir2_options_v1* options,
-    kephir2_result_v1* result);
-```
-
-Se non entra nella prima release, AURORA può inizialmente offrire solo “Estrai tutto”, ma la limitazione deve essere documentata.
-
----
-
-# 46. Error Diagnostics
-
-Possibile API:
-
-```c
-KEPHIR2_API const char* kephir2_last_error(
-    kephir2_engine* engine);
-```
-
-Oppure mantenere solo `result.message`.
-
-Non usare entrambi senza ownership/thread-safety chiara.
-
----
-
-# 47. Feature Negotiation
-
-Preferire `kephir2_inspect()` + status specifici invece di duplicare logica host-side.
-
-L'host non deve dedurre compatibilità leggendo a mano il file.
-
----
-
-# 48. API Password / Encryption
-
-**NON inserire nella v1 fino a design sicurezza congelato.**
-
-Quando necessaria, usare un'estensione versionata separata, non campi improvvisati dentro `kephir2_options_v1`.
-
----
-
-# 49. Ownership della memoria
-
-Regola:
-
-> La memoria allocata da un modulo viene liberata dallo stesso modulo.
-
-Preferire:
-
-- buffer del chiamante;
-- callback;
-- opaque handle;
-- fixed-size output structs.
-
-Evitare `DLL malloc()` + `EXE free()`.
-
----
-
-# 50. Encoding Stringhe
-
-Tutte le API pubbliche usano UTF-8.
-
-Su Windows la conversione UTF-8 → UTF-16 avviene nel layer nativo.
-
-Supportare long path.
-
----
-
-# 51. Thread Safety
-
-Raccomandazione da congelare:
-
-- una singola `kephir2_engine*` non esegue due operazioni mutanti contemporaneamente;
-- istanze distinte possono lavorare in parallelo;
-- version query thread-safe;
-- callback possono arrivare dal thread operazione/worker;
-- GUI mai aggiornata direttamente dalla callback.
-
----
-
-# 52. Reentrancy Callback
-
-Durante `progress_callback` non chiamare sulla stessa istanza:
+Non sono dichiarate:
 
 ```text
-kephir2_compress
-kephir2_extract
-kephir2_destroy
+ENCRYPTION
+RECOVERY/PARITY
 ```
 
-Default sicuro: nessuna reentrancy sulla stessa handle.
+`aur_read_major_min = 2`, `aur_read_major_max = 2`, `aur_write_major = 2`.
 
 ---
 
-# 53. Temporary Output / Atomicity
+# 10. AUR Container v2 — stato finale RC1
 
-Compressione raccomandata:
+AUR2 non è più una proposta. È implementato e qualificato.
+
+Caratteristiche:
+
+- fixed header versionato da 64 byte;
+- magic AUR2;
+- little-endian;
+- TLV sections;
+- FILE_TABLE;
+- CODEC_DESCRIPTOR;
+- STREAM/BLOCK information;
+- DATA;
+- INTEGRITY;
+- SEEK_INDEX / TOC;
+- Footer Integrity `FTR1`;
+- `toc_offset` attivo;
+- `footer_offset` attivo;
+- CRC32 per stream;
+- integrità globale/footer;
+- file;
+- directory;
+- directory vuote;
+- file vuoti;
+- metadata filesystem base;
+- mtime;
+- permessi portabili;
+- path safety/path traversal rejection;
+- struttura 64-bit per file >4 GiB;
+- SMART directory packing;
+- FLAT directory packing;
+- inspect;
+- list entries;
+- deep archive test;
+- selective extraction;
+- KPF1 legacy reading;
+- file-backed reader;
+- ranged reads;
+- bounded-memory extraction;
+- file-backed finalizer;
+- transactional extraction;
+- rollback su corruption/cancellation/I/O failure;
+- progress multi-stream monotono.
+
+Non dichiarare supportati in AUR2 RC1:
+
+- encryption;
+- recovery/parity;
+- ACL Windows completi;
+- Alternate Data Streams;
+- symlink preservation canonica;
+- fully streaming K75 encode/decode.
+
+Sono candidati futuri AUR3 salvo fix strettamente necessario alla release corrente.
+
+---
+
+# 11. Fixed Header AUR2
+
+Layout congelato a 64 byte:
+
+| Offset | Size | Campo |
+|---:|---:|---|
+| 0 | 8 | magic |
+| 8 | 2 | container_major |
+| 10 | 2 | container_minor |
+| 12 | 4 | header_size |
+| 16 | 8 | feature_flags |
+| 24 | 8 | archive_id |
+| 32 | 8 | logical_size |
+| 40 | 8 | toc_offset |
+| 48 | 8 | footer_offset |
+| 56 | 4 | header_crc32 |
+| 60 | 4 | reserved |
+
+La specifica binaria completa resta in:
 
 ```text
-target.aur.partial
-       ↓
-compression
-       ↓
-integrity
-       ↓
-flush
-       ↓
-atomic rename
-       ↓
-target.aur
+docs/architecture/AUR2_CONTAINER_FORMAT.md
 ```
 
-Errore/cancel → rimuovere `.partial`.
-
----
-
-# 54. Overwrite Policy
-
-`overwrite_output = 0`:
+Lo stato implementativo resta in:
 
 ```text
-output esiste → KEPHIR2_OUTPUT_EXISTS
+docs/architecture/AUR2_IMPLEMENTATION_STATUS.md
 ```
 
-`overwrite_output = 1`:
-
-- replace sicuro;
-- non distruggere il vecchio file prima che il nuovo sia valido quando possibile.
+AURORA non deve interpretare direttamente questi campi: usa `kephir2_inspect()` e le altre API pubbliche.
 
 ---
 
-# 55. File e Directory
+# 12. Integrità e corruption handling
 
-`kephir2_compress()` deve poter accettare sia file sia directory.
+Runtime:
 
-La GUI non deve mantenere due motori diversi.
+- validazione header/section bounds;
+- CRC32 stream;
+- Footer Integrity FTR1;
+- checksum/integrità container;
+- corruption rejection;
+- `kephir2_test_archive()` per verifica profonda.
+
+Durante i test di qualification si usa anche SHA per validare round-trip esatto.
+
+Un fallimento di integrità deve diventare `KEPHIR2_INTEGRITY_ERROR` o `KEPHIR2_CORRUPT_ARCHIVE` secondo il tipo di errore, mai un successo parziale.
 
 ---
 
-# 56. Empty Directories
+# 13. File-backed I/O e memoria
 
-**REQUIRED**
-
-Il container finale deve preservare directory vuote.
-
-AUR2 FILE_TABLE deve rappresentarle esplicitamente.
-
----
-
-# 57. Metadata
-
-Minimo raccomandato:
+Reader AUR2:
 
 ```text
-relative path
-entry type
-file size
-mtime
-directory existence
+header + TOC/Seek Index
+  -> metadata
+  -> stream necessario
+  -> CRC
+  -> decode
+  -> release memoria stream
+  -> stream successivo
 ```
 
-Possibili futuri:
+Selective extraction legge soltanto gli stream richiesti.
+
+Writer:
 
 ```text
-Windows attributes
-permissions
-creation time
-ACL
-alternate streams
-symlink
+Base AUR2
+  -> file-backed finalizer
+  -> metadata + Seek Index + FTR1
+  -> publish
 ```
 
-Non dichiarare supporto se non testato.
+Il DATA viene copiato a blocchi; non è necessario materializzare l'intero `.aur` in RAM.
+
+Qualification finalizer: run `36917547860` PASS Linux/Windows.  
+Writer pubblico: run `36918208737` PASS Linux/Windows.
 
 ---
 
-# 58. Determinismo
+# 14. Transactional extraction
 
-Obiettivo raccomandato:
-
-stesso input + stessa versione + stesso profilo + stesse options → output riproducibile, salvo campi esplicitamente non deterministici.
-
----
-
-# 59. Pacchetto SDK finale
+`kephir2_extract()` e `kephir2_extract_selected()` usano staging temporaneo.
 
 ```text
-kephir-sdk/
-├── include/
-│   └── kephir2/
-│       └── kephir2_c.h
-├── bin/
-│   └── kephir2.dll
-├── lib/
-│   └── kephir2.lib
-├── cmake/
-│   └── Kephir2Config.cmake
-├── licenses/
-├── docs/
-│   └── AURORA_KEPHIR_FINAL_INTEGRATION_SPEC.md
-├── VERSION
-└── SHA256SUMS
+archive
+  -> staging directory
+  -> decode
+  -> CRC/integrity
+  -> metadata
+  -> success
+  -> publish
 ```
+
+In caso di:
+
+- cancellation;
+- corruption;
+- I/O failure;
+
+la destinazione originale resta intatta.
+
+Qualification: run `37237322025` PASS Linux/Windows.
 
 ---
 
-# 60. ABI Windows
+# 15. API di ispezione e selective extraction
 
-Export macro corrente:
+Sono tutte implementate in RC1:
 
-```c
-#if defined(_WIN32) && defined(KEPHIR2_BUILD_DLL)
-#  define KEPHIR2_API __declspec(dllexport)
-#elif defined(_WIN32)
-#  define KEPHIR2_API __declspec(dllimport)
-#else
-#  define KEPHIR2_API
-#endif
+```text
+kephir2_inspect
+kephir2_list_entries
+kephir2_test_archive
+kephir2_extract_selected
 ```
 
-Prima del freeze definire anche calling convention esplicita e non cambiarla.
+Non sono più API “future” o “required”.
+
+Flusso UI raccomandato:
+
+```text
+open archive
+ -> inspect
+ -> list entries
+ -> show metadata/tree
+ -> extract all OR extract selected
+```
+
+`kephir2_test_archive()` è il percorso di verifica profonda e può essere più costoso di inspect/list.
 
 ---
 
-# 61. CMake Integration
+# 16. UTF-8 e path safety
 
-Ideale:
+Tutti i path della C API sono UTF-8.
+
+Su Windows non usare code page ANSI.
+
+Il motore applica path safety per impedire:
+
+- `../` traversal;
+- path assoluti malevoli;
+- uscita dalla destination root;
+- target non sicuri.
+
+AURORA deve comunque gestire UX e messaggi di errore.
+
+---
+
+# 17. KEPHIR2 core congelato
+
+La linea RC1 include la policy adaptive-context production-safe:
+
+- bounded content sampling;
+- context 512 KiB / 4 MiB / 8 MiB;
+- structural-volatility safety gate;
+- long-context AUTO layout bootstrap;
+- parametri necessari al decode auto-descritti nel NativeK75 stream.
+
+La GUI non conosce questi dettagli.
+
+Restano research-only e NON sono promossi in RC1:
+
+- EXP-118B Python bounded grain-probe router;
+- EXP-120A mixed parent-grain oracle;
+- grain2 sperimentale;
+- mixed-grain per-superchunk;
+- EXP-121 e successive linee evolutive.
+
+Questa conoscenza viene conservata per KEPHIR3.
+
+---
+
+# 18. Performance reference
+
+## Silesia codec line
+
+Baseline di ricerca migliore mantenuta come riferimento:
+
+```text
+Silesia raw:                  211,938,580 bytes
+EXP-118B baseline:             60,963,390 bytes
+Ratio:                         28.764649645%
+External pinned corpus:         4,792,947 bytes
+External ratio:                ~27.83076%
+```
+
+Numeri codec comparabili precedenti:
+
+```text
+full compression with probing: ~4.16 MB/s
+final encode excluding probe:  ~6.77 MB/s
+decode:                        ~82.3 MB/s
+```
+
+Non si continua a ottimizzare ratio/speed in KEPHIR2 salvo bug.
+
+## AUR2 public/container scale path
+
+Fixture ~64 MiB:
+
+```text
+encode:   ~32.67 MiB/s
+decode:   ~277.18 MiB/s
+peak RAM encode: ~106.15 MiB
+peak RAM decode: ~43.66 MiB
+SHA round-trip: PASS
+```
+
+Questi dati misurano il percorso pubblico/container e non sono equivalenti alle prestazioni Silesia del codec.
+
+Scale run: `37238274255` PASS.
+
+---
+
+# 19. Qualification già completata
+
+Checkpoint verificati:
+
+```text
+AUR2 final Linux/Windows gate       37238651446 PASS
+AUR2 scale qualification            37238274255 PASS
+Transactional extraction            37237322025 PASS Linux/Windows
+Multi-stream progress               37237913015 PASS Linux/Windows
+File-backed finalizer               36917547860 PASS Linux/Windows
+Public writer                       36918208737 PASS Linux/Windows
+RC1 base freeze qualification       37266002327 PASS Linux/Windows
+RC1 SDK package/consumer gate       37271671809 PASS Linux/Windows
+```
+
+Il gate SDK `37271671809` include su Windows:
+
+- build Release;
+- test suite;
+- staging SDK;
+- `find_package(Kephir2 CONFIG REQUIRED)` da progetto consumer separato;
+- linking `Kephir2::kephir2`;
+- runtime DLL loading;
+- API version check;
+- runtime version `2.0.0-rc1` check;
+- create/destroy engine;
+- artifact upload.
+
+Non dichiarare PASS per un run ancora in esecuzione.
+
+---
+
+# 20. SDK di integrazione RC1
+
+Layout Windows x64:
+
+```text
+kephir2-sdk-2.0.0-rc1-windows-x64/
+  include/
+    kephir2/
+      kephir2_c.h
+  bin/
+    kephir2_api.dll
+  lib/
+    kephir2_api.lib
+  cmake/
+    Kephir2Config.cmake
+  docs/
+    KEPHIR2_AUR2_RC1_FREEZE_MANIFEST.md
+    AURORA_KEPHIR2_INTEGRATION_CHECKLIST.md
+    AUR2_CONTAINER_FORMAT.md
+    AUR2_IMPLEMENTATION_STATUS.md
+  VERSION
+  SHA256SUMS
+```
+
+CMake:
 
 ```cmake
 find_package(Kephir2 CONFIG REQUIRED)
 target_link_libraries(AURORA PRIVATE Kephir2::kephir2)
 ```
 
-Fallback:
+Il package config è relocatable rispetto alla root SDK.
 
-```cmake
-target_include_directories(AURORA PRIVATE path/to/kephir-sdk/include)
-target_link_libraries(AURORA PRIVATE path/to/kephir-sdk/lib/kephir2.lib)
-```
+L'app installata non dipende da Python.
+
+Python è attualmente richiesto soltanto durante il source build del repository per generare una parte nativa del backend. Nessun runtime Python, script R&D o corpus deve essere distribuito con AURORA.
 
 ---
 
-# 62. Host Adapter C++
+# 21. CompressionService / KephirBackend
+
+AURORA deve introdurre/adattare un wrapper applicativo, non chiamare la DLL direttamente dalla GUI.
+
+Schema raccomandato:
 
 ```cpp
 class ICompressionEngine {
 public:
     virtual ~ICompressionEngine() = default;
-
     virtual CompressResult compress(...) = 0;
     virtual ExtractResult extract(...) = 0;
     virtual ArchiveInfo inspect(...) = 0;
@@ -1463,43 +704,24 @@ public:
 };
 ```
 
-Migrazione temporanea:
+Migrazione:
 
 ```text
 LegacyCompressionEngine
 Kephir2CompressionEngine
 ```
 
-Dopo field validation:
-
-```text
-Kephir2CompressionEngine
-```
+`Kephir2CompressionEngine` deve contenere solo mapping verso la C ABI.
 
 ---
 
-# 63. CompressionService
+# 22. Mapping ProgressManager
 
-```text
-GUI
- ↓
-JobManager
- ↓
-CompressionService
- ↓
-Kephir2CompressionEngine
- ↓
-kephir2.dll
-```
-
-La GUI non chiama direttamente `kephir2_*`.
-
----
-
-# 64. Mapping ProgressManager
+Mapping raccomandato:
 
 | KEPHIR | AURORA |
 |---|---|
+| IDLE | In attesa |
 | SCANNING | Scansione |
 | ANALYZING | Analisi |
 | PLANNING | Pianificazione |
@@ -1510,538 +732,258 @@ La GUI non chiama direttamente `kephir2_*`.
 | EXTRACTING | Estrazione |
 | DONE | Completato |
 
-Mostrare se disponibili:
+Le callback possono arrivare fuori dal thread GUI: usare l'event system/dispatcher dell'applicazione.
+
+---
+
+# 23. Engine lifetime e concorrenza
+
+Modello raccomandato per RC1:
+
+- un `kephir2_engine*` per job attivo, oppure servizio serializzato;
+- non avviare due operazioni mutanti contemporanee sulla stessa handle;
+- istanze separate possono essere gestite indipendentemente;
+- distruggere sempre con `kephir2_destroy()`;
+- non fare reentrancy sullo stesso engine dentro callback progress/cancel.
+
+---
+
+# 24. Error mapping AURORA
+
+Mapping UI raccomandato:
 
 ```text
-phase
-percentage
-processed bytes
-total bytes
-current path
-elapsed
-throughput
+OK                  -> successo
+CANCELLED           -> annullato
+INVALID_ARGUMENT    -> parametri non validi
+INPUT_NOT_FOUND     -> origine non trovata
+OUTPUT_EXISTS       -> richiesta overwrite
+IO_ERROR            -> errore filesystem/I/O
+UNSUPPORTED_ARCHIVE -> formato/versione non supportata
+CORRUPT_ARCHIVE     -> archivio danneggiato
+INTEGRITY_ERROR     -> verifica integrità fallita
+BACKEND_UNAVAILABLE -> backend non disponibile
+INTERNAL_ERROR      -> errore interno inatteso
 ```
+
+Non fare branching sul contenuto inglese di `message[512]`.
 
 ---
 
-# 65. Cancellation AURORA
+# 25. Legacy compatibility
+
+KEPHIR2 RC1 dichiara e testa almeno:
 
 ```text
-Cancel button
-  ↓
-atomic<bool> cancelRequested = true
-  ↓
-cancel_callback()
-  ↓
-KEPHIR2_CANCELLED
-  ↓
-JobManager = Cancelled
+KPF1_LEGACY_READ
 ```
 
-Non terminare brutalmente il thread.
+Questo non equivale automaticamente alla compatibilità completa con ogni archivio AUR1 prodotto dalla precedente applicazione AURORA.
+
+Durante la migrazione applicativa:
+
+1. mantenere il reader KEPHIR1/AUR1 esistente;
+2. identificare fixture reali AUR1 dell'app;
+3. aprire/estrarre tali fixture attraverso AURORA;
+4. confrontare contenuto e metadata necessari;
+5. solo dopo decidere se il vecchio reader può essere eliminato.
+
+Nuove scritture devono andare a KEPHIR2/AUR2 una volta superato il gate applicativo.
 
 ---
 
-# 66. Error Mapping GUI
+# 26. Installer
 
-```text
-KEPHIR2_INVALID_ARGUMENT      → Parametri non validi
-KEPHIR2_INPUT_NOT_FOUND       → Origine non trovata
-KEPHIR2_OUTPUT_EXISTS         → Richiesta overwrite
-KEPHIR2_IO_ERROR              → Errore I/O
-KEPHIR2_UNSUPPORTED_ARCHIVE   → Formato/versione non supportata
-KEPHIR2_CORRUPT_ARCHIVE       → Archivio danneggiato
-KEPHIR2_INTEGRITY_ERROR       → Verifica integrità fallita
-KEPHIR2_CANCELLED             → Operazione annullata
-```
-
-La localizzazione resta lato GUI.
-
----
-
-# 67. Logging
-
-La DLL non dovrebbe stampare direttamente su stdout/stderr in produzione.
-
-Possibile callback futura di logging con livelli ERROR/WARNING/INFO/DEBUG/TRACE.
-
----
-
-# 68. Metrics
-
-Le metriche base sono già in `kephir2_result_v1`.
-
-Possibile estensione futura:
-
-```text
-input_bytes
-output_bytes
-files_processed
-elapsed_seconds
-encode_seconds
-verify_seconds
-workers_used
-```
-
-Non esporre metriche R&D instabili nel contratto base.
-
----
-
-# 69. Dynamic Loading opzionale
-
-Per sostituire la DLL senza ricompilare AURORA:
-
-```text
-LoadLibraryW("kephir2.dll")
-GetProcAddress(...)
-```
-
-Prima controllare `kephir2_api_version()`.
-
-Per la prima release è accettabile linking tramite `.lib`.
-
----
-
-# 70. API Compatibility Policy
-
-Una minor/patch del motore può:
-
-- correggere bug;
-- migliorare ratio/speed;
-- cambiare router;
-- cambiare backend interno;
-- aggiungere nuove API compatibili.
-
-Non può:
-
-- rinumerare enum pubblicati;
-- cambiare semantica funzioni esistenti;
-- cambiare ownership;
-- cambiare calling convention;
-- rimuovere simboli.
-
-Breaking change → nuova API major.
-
----
-
-# 71. Codec Compatibility Policy
-
-```text
-nuovo encoder → deve continuare a leggere stream vecchi supportati
-vecchio decoder → non è obbligato a leggere stream nuovi
-```
-
-Il container dichiara la versione minima decoder.
-
----
-
-# 72. Migration Plan
-
-1. congelare `ICompressionEngine`;
-2. integrare `kephir2.dll` accanto al legacy;
-3. aggiungere engine selector developer-only;
-4. testare compress/extract legacy vs KEPHIR2;
-5. testare archivi storici;
-6. testare directory grandi;
-7. testare many-small-files;
-8. testare file >4 GiB;
-9. testare cancellation;
-10. testare overwrite;
-11. testare corruption;
-12. testare path traversal;
-13. testare progress GUI;
-14. qualification;
-15. impostare KEPHIR2 default;
-16. mantenere legacy reader per almeno una release di compatibilità se necessario;
-17. rimuovere legacy encoder solo dopo field validation.
-
----
-
-# 73. Test obbligatori
-
-## Core
-
-- Windows x64 Release;
-- C ABI load;
-- version query;
-- create/destroy ripetuto;
-- file roundtrip;
-- directory roundtrip;
-- empty file;
-- empty directory;
-- Unicode path;
-- long path;
-- file >4 GiB;
-- many small files;
-- incompressible;
-- zero-rich;
-- large text;
-- mixed directory.
-
-## Concorrenza
-
-- workers 1/2/4/8/16 se supportati;
-- due engine distinti in parallelo;
-- cancel sotto carico.
-
-## Errori
-
-- input mancante;
-- output esistente;
-- disco pieno simulato;
-- destinazione read-only;
-- archivio troncato;
-- corruption payload/header/manifest;
-- unsupported feature/version.
-
-## Sicurezza
-
-- `../evil`;
-- absolute path;
-- UTF-8 problematico;
-- path collision;
-- root escape.
-
-## Compatibilità
-
-- legacy;
-- KPF1;
-- AUR1;
-- AUR2;
-- inspect;
-- list;
-- extract selected;
-- test archive.
-
----
-
-# 74. Qualification Gate
-
-Non sostituire il vecchio motore finché non sono verdi:
-
-```text
-Native file roundtrip
-Native directory roundtrip
-Extraction
-Legacy compatibility
-Container compatibility
-Corruption rejection
-Path traversal rejection
-Cancellation
-Progress callbacks
-Worker stress
-Large-file tests
-Many-small-file tests
-Application A/B integration
-Benchmark matrix
-Release Candidate soak
-```
-
----
-
-# 75. Benchmark Gate
-
-Prima della release aggiornare questo documento con:
-
-```text
-Silesia ratio
-Encode MB/s
-Decode MB/s
-Peak RAM
-Worker scaling
-External holdout
-Competitor comparison
-```
-
-I confronti devono essere eseguiti nello stesso ambiente.
-
----
-
-# 76. Performance Target di progetto
-
-Target storici:
-
-```text
-Silesia ratio:        < 28%
-Encode:               20–30 MB/s o più
-Decode:               150–200 MB/s o più
-Exact lossless:       obbligatorio
-```
-
-Sono target di sviluppo, non garanzie API.
-
----
-
-# 77. Installazione
-
-Pacchetto utente:
+Distribuzione minima runtime Windows:
 
 ```text
 AURORA.exe
-kephir2.dll
+kephir2_api.dll
 ```
+
+Il `.lib`, header, CMake config e documentazione servono allo sviluppo, non al runtime utente.
+
+L'installer deve inoltre includere il runtime MSVC corretto se richiesto dal tipo di build scelto.
 
 Non installare:
 
 ```text
 research/
+benchmarks/
+tests/
 Python
-benchmark scripts
-EXP files
-test corpora
-```
-
----
-
-# 78. Aggiornamento motore
-
-Se ABI v1 resta compatibile, AURORA può aggiornare principalmente `kephir2.dll`.
-
-Prima dell'update verificare:
-
-- API version;
-- engine version;
-- hash/signature pacchetto;
-- compatibility tests.
-
----
-
-# 79. Versioning SDK
-
-Raccomandazione:
-
-```text
-KEPHIR Engine: MAJOR.MINOR.PATCH
-KEPHIR API: integer major separato
-```
-
-API v1 resta `1` fino a breaking ABI.
-
----
-
-# 80. C++ Wrapper opzionale
-
-```cpp
-class KephirEngine final {
-public:
-    KephirEngine();
-    ~KephirEngine();
-
-    CompressionResult compress(...);
-    ExtractionResult extract(...);
-    ArchiveInfo inspect(...);
-    TestResult test(...);
-
-private:
-    kephir2_engine* handle_{nullptr};
-};
-```
-
-Il wrapper chiama solo la C ABI.
-
----
-
-# 81. Esempio compressione C
-
-```c
-kephir2_engine* engine = kephir2_create();
-if (!engine) return;
-
-kephir2_options_v1 options = {0};
-options.struct_size = sizeof(options);
-options.profile = KEPHIR2_PROFILE_AUTO;
-options.workers = 0;
-options.verify_integrity = 1;
-options.overwrite_output = 0;
-options.allow_local_experience = 1;
-options.progress_callback = on_progress;
-options.cancel_callback = should_cancel;
-options.user_data = my_job;
-
-kephir2_result_v1 result = {0};
-result.struct_size = sizeof(result);
-
-kephir2_status st = kephir2_compress(
-    engine,
-    "C:/data/input",
-    "C:/data/archive.aur",
-    &options,
-    &result);
-
-kephir2_destroy(engine);
-```
-
----
-
-# 82. Esempio ProgressManager
-
-```cpp
-static void kephirProgress(
-    const kephir2_progress_v1* p,
-    void* userData)
-{
-    auto* task = static_cast<ProgressTask*>(userData);
-
-    ProgressUpdate u;
-    u.phase = mapPhase(p->phase);
-    u.fraction = p->fraction;
-    u.processedBytes = p->processed_bytes;
-    u.totalBytes = p->total_bytes;
-
-    if (p->current_path_utf8)
-        u.currentItem = p->current_path_utf8;
-
-    task->post(u);
-}
-```
-
----
-
-# 83. Esempio cancellazione
-
-```cpp
-static int kephirCancel(void* userData)
-{
-    auto* task = static_cast<ProgressTask*>(userData);
-    return task->isCancellationRequested() ? 1 : 0;
-}
-```
-
----
-
-# 84. Cosa NON copiare nel programma
-
-```text
-research/*
-.github/workflows/*
-benchmarks/*
-tests/*
-EXP*.py
-router sperimentali Python
+EXP scripts
 generatori
-oracle
-holdout corpus
-```
-
-L'applicazione deve ricevere il prodotto compilato/SDK.
-
----
-
-# 85. Cosa integrare davvero
-
-Minimo:
-
-```text
-kephir2.dll
-kephir2.lib
-kephir2_c.h
-```
-
-Più:
-
-```text
-CompressionService
-Kephir2Backend adapter
-Progress mapping
-Error mapping
-Installer rule
-Compatibility tests
+corpus
+GitHub workflow files
 ```
 
 ---
 
-# 86. Audit prima del Freeze
+# 27. Test obbligatori nell'app AURORA
 
-Prima di dichiarare questo documento `FINAL`:
+Prima di rendere KEPHIR2 il default writer, eseguire tramite l'EXE reale:
 
-- confrontare header pubblico con `kephir2_c.h`;
-- controllare simboli DLL esportati;
-- testare ABI con host compilato separatamente;
-- verificare `sizeof` struct;
-- verificare calling convention;
-- verificare UTF-8;
-- verificare `output_bytes`;
-- verificare defaults;
-- verificare thread safety;
-- verificare callback lifetime;
-- verificare cancellation atomicity;
-- verificare archive inspect;
-- verificare AUR2 spec reale;
-- sostituire ogni sezione DRAFT con FINAL oppure rimuoverla.
+- startup API/version/capability negotiation;
+- compressione file;
+- compressione directory;
+- file vuoto;
+- directory vuota;
+- directory mixed;
+- nomi Unicode;
+- long Windows paths;
+- overwrite deny/allow;
+- progress GUI monotono;
+- cancellation durante compressione;
+- cancellation durante estrazione;
+- corruption handling;
+- inspect;
+- list entries;
+- selective extraction;
+- test archive;
+- riapertura AUR2 dopo restart applicazione;
+- compatibilità fixture AUR1/KEPHIR1;
+- clean-machine installer test;
+- uninstall/reinstall test.
+
+I test core già verdi non sostituiscono questi test end-to-end applicativi.
 
 ---
 
-# 87. Source of Truth tecnico
+# 28. API-gap rule durante l'integrazione
 
-Riferimenti principali:
+Se l'integrazione AURORA scopre un'operazione mancante:
+
+1. non bypassare la DLL chiamando classi C++ interne;
+2. documentare il caso d'uso reale;
+3. preferire una nuova funzione/struct versionata additive e ABI-compatible;
+4. aggiungere test core e consumer;
+5. ricostruire SDK;
+6. aggiornare freeze manifest e questa specifica;
+7. rifare qualification Linux/Windows.
+
+Una breaking change viene rinviata a KEPHIR3/AUR3 salvo necessità di sicurezza o prevenzione perdita dati.
+
+---
+
+# 29. Cosa NON esporre alla GUI
+
+Non creare impostazioni UI per:
 
 ```text
+K75
+EXP number
+grain size
+parent grain
+inner context
+probe budget
+router mode
+transform id
+match finder
+entropy coder
+research toggles
+factory/research internals
+```
+
+La GUI conosce solo:
+
+```text
+AUTO / FAST / BALANCED / MAX
+workers
+integrity verification
+overwrite
+progress
+cancel
+archive info
+entry list
+extract all / selected
+test archive
+```
+
+---
+
+# 30. Freeze manifest e checklist operativa
+
+Sul ramo RC1, i documenti operativi sono:
+
+```text
+docs/integration/KEPHIR2_AUR2_RC1_FREEZE_MANIFEST.md
+docs/integration/AURORA_KEPHIR2_INTEGRATION_CHECKLIST.md
+```
+
+Questi documenti, il public header e l'SDK generato sono la base dell'integrazione.
+
+---
+
+# 31. Sequenza di migrazione raccomandata
+
+```text
+1. acquisire SDK RC1 qualificato
+2. aggiungere Kephir2Backend a CompressionService
+3. caricare/linkare kephir2_api.dll
+4. verificare API version/capabilities
+5. mappare options/profiles
+6. mappare progress/cancel
+7. implementare compress
+8. implementare inspect/list/test
+9. implementare extract all/selected
+10. mantenere LegacyBackend attivo
+11. eseguire test end-to-end AURORA
+12. verificare fixture AUR1 reali
+13. correggere solo bug/API gap reali
+14. rendere KEPHIR2/AUR2 default writer
+15. creare installer
+16. clean-machine qualification
+17. release AURORA
+18. promuovere KEPHIR 2.0 / AUR2 final
+19. solo dopo aprire KEPHIR3/AUR3
+```
+
+---
+
+# 32. Release gate finale
+
+La release KEPHIR2/AUR2 non passa da RC1 a final finché non sono veri tutti i seguenti punti:
+
+```text
+KEPHIR2 RC qualification PASS
+AUR2 qualification PASS
+SDK consumer qualification PASS
+AURORA integration PASS
+legacy application compatibility PASS
+clean-machine installer PASS
+AURORA release candidate PASS
+```
+
+Il core RC1 è qualificato; l'integrazione applicativa e l'installer restano il prossimo gate.
+
+---
+
+# 33. Source of Truth
+
+Per l'integrazione usare esclusivamente:
+
+```text
+release/kephir-2.0-aur2-integration-rc1
 src/kephir2/include/kephir2/kephir2_c.h
-src/kephir2/include/kephir2/operation.hpp
-src/kephir2/include/kephir2/strategy.hpp
-src/kephir2/include/kephir2/backend.hpp
-src/kephir2/include/kephir2/archive.hpp
-src/kephir2/include/kephir2/packing.hpp
-docs/architecture/KEPHIR_2_APP_INTEGRATION_CONTRACT.md
-docs/KEPHIR_2_CURRENT_STATUS.md
+src/kephir2/cmake/Kephir2Config.cmake
+docs/architecture/AUR2_CONTAINER_FORMAT.md
+docs/architecture/AUR2_IMPLEMENTATION_STATUS.md
+docs/integration/KEPHIR2_AUR2_RC1_FREEZE_MANIFEST.md
+docs/integration/AURORA_KEPHIR2_INTEGRATION_CHECKLIST.md
+RC1 SDK artifact
 ```
 
-Branch base documentale al momento dello snapshot:
-
-```text
-development/kephir-2-core
-```
-
-Le branch R&D successive possono contenere ottimizzazioni più recenti, ma non devono cambiare il contratto host senza aggiornare questo documento.
+Non integrare direttamente da `research/*`.
 
 ---
 
-# 88. Regola finale di integrazione
+# 34. Stato al freeze
 
-> **AURORA possiede l'esperienza utente. KEPHIR possiede la compressione. Il confine tra i due è la C ABI versionata. Il container `.aur` è un formato di prodotto stabile e non deve dipendere dai dettagli temporanei della ricerca KEPHIR.**
-
----
-
-# 89. Definition of Done
-
-L'integrazione è completata soltanto quando:
-
-- AURORA comprime file;
-- AURORA comprime directory;
-- AURORA estrae;
-- AURORA ispeziona;
-- AURORA elenca contenuto;
-- AURORA verifica un archivio;
-- progress funziona;
-- cancel funziona;
-- errori sono localizzati lato GUI;
-- Unicode funziona;
-- path-safety passa;
-- archivi legacy richiesti si aprono;
-- `.aur` nuovo viene riconosciuto correttamente;
-- il motore può essere aggiornato senza accoppiare la GUI agli internals;
-- qualification completa è PASS.
-
----
-
-# 90. Nota per chi effettuerà l'integrazione
-
-Non assumere che ogni funzione descritta come `PLANNED`, `R&D` o `REQUIRED` sia già presente nel binario.
-
-Prima di scrivere il codice di integrazione:
-
-1. leggere `kephir2_c.h`;
-2. chiamare `kephir2_api_version()`;
-3. leggere release note del motore;
-4. confrontare API realmente esportate con questa specifica;
-5. implementare solo capability dichiarate dal motore;
-6. non ricostruire internals mancanti dentro la GUI;
-7. se una capability REQUIRED manca, completarla nel motore prima di aggirarla lato applicazione.
-
----
-
-## Fine documento
-
-**Nome definitivo consigliato:** `AURORA_KEPHIR_FINAL_INTEGRATION_SPEC.md`
-
-Questo documento deve accompagnare la Release Candidate finale di KEPHIR e venire aggiornato nello stesso commit/tag del freeze dell'API e del formato `.aur`.
+**KEPHIR2/AUR2:** feature freeze attivo.  
+**AUR2:** implementato e qualificato.  
+**C ABI v1:** congelata per integrazione.  
+**Runtime RC:** `2.0.0-rc1`.  
+**SDK Windows x64:** packaging e consumer CMake qualificati.  
+**KEPHIR3/AUR3:** non iniziati.  
+**Prossima attività di prodotto:** integrazione dentro AURORA Compressor, test end-to-end e installer.
