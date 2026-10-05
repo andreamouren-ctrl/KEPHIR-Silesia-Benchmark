@@ -58,6 +58,7 @@ add_library(kephir2_core STATIC
     src/aur2_streams.cpp
     src/auto_routing.cpp
     src/archive.cpp
+    src/context_policy.cpp
     src/execution.cpp
     src/native37_blob.cpp
     src/native_k75.cpp
@@ -118,6 +119,8 @@ add_executable(kephir2_packing_dump tests/packing_dump.cpp)
 target_link_libraries(kephir2_packing_dump PRIVATE kephir2_core)
 add_executable(kephir2_execution_smoke tests/execution_smoke.cpp)
 target_link_libraries(kephir2_execution_smoke PRIVATE kephir2_core)
+add_executable(kephir2_context_policy_smoke tests/context_policy_smoke.cpp)
+target_link_libraries(kephir2_context_policy_smoke PRIVATE kephir2_core)
 add_executable(kephir2_native37_smoke tests/native37_smoke.cpp)
 target_link_libraries(kephir2_native37_smoke PRIVATE kephir37_native)
 add_executable(kephir2_native37_blob_smoke tests/native37_blob_smoke.cpp)
@@ -152,13 +155,14 @@ add_test(NAME kephir2_aur2_transactional_directory_smoke COMMAND kephir2_aur2_tr
 add_test(NAME kephir2_aur2_ranged_file_smoke COMMAND kephir2_aur2_ranged_file_smoke)
 add_test(NAME kephir2_packing_smoke COMMAND kephir2_packing_smoke)
 add_test(NAME kephir2_execution_smoke COMMAND kephir2_execution_smoke)
+add_test(NAME kephir2_context_policy_smoke COMMAND kephir2_context_policy_smoke)
 add_test(NAME kephir2_native37_smoke COMMAND kephir2_native37_smoke)
 add_test(NAME kephir2_native37_blob_smoke COMMAND kephir2_native37_blob_smoke)
 add_test(NAME kephir2_native_k75_smoke COMMAND kephir2_native_k75_smoke)
 add_test(NAME kephir2_auto_routing_smoke COMMAND kephir2_auto_routing_smoke)
 
 set_source_files_properties(src/kephir2_c.cpp PROPERTIES
-    COMPILE_DEFINITIONS "kephir2_compress=kephir2_compress_kpf1_legacy;kephir2_extract=kephir2_extract_kpf1_legacy"
+    COMPILE_DEFINITIONS "kephir2_compress=kephir2_compress_kpf1_legacy;kephir2_extract=kephir2_extract_kpf1_legacy;kephir2_engine_version=kephir2_engine_version_internal_dev"
 )
 set_source_files_properties(src/kephir2_public_aur2.cpp PROPERTIES
     COMPILE_DEFINITIONS "kephir2_compress=kephir2_compress_aur2_payload;kephir2_extract=kephir2_extract_aur2_payload"
@@ -182,6 +186,7 @@ set_source_files_properties(src/kephir2_public_inspection.cpp PROPERTIES
 add_library(kephir2_api SHARED
     src/kephir2_c.cpp
     src/kephir2_capabilities.cpp
+    src/kephir2_version.cpp
     src/kephir2_public_aur2.cpp
     src/kephir2_public_metadata.cpp
     src/kephir2_public_seek.cpp
@@ -244,6 +249,7 @@ set(KEPHIR2_SMOKE_TARGETS
     kephir2_aur2_file_extract_smoke
     kephir2_packing_smoke
     kephir2_execution_smoke
+    kephir2_context_policy_smoke
     kephir2_native37_smoke
     kephir2_native37_blob_smoke
     kephir2_native_k75_smoke
