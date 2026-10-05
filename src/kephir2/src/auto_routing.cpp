@@ -20,6 +20,8 @@ namespace {
 
 constexpr std::uint64_t kMinFileSample = 4096;
 constexpr std::uint64_t kStrata = 4;
+constexpr std::uint64_t kBaseParentBytes = 512u * 1024u;
+constexpr std::uint64_t kLongContextBootstrapProbe = 4u * 1024u * 1024u;
 
 class TempProbeTree {
 public:
@@ -351,6 +353,49 @@ ResolvedDirectoryStrategy ProductionAutoResolver::resolve(
     out.features = initial.features;
     out.strategy = initial.strategy;
 
+    // EXP-117: the EXP-88/94 no-probe shortcuts were qualified against a
+    // fixed 512 KiB backend parent. With adaptive 4/8 MiB context, multiple
+    // content families that look pure in 512 KiB analysis windows can share
+    // one actual parent and make SMART beneficial. EXP-117A2 showed that
+    // 512 KiB, 1 MiB and 2 MiB samples can still vote like the old backend;
+    // 4 MiB is the first tested budget that exposes the long-context layout
+    // crossover. Keep the old router unchanged for the baseline backend and
+    // use this bounded bootstrap only for AUTO + adaptive + multi-family.
+    const bool adaptive_context =
+        backend_options.enable_adaptive_context
+        || backend_options.research_enable_adaptive_context;
+
+    ArchiveFeatures routing_features = out.features;
+
+    if (profile == Profile::Auto
+        && adaptive_context
+        && out.features.logical_bytes > kBaseParentBytes
+        && out.features.sampled_content_groups > 1
+        && out.strategy.requested_probe_bytes == 0) {
+
+        auto probe = measure_probe(
+            root,
+            kLongContextBootstrapProbe,
+            backend,
+            backend_options);
+
+        if (!probe.valid()) {
+            throw std::runtime_error(
+                "AUTO long-context bootstrap produced an invalid layout probe");
+        }
+
+        out.probes.push_back(probe);
+
+        // Neutralize only EXP-94's 512 KiB parent-purity proof for this
+        // long-context decision. All other analyzed features remain intact.
+        routing_features.flat_parent_count = 0;
+
+        out.strategy = router.plan(
+            routing_features,
+            profile,
+            out.probes.back());
+    }
+
     std::size_t safety = 0;
     while (out.strategy.requested_probe_bytes != 0) {
         if (++safety > 2) {
@@ -377,7 +422,7 @@ ResolvedDirectoryStrategy ProductionAutoResolver::resolve(
 
         out.probes.push_back(probe);
         out.strategy = router.plan(
-            out.features,
+            routing_features,
             profile,
             out.probes.back());
     }
