@@ -16,15 +16,28 @@ Do not delete the legacy reader before real user archives have been validated.
 
 ## 2. Integrate only the stable C ABI
 
-Include:
+SDK RC1 layout:
 
 ```text
 include/kephir2/kephir2_c.h
 bin/kephir2_api.dll
 lib/kephir2_api.lib
+cmake/Kephir2Config.cmake
+docs/
+VERSION
+SHA256SUMS
 ```
 
 Do not include research Python scripts or call C++ internal classes directly from the GUI.
+
+Preferred CMake integration:
+
+```cmake
+find_package(Kephir2 CONFIG REQUIRED)
+target_link_libraries(AURORA PRIVATE Kephir2::kephir2)
+```
+
+Point `Kephir2_DIR` at the SDK `cmake/` directory, or add the SDK root to the application's CMake prefix path. The installed application does not require Python; Python is only a source-build/generation dependency inside the KEPHIR repository.
 
 ## 3. Startup compatibility check
 
