@@ -80,7 +80,7 @@ std::string utf8(const std::filesystem::path& path) {
 
 int main() {
     assert(kephir2_api_version() == KEPHIR2_API_VERSION);
-    assert(std::strcmp(kephir2_engine_version(), "2.0-dev-native") == 0);
+    assert(std::strcmp(kephir2_engine_version(), KEPHIR2_ENGINE_VERSION_STRING) == 0);
 
     auto* engine = kephir2_create();
     assert(engine != nullptr);
@@ -108,9 +108,9 @@ int main() {
     assert(kephir2_get_capabilities(engine, &capabilities) == KEPHIR2_OK);
     assert(capabilities.struct_size == sizeof(capabilities));
     assert(capabilities.api_version == KEPHIR2_API_VERSION);
-    assert(capabilities.engine_major == 2);
-    assert(capabilities.engine_minor == 0);
-    assert(capabilities.engine_patch == 0);
+    assert(capabilities.engine_major == KEPHIR2_ENGINE_VERSION_MAJOR);
+    assert(capabilities.engine_minor == KEPHIR2_ENGINE_VERSION_MINOR);
+    assert(capabilities.engine_patch == KEPHIR2_ENGINE_VERSION_PATCH);
     assert(capabilities.max_workers == 16);
     assert(capabilities.capability_flags == expected_capabilities);
     assert(capabilities.aur_read_major_min == 2);
