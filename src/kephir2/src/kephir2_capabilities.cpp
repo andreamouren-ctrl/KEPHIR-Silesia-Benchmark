@@ -16,9 +16,9 @@ kephir2_status kephir2_get_capabilities(
     std::memset(capabilities, 0, sizeof(*capabilities));
     capabilities->struct_size = sizeof(*capabilities);
     capabilities->api_version = KEPHIR2_API_VERSION;
-    capabilities->engine_major = 2;
-    capabilities->engine_minor = 0;
-    capabilities->engine_patch = 0;
+    capabilities->engine_major = KEPHIR2_ENGINE_VERSION_MAJOR;
+    capabilities->engine_minor = KEPHIR2_ENGINE_VERSION_MINOR;
+    capabilities->engine_patch = KEPHIR2_ENGINE_VERSION_PATCH;
     capabilities->max_workers = 16;
     capabilities->capability_flags =
         KEPHIR2_CAP_COMPRESS_FILE |
