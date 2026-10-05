@@ -16,6 +16,10 @@ extern "C" {
 #endif
 
 #define KEPHIR2_API_VERSION 1u
+#define KEPHIR2_ENGINE_VERSION_MAJOR 2u
+#define KEPHIR2_ENGINE_VERSION_MINOR 0u
+#define KEPHIR2_ENGINE_VERSION_PATCH 0u
+#define KEPHIR2_ENGINE_VERSION_STRING "2.0.0-rc1"
 
 typedef struct kephir2_engine kephir2_engine;
 
