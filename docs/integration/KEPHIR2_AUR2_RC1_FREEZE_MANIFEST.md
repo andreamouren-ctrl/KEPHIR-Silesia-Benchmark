@@ -146,8 +146,26 @@ The following remain **research only and are intentionally NOT promoted into RC1
 
 Those results are preserved for KEPHIR3 design.
 
+## RC1 integration SDK
+
+The Windows x64 RC1 integration artifact is assembled from the frozen public surface only:
+
+```text
+kephir2-sdk-2.0.0-rc1-windows-x64/
+  include/kephir2/kephir2_c.h
+  bin/kephir2_api.dll
+  lib/kephir2_api.lib
+  cmake/Kephir2Config.cmake
+  docs/
+  VERSION
+  SHA256SUMS
+```
+
+`Kephir2Config.cmake` exposes the imported target `Kephir2::kephir2`. The package is validated by a separate CMake consumer that calls the public C ABI and checks API/runtime versioning. The installed AURORA application has no Python runtime dependency; Python remains a repository source-build/generation dependency only.
+
 ## Already qualified AUR2 checkpoints
 
+- RC1 SDK/package consumer gate: run `37271671809` — PASS Linux/Windows; Windows SDK staging + external CMake consumer PASS.
 - Final AUR2 Linux/Windows gate: run `37238651446` — PASS.
 - Scale qualification: run `37238274255` — PASS.
 - Transactional extraction: run `37237322025` — PASS Linux/Windows.
@@ -195,6 +213,7 @@ During application integration, use only:
 
 - this release branch;
 - `src/kephir2/include/kephir2/kephir2_c.h`;
+- `src/kephir2/cmake/Kephir2Config.cmake`;
 - `docs/architecture/AUR2_CONTAINER_FORMAT.md`;
 - `docs/architecture/AUR2_IMPLEMENTATION_STATUS.md`;
 - `docs/integration/AURORA_KEPHIR2_INTEGRATION_CHECKLIST.md`;
